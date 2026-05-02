@@ -1,31 +1,24 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from "react-native";
 
-import {
-  clientHomeStats,
-  demoAppointments,
-  loyaltyOverview,
-  upcomingBooking,
-} from "../data/mockData";
-import { getCenters } from "../lib/api";
-import type { Center } from "../types/api";
+import { getCenters, getUserBookings } from "../lib/api";
+import type { Booking, Center } from "../types/api";
 import { PrimaryButton } from "../components/PrimaryButton";
 import { ScreenHeader } from "../components/ScreenHeader";
 import { SectionCard } from "../components/SectionCard";
-import { StatTile } from "../components/StatTile";
 import { colors } from "../theme/colors";
 import { spacing } from "../theme/spacing";
 import { textStyles } from "../theme/typography";
 
 type ClientHomeScreenProps = {
   userName: string;
+  userEmail: string;
   selectedCenterId: string | null;
   onChangeCenter: (centerId: string) => void;
   onOpenAppointments: () => void;
@@ -38,22 +31,25 @@ export function ClientHomeScreen({
   onChangeCenter,
   onOpenAppointments,
   onOpenBooking,
+  userEmail,
 }: ClientHomeScreenProps) {
   const [centers, setCenters] = useState<Center[]>([]);
+  const [appointments, setAppointments] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let mounted = true;
 
-    getCenters()
-      .then((response) => {
+    Promise.all([getCenters(), getUserBookings(userEmail)])
+      .then(([centersRes, bookingsRes]) => {
         if (!mounted) return;
-        setCenters(response);
+        setCenters(centersRes);
+        setAppointments(bookingsRes);
       })
       .catch(() => {
         if (!mounted) return;
-        setError("Impossibile caricare i centri.");
+        setError("Errore caricamento dati");
       })
       .finally(() => {
         if (mounted) setLoading(false);
@@ -62,95 +58,111 @@ export function ClientHomeScreen({
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [userEmail]);
 
   const activeCenter = useMemo(
-    () => centers.find((center) => center.id === selectedCenterId) ?? null,
+    () => centers.find((c) => c.id === selectedCenterId) ?? null,
     [centers, selectedCenterId],
   );
 
+  const sortedAppointments = useMemo(
+    () =>
+      [...appointments].sort(
+        (a, b) =>
+          new Date(a.start_time).getTime() - new Date(b.start_time).getTime(),
+      ),
+    [appointments],
+  );
+
+  const now = Date.now();
+
+  const nextAppointment = sortedAppointments.find((a) => {
+    const time = new Date(a.start_time).getTime();
+    return !isNaN(time) && time >= now;
+  });
   return (
     <ScrollView contentContainerStyle={styles.content} style={styles.container}>
       <ScreenHeader
         eyebrow="Cliente"
         title={`Ciao, ${userName}`}
-        subtitle="Tieni sotto controllo la routine beauty e apri il booking in pochi tocchi."
+        subtitle="Gestisci la tua beauty routine in pochi tocchi"
       />
 
-      <View style={styles.quickBookingSection}>
+      {loading && <ActivityIndicator color={colors.brand} />}
+      {error && <Text style={styles.error}>{error}</Text>}
+
+      {/* 🔥 QUICK CTA */}
+      <View style={styles.quickBooking}>
         <PrimaryButton
-          label="Effettua prenotazione"
+          label="Prenota trattamento"
           onPress={() => onOpenBooking(null)}
-          variant="primary"
         />
       </View>
 
-      <SectionCard eyebrow="Panoramica" title="I tuoi numeri">
-        <View style={styles.metricsRow}>
-          {clientHomeStats.map((item) => (
-            <StatTile key={item.id} label={item.label} value={item.value} />
-          ))}
-        </View>
-      </SectionCard>
-
+      {/* 💎 PROSSIMO APPUNTAMENTO */}
       <SectionCard
         eyebrow="Prossimo appuntamento"
-        title={upcomingBooking.service}
+        title={nextAppointment?.service_name ?? "Nessun appuntamento"}
         tone="sand"
       >
-        <Text style={styles.primaryLine}>
-          {upcomingBooking.dateLabel} alle {upcomingBooking.timeLabel}
-        </Text>
-        <Text style={styles.secondaryLine}>
-          Con {upcomingBooking.specialist}
-        </Text>
-        <View style={styles.actionsRow}>
-          <View style={styles.actionItem}>
-            <PrimaryButton
-              label={activeCenter ? "Apri prenotazione" : "Seleziona un centro"}
-              onPress={() => onOpenBooking(null)}
-              variant={activeCenter ? "primary" : "secondary"}
-            />
-          </View>
-          <View style={styles.actionItem}>
-            <PrimaryButton
-              label="Storico prenotazioni"
-              onPress={onOpenAppointments}
-              variant="secondary"
-            />
-          </View>
+        {nextAppointment ? (
+          <>
+            <Text style={styles.primary}>
+              {nextAppointment.date_label} • {nextAppointment.time_label}
+            </Text>
+
+            <Text style={styles.secondary}>
+              {nextAppointment.operator_name}
+            </Text>
+          </>
+        ) : (
+          <Text style={styles.secondary}>Nessun appuntamento programmato</Text>
+        )}
+
+        <View style={styles.actions}>
+          <PrimaryButton label="Prenota" onPress={() => onOpenBooking(null)} />
+          <PrimaryButton
+            label="Storico"
+            onPress={onOpenAppointments}
+            variant="secondary"
+          />
         </View>
       </SectionCard>
 
-      <SectionCard eyebrow="Beauty wallet" title="Promozioni e fedelta">
-        <Text style={styles.secondaryLine}>
-          {loyaltyOverview.points} punti disponibili, {loyaltyOverview.reward}
-        </Text>
-        <View style={styles.walletRibbon}>
-          <Text style={styles.walletLabel}>Centro preferito</Text>
-          <Text style={styles.walletValue}>
-            {activeCenter?.name ?? "Da selezionare"}
-          </Text>
-        </View>
-      </SectionCard>
+      {/* 🧾 STORICO RAPIDO */}
+      <SectionCard eyebrow="Ultime prenotazioni" title="Storico recente">
+        {sortedAppointments.slice(0, 3).map((appointment) => (
+          <View key={appointment.id} style={styles.card}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.service}>{appointment.service_name}</Text>
 
-      <SectionCard eyebrow="Ultime prenotazioni" title="Storico rapido">
-        {demoAppointments.slice(0, 2).map((appointment) => (
-          <View key={appointment.id} style={styles.historyRow}>
-            <View style={styles.historyBadge} />
-            <View style={styles.historyMain}>
-              <Text style={styles.serviceName}>{appointment.service}</Text>
-              <Text style={styles.serviceMeta}>
-                {appointment.dateLabel} • {appointment.statusLabel}
+              <Text style={styles.meta}>
+                {appointment.date_label} • {appointment.time_label}
+              </Text>
+
+              <Text style={styles.meta}>{appointment.operator_name}</Text>
+
+              <Text
+                style={[
+                  styles.status,
+                  appointment.status === "confirmed" && styles.statusConfirmed,
+                ]}
+              >
+                {appointment.status}
               </Text>
             </View>
-            <Text style={styles.priceBadge}>{appointment.price}</Text>
+
+            <Text style={styles.price}>
+              {appointment.price ? `€${appointment.price}` : ""}
+            </Text>
           </View>
         ))}
       </SectionCard>
     </ScrollView>
   );
 }
+
+/* 🎨 STYLES */
 
 const styles = StyleSheet.create({
   container: {
@@ -162,124 +174,67 @@ const styles = StyleSheet.create({
     paddingTop: spacing.xl,
     paddingBottom: spacing.xxl,
   },
-  quickBookingSection: {
+
+  quickBooking: {
     marginBottom: spacing.lg,
   },
-  centerList: {
-    gap: spacing.sm,
-    marginTop: spacing.lg,
-  },
-  centerCard: {
-    backgroundColor: colors.surface,
-    borderColor: colors.overlayBorder,
-    borderRadius: 24,
-    borderWidth: 1,
-    minHeight: 132,
-    padding: spacing.md,
-  },
-  centerCardActive: {
-    backgroundColor: colors.surfaceSoft,
-    borderColor: colors.brand,
-  },
-  centerPill: {
-    alignSelf: "flex-start",
-    backgroundColor: colors.surfaceSky,
-    borderRadius: 12,
-    marginBottom: spacing.md,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 6,
-  },
-  centerPillText: {
-    ...textStyles.microLabel,
-    color: colors.brandInk,
-  },
-  centerName: {
-    ...textStyles.titleXs,
-  },
-  centerMeta: {
-    color: colors.textMuted,
-    fontSize: 13,
-    lineHeight: 18,
-    marginTop: spacing.xs,
-  },
-  centerTag: {
-    color: colors.brand,
-    fontSize: 13,
-    fontWeight: "600",
-    lineHeight: 18,
-    marginTop: spacing.sm,
-  },
-  loader: {
-    marginVertical: spacing.md,
-  },
-  errorText: {
-    color: colors.textMuted,
-    fontSize: 14,
-    marginBottom: spacing.sm,
-  },
-  primaryLine: {
+
+  primary: {
     ...textStyles.titleBase,
   },
-  secondaryLine: {
+
+  secondary: {
     color: colors.textMuted,
-    fontSize: 15,
-    lineHeight: 22,
     marginTop: spacing.xs,
   },
-  actionsRow: {
-    gap: spacing.sm,
+
+  actions: {
     marginTop: spacing.lg,
-  },
-  actionItem: {
-    marginBottom: spacing.sm,
-  },
-  metricsRow: {
-    flexDirection: "row",
     gap: spacing.sm,
   },
-  walletRibbon: {
+
+  error: {
+    color: "red",
+    marginBottom: spacing.md,
+  },
+
+  /* CARD */
+
+  card: {
+    flexDirection: "row",
+    justifyContent: "space-between",
     backgroundColor: colors.surface,
-    borderColor: colors.overlayBorder,
-    borderRadius: 20,
-    borderWidth: 1,
-    marginTop: spacing.lg,
+    borderRadius: 16,
     padding: spacing.md,
+    marginBottom: spacing.md,
+    shadowColor: "#000",
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    elevation: 2,
   },
-  walletLabel: {
-    ...textStyles.microLabel,
-  },
-  walletValue: {
-    ...textStyles.titleXs,
-    marginTop: spacing.sm,
-  },
-  historyRow: {
-    alignItems: "center",
-    borderTopColor: colors.border,
-    borderTopWidth: 1,
-    flexDirection: "row",
-    gap: spacing.md,
-    paddingVertical: spacing.md,
-  },
-  historyBadge: {
-    backgroundColor: colors.surfaceSky,
-    borderRadius: 12,
-    height: 44,
-    width: 44,
-  },
-  historyMain: {
-    flex: 1,
-  },
-  serviceName: {
+
+  service: {
     ...textStyles.titleXs,
   },
-  serviceMeta: {
+
+  meta: {
     color: colors.textMuted,
     fontSize: 14,
-    marginTop: spacing.xs,
+    marginTop: 2,
   },
-  priceBadge: {
+
+  price: {
     color: colors.brand,
-    fontSize: 15,
     fontWeight: "700",
+  },
+
+  status: {
+    fontSize: 12,
+    marginTop: 4,
+    fontWeight: "600",
+  },
+
+  statusConfirmed: {
+    color: "#2E7D32",
   },
 });

@@ -302,6 +302,7 @@ export default function App() {
           {clientTab === "home" ? (
             <ClientHomeScreen
               userName={session.user.name}
+              userEmail={session.user.email}
               selectedCenterId={selectedCenterId}
               onChangeCenter={setSelectedCenterId}
               onOpenAppointments={() => setClientTab("appointments")}
