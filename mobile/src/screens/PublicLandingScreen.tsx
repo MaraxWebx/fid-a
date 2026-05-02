@@ -30,12 +30,12 @@ export function PublicLandingScreen({
 
           <View style={styles.buttonRow}>
             <PrimaryButton
-              label="Accedi Cliente"
+              label="Cliente"
               onPress={onOpenClientAuth}
               variant="secondary"
             />
             <PrimaryButton
-              label="Accedi Centro"
+              label="Centro"
               onPress={onOpenCenterAuth}
               variant="primary"
             />
@@ -73,7 +73,6 @@ const styles = StyleSheet.create({
   buttonRow: {
     flexDirection: "row",
     gap: spacing.md,
-    justifyContent: "center",
   },
   logoImage: {
     height: 120,

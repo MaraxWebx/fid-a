@@ -59,7 +59,12 @@ export function AuthScreen({
 
   return (
     <ScrollView contentContainerStyle={styles.content} style={styles.container}>
-      <ScreenHeader eyebrow={eyebrow} title={title} subtitle={subtitle} />
+      <ScreenHeader
+        onBack={onBack}
+        eyebrow={eyebrow}
+        title={title}
+        subtitle={subtitle}
+      />
 
       <View style={styles.card}>
         <Text style={styles.rolePill}>{roleLabel}</Text>
@@ -86,15 +91,18 @@ export function AuthScreen({
             label={isSubmitting ? "Attendi..." : primaryLabel}
             onPress={onPrimaryAction}
           />
-          <PrimaryButton
-            label="Torna indietro"
-            onPress={onBack}
-            variant="secondary"
-          />
+          <Text style={styles.footerText}>{ctaText}</Text>
+          <View style={styles.footerButton}>
+            <PrimaryButton
+              label={ctaLabel}
+              onPress={onSecondaryAction}
+              variant="secondary"
+            />
+          </View>
         </View>
       </View>
 
-      <View style={styles.footerCard}>
+      {/*   <View style={styles.footerCard}>
         <Text style={styles.footerText}>{ctaText}</Text>
         <View style={styles.footerButton}>
           <PrimaryButton
@@ -103,7 +111,7 @@ export function AuthScreen({
             variant="secondary"
           />
         </View>
-      </View>
+      </View> */}
     </ScrollView>
   );
 }
@@ -206,7 +214,5 @@ const styles = StyleSheet.create({
   footerText: {
     ...textStyles.body,
   },
-  footerButton: {
-    marginTop: spacing.md,
-  },
+  footerButton: {},
 });
