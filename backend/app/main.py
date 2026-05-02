@@ -141,6 +141,13 @@ class LoginPayload(BaseModel):
     password: str = Field(min_length=6, max_length=128)
 
 
+class BookingPayload(BaseModel):
+    center_id: str = Field(min_length=24, max_length=24)
+    user_email: str = Field(min_length=5, max_length=160)
+    service_id: str = Field(min_length=24, max_length=24)
+    slot_id: str = Field(min_length=1, max_length=64)
+
+
 def build_activation_status(document):
     missing_fields = []
 
@@ -764,3 +771,45 @@ def get_center_clients(center_id: str):
         }
         for document in documents
     ]
+
+
+@app.post("/api/bookings")
+def create_booking(payload: BookingPayload):
+    # Validate center exists
+    center_object_id = parse_object_id(payload.center_id, "center id")
+    center = db.centers.find_one({"_id": center_object_id})
+    if not center:
+        raise HTTPException(status_code=404, detail="Center not found.")
+
+    # Validate user exists
+    user = db.users.find_one({"email": payload.user_email.strip().lower(), "role": "client"})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found.")
+
+    # Validate service exists and belongs to center
+    service_object_id = parse_object_id(payload.service_id, "service id")
+    service = db.services.find_one({"_id": service_object_id, "center_id": center_object_id})
+    if not service:
+        raise HTTPException(status_code=404, detail="Service not found or does not belong to center.")
+
+    # For now, we'll create a simple booking with the slot_id as a reference
+    # In a real implementation, you'd validate the slot availability and calculate start/end times
+    now = datetime.now(UTC)
+    booking_document = {
+        "center_id": center_object_id,
+        "user_id": user["_id"],
+        "service_id": service_object_id,
+        "service_name": service.get("name"),
+        "operator_name": "Staff",  # Default operator, could be made configurable
+        "status": "confirmed",
+        "slot_id": payload.slot_id,
+        "start_time": now,  # Placeholder - would be calculated from slot
+        "end_time": now,    # Placeholder - would be calculated from service duration
+        "created_at": now,
+        "updated_at": now,
+    }
+
+    result = db.bookings.insert_one(booking_document)
+    created_booking = db.bookings.find_one({"_id": result.inserted_id})
+
+    return serialize_booking(created_booking)
