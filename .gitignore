@@ -1,0 +1,38 @@
+# Root
+.DS_Store
+Thumbs.db
+
+# Secrets
+.env
+.env.*
+!.env.example
+backend/.env
+mobile/.env
+mobile/.env.*
+!mobile/.env.example
+
+# Node / Expo
+node_modules/
+mobile/node_modules/
+mobile/.expo/
+mobile/dist/
+mobile/web-build/
+mobile/expo-env.d.ts
+mobile/.kotlin/
+mobile/.metro-health-check*
+mobile/npm-debug.*
+mobile/yarn-debug.*
+mobile/yarn-error.*
+mobile/*.tsbuildinfo
+mobile/ios/
+mobile/android/
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+
+# Local repo backup
+.git-mobile-backup/
