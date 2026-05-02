@@ -200,10 +200,8 @@ export default function App() {
             onComplete={(center, activation) => {
               setRegisteredCenter(center);
               setRegisteredCenterActivation(activation);
-              if (activation.is_listable) {
-                setSession({ role: 'center', center, activation });
-                setCenterTab('home');
-              }
+              setSession({ role: 'center', center, activation });
+              setCenterTab('home');
             }}
           />
         ) : null}
