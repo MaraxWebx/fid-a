@@ -8,10 +8,11 @@ import { SectionCard } from '../components/SectionCard';
 import { colors } from '../theme/colors';
 import { spacing } from '../theme/spacing';
 
-const demoProfileEmail =
-  process.env.EXPO_PUBLIC_PROFILE_EMAIL ?? 'anotniomarettax@gmail.com';
+type ClientAppointmentsScreenProps = {
+  profileEmail: string;
+};
 
-export function ClientAppointmentsScreen() {
+export function ClientAppointmentsScreen({ profileEmail }: ClientAppointmentsScreenProps) {
   const [appointments, setAppointments] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -19,7 +20,7 @@ export function ClientAppointmentsScreen() {
   useEffect(() => {
     let mounted = true;
 
-    getUserBookings(demoProfileEmail)
+    getUserBookings(profileEmail)
       .then((response) => {
         if (mounted) setAppointments(response);
       })
@@ -33,7 +34,7 @@ export function ClientAppointmentsScreen() {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [profileEmail]);
 
   return (
     <ScrollView contentContainerStyle={styles.content} style={styles.container}>

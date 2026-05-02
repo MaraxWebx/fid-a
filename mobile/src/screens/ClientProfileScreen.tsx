@@ -9,14 +9,12 @@ import { SectionCard } from '../components/SectionCard';
 import { colors } from '../theme/colors';
 import { spacing } from '../theme/spacing';
 
-const demoProfileEmail =
-  process.env.EXPO_PUBLIC_PROFILE_EMAIL ?? 'anotniomarettax@gmail.com';
-
 type ClientProfileScreenProps = {
   onLogout: () => void;
+  profileEmail: string;
 };
 
-export function ClientProfileScreen({ onLogout }: ClientProfileScreenProps) {
+export function ClientProfileScreen({ onLogout, profileEmail }: ClientProfileScreenProps) {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -24,7 +22,7 @@ export function ClientProfileScreen({ onLogout }: ClientProfileScreenProps) {
   useEffect(() => {
     let mounted = true;
 
-    getUserProfile(demoProfileEmail)
+    getUserProfile(profileEmail)
       .then((response) => {
         if (mounted) setProfile(response);
       })
@@ -38,7 +36,7 @@ export function ClientProfileScreen({ onLogout }: ClientProfileScreenProps) {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [profileEmail]);
 
   return (
     <ScrollView contentContainerStyle={styles.content} style={styles.container}>
@@ -62,15 +60,13 @@ export function ClientProfileScreen({ onLogout }: ClientProfileScreenProps) {
 
       <SectionCard eyebrow="Preferenze" title="Note beauty">
         <Text style={styles.note}>
-          Profilo reale caricato da MongoDB. Le preferenze beauty dettagliate restano da
-          modellare in una collection o in un campo dedicato.
+          Profilo reale caricato da MongoDB. Le preferenze beauty dettagliate restano da modellare
+          in una collection o in un campo dedicato.
         </Text>
       </SectionCard>
 
       <SectionCard eyebrow="Sessione" title="Esci dall'account">
-        <Text style={styles.note}>
-          Chiudi la sessione demo e torna alla home pubblica dell&apos;app Fidèa.
-        </Text>
+        <Text style={styles.note}>Chiudi la sessione e torna alla home pubblica dell&apos;app.</Text>
         <View style={styles.logoutWrap}>
           <PrimaryButton label="Log out" onPress={onLogout} variant="secondary" />
         </View>

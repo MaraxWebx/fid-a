@@ -2,61 +2,211 @@ import { StatusBar } from 'expo-status-bar';
 import { useState } from 'react';
 import { SafeAreaView, StyleSheet } from 'react-native';
 
-import { demoAppointments } from './src/data/mockData';
 import { BottomTabs } from './src/components/BottomTabs';
+import { AuthScreen } from './src/screens/AuthScreen';
+import { CenterOnboardingScreen } from './src/screens/CenterOnboardingScreen';
 import { CenterRegistrationScreen } from './src/screens/CenterRegistrationScreen';
 import { ClientAppointmentsScreen } from './src/screens/ClientAppointmentsScreen';
 import { ClientBookingScreen } from './src/screens/ClientBookingScreen';
 import { ClientHomeScreen } from './src/screens/ClientHomeScreen';
 import { ClientProfileScreen } from './src/screens/ClientProfileScreen';
+import { ClientRegistrationScreen } from './src/screens/ClientRegistrationScreen';
 import { CenterCalendarScreen } from './src/screens/CenterCalendarScreen';
 import { CenterClientsScreen } from './src/screens/CenterClientsScreen';
 import { CenterDashboardScreen } from './src/screens/CenterDashboardScreen';
 import { CenterSettingsScreen } from './src/screens/CenterSettingsScreen';
 import { PublicLandingScreen } from './src/screens/PublicLandingScreen';
+import { loginCenter, loginClient } from './src/lib/api';
 import { colors } from './src/theme/colors';
+import type { ActivationStatus, Center, UserProfile } from './src/types/api';
 
-type Role = 'client' | 'center';
 type ClientTab = 'home' | 'appointments' | 'profile' | 'booking';
 type CenterTab = 'home' | 'calendar' | 'clients' | 'settings';
-type PublicRoute = 'landing' | 'center-registration';
+type PublicRoute =
+  | 'landing'
+  | 'client-auth'
+  | 'client-register'
+  | 'center-auth'
+  | 'center-register'
+  | 'center-onboarding';
+
+type AppSession =
+  | { role: 'client'; user: UserProfile }
+  | { role: 'center'; center: Center; activation: ActivationStatus };
 
 export default function App() {
-  const [sessionRole, setSessionRole] = useState<Role | null>(null);
+  const [session, setSession] = useState<AppSession | null>(null);
   const [publicRoute, setPublicRoute] = useState<PublicRoute>('landing');
   const [clientTab, setClientTab] = useState<ClientTab>('home');
   const [centerTab, setCenterTab] = useState<CenterTab>('home');
   const [selectedServiceId, setSelectedServiceId] = useState<string | null>(null);
   const [selectedCenterId, setSelectedCenterId] = useState<string | null>(null);
+  const [registeredCenter, setRegisteredCenter] = useState<Center | null>(null);
+  const [registeredCenterActivation, setRegisteredCenterActivation] = useState<ActivationStatus | null>(
+    null,
+  );
+  const [clientAuth, setClientAuth] = useState({ email: '', password: '', error: '', loading: false });
+  const [centerAuth, setCenterAuth] = useState({ email: '', password: '', error: '', loading: false });
 
   const handleLogout = () => {
-    setSessionRole(null);
+    setSession(null);
     setPublicRoute('landing');
     setClientTab('home');
     setCenterTab('home');
     setSelectedServiceId(null);
     setSelectedCenterId(null);
+    setRegisteredCenter(null);
+    setRegisteredCenterActivation(null);
   };
 
-  if (!sessionRole) {
+  const handleClientLogin = async () => {
+    if (!clientAuth.email.trim() || !clientAuth.password.trim()) {
+      setClientAuth((current) => ({ ...current, error: 'Inserisci email e password.' }));
+      return;
+    }
+
+    setClientAuth((current) => ({ ...current, error: '', loading: true }));
+
+    try {
+      const response = await loginClient({
+        email: clientAuth.email,
+        password: clientAuth.password,
+      });
+      setSession({ role: 'client', user: response.user });
+      setClientTab('home');
+    } catch (error) {
+      setClientAuth((current) => ({
+        ...current,
+        error: error instanceof Error ? error.message : 'Accesso cliente non riuscito.',
+      }));
+    } finally {
+      setClientAuth((current) => ({ ...current, loading: false }));
+    }
+  };
+
+  const handleCenterLogin = async () => {
+    if (!centerAuth.email.trim() || !centerAuth.password.trim()) {
+      setCenterAuth((current) => ({ ...current, error: 'Inserisci email e password.' }));
+      return;
+    }
+
+    setCenterAuth((current) => ({ ...current, error: '', loading: true }));
+
+    try {
+      const response = await loginCenter({
+        email: centerAuth.email,
+        password: centerAuth.password,
+      });
+      if (!response.activation.is_listable) {
+        setRegisteredCenter(response.center);
+        setRegisteredCenterActivation(response.activation);
+        setPublicRoute('center-onboarding');
+      } else {
+        setSession({ role: 'center', center: response.center, activation: response.activation });
+        setCenterTab('home');
+      }
+    } catch (error) {
+      setCenterAuth((current) => ({
+        ...current,
+        error: error instanceof Error ? error.message : 'Accesso centro non riuscito.',
+      }));
+    } finally {
+      setCenterAuth((current) => ({ ...current, loading: false }));
+    }
+  };
+
+  if (!session) {
     return (
       <SafeAreaView style={styles.safeArea}>
         <StatusBar style="dark" />
         {publicRoute === 'landing' ? (
           <PublicLandingScreen
-            onComplete={(role) => {
-              setSessionRole(role);
-              if (role === 'client') {
-                setClientTab('home');
-              } else {
+            onOpenClientAuth={() => setPublicRoute('client-auth')}
+            onOpenCenterAuth={() => setPublicRoute('center-auth')}
+          />
+        ) : null}
+        {publicRoute === 'client-auth' ? (
+          <AuthScreen
+            ctaLabel="Registrati come cliente"
+            ctaText="Non sei registrato? Crea ora il tuo account cliente."
+            eyebrow="Accesso cliente"
+            email={clientAuth.email}
+            error={clientAuth.error || null}
+            isSubmitting={clientAuth.loading}
+            onBack={() => setPublicRoute('landing')}
+            onChangeEmail={(value) => setClientAuth((current) => ({ ...current, email: value }))}
+            onChangePassword={(value) =>
+              setClientAuth((current) => ({ ...current, password: value }))
+            }
+            onPrimaryAction={() => {
+              void handleClientLogin();
+            }}
+            onSecondaryAction={() => setPublicRoute('client-register')}
+            password={clientAuth.password}
+            primaryLabel="Accedi come cliente"
+            roleLabel="Cliente"
+            subtitle="Pagina di accesso cliente. Se non hai un account, da qui puoi andare alla registrazione."
+            title="Accedi come cliente"
+          />
+        ) : null}
+        {publicRoute === 'client-register' ? (
+          <ClientRegistrationScreen
+            onBack={() => setPublicRoute('client-auth')}
+            onRegistered={(user) => {
+              setSession({ role: 'client', user });
+              setClientTab('home');
+            }}
+          />
+        ) : null}
+        {publicRoute === 'center-auth' ? (
+          <AuthScreen
+            ctaLabel="Registrati come centro"
+            ctaText="Non sei registrato? Crea ora l'account del tuo centro."
+            eyebrow="Accesso centro"
+            email={centerAuth.email}
+            error={centerAuth.error || null}
+            isSubmitting={centerAuth.loading}
+            onBack={() => setPublicRoute('landing')}
+            onChangeEmail={(value) => setCenterAuth((current) => ({ ...current, email: value }))}
+            onChangePassword={(value) =>
+              setCenterAuth((current) => ({ ...current, password: value }))
+            }
+            onPrimaryAction={() => {
+              void handleCenterLogin();
+            }}
+            onSecondaryAction={() => setPublicRoute('center-register')}
+            password={centerAuth.password}
+            primaryLabel="Accedi come centro"
+            roleLabel="Centro"
+            subtitle="Pagina di accesso centro. Se non sei registrato, da qui puoi aprire la registrazione del centro."
+            title="Accedi come centro"
+          />
+        ) : null}
+        {publicRoute === 'center-register' ? (
+          <CenterRegistrationScreen
+            onBack={() => setPublicRoute('center-auth')}
+            onRegistered={(center, activation) => {
+              setRegisteredCenter(center);
+              setRegisteredCenterActivation(activation);
+              setPublicRoute('center-onboarding');
+            }}
+          />
+        ) : null}
+        {publicRoute === 'center-onboarding' && registeredCenter && registeredCenterActivation ? (
+          <CenterOnboardingScreen
+            center={registeredCenter}
+            initialActivation={registeredCenterActivation}
+            onBack={() => setPublicRoute('center-register')}
+            onComplete={(center, activation) => {
+              setRegisteredCenter(center);
+              setRegisteredCenterActivation(activation);
+              if (activation.is_listable) {
+                setSession({ role: 'center', center, activation });
                 setCenterTab('home');
               }
             }}
-            onOpenCenterRegistration={() => setPublicRoute('center-registration')}
           />
-        ) : (
-          <CenterRegistrationScreen onBack={() => setPublicRoute('landing')} />
-        )}
+        ) : null}
       </SafeAreaView>
     );
   }
@@ -64,7 +214,7 @@ export default function App() {
   return (
     <SafeAreaView style={styles.safeArea}>
       <StatusBar style="dark" />
-      {sessionRole === 'client' ? (
+      {session.role === 'client' ? (
         <>
           {clientTab === 'home' ? (
             <ClientHomeScreen
@@ -84,8 +234,12 @@ export default function App() {
               onBookingConfirmed={() => setClientTab('appointments')}
             />
           ) : null}
-          {clientTab === 'appointments' ? <ClientAppointmentsScreen /> : null}
-          {clientTab === 'profile' ? <ClientProfileScreen onLogout={handleLogout} /> : null}
+          {clientTab === 'appointments' ? (
+            <ClientAppointmentsScreen profileEmail={session.user.email} />
+          ) : null}
+          {clientTab === 'profile' ? (
+            <ClientProfileScreen onLogout={handleLogout} profileEmail={session.user.email} />
+          ) : null}
           <BottomTabs
             items={[
               { key: 'home', label: 'Home', icon: 'home' },
@@ -98,10 +252,16 @@ export default function App() {
         </>
       ) : (
         <>
-          {centerTab === 'home' ? <CenterDashboardScreen /> : null}
+          {centerTab === 'home' ? <CenterDashboardScreen center={session.center} /> : null}
           {centerTab === 'calendar' ? <CenterCalendarScreen /> : null}
-          {centerTab === 'clients' ? <CenterClientsScreen /> : null}
-          {centerTab === 'settings' ? <CenterSettingsScreen onLogout={handleLogout} /> : null}
+          {centerTab === 'clients' ? <CenterClientsScreen center={session.center} /> : null}
+          {centerTab === 'settings' ? (
+            <CenterSettingsScreen
+              activation={session.activation}
+              center={session.center}
+              onLogout={handleLogout}
+            />
+          ) : null}
           <BottomTabs
             items={[
               { key: 'home', label: 'Home', icon: 'home' },

@@ -1,10 +1,16 @@
 import type {
   Booking,
   Center,
+  CenterAuthResponse,
   CenterClient,
   CenterDashboard,
+  CenterOnboardingInput,
+  CenterOnboardingResponse,
   CenterRegistrationInput,
   CenterRegistrationResponse,
+  ClientAuthResponse,
+  ClientRegistrationInput,
+  LoginInput,
   Service,
   UserProfile,
 } from '../types/api';
@@ -26,6 +32,22 @@ async function request<T>(path: string): Promise<T> {
 async function post<TResponse, TPayload>(path: string, payload: TPayload): Promise<TResponse> {
   const response = await fetch(`${baseUrl}${path}`, {
     method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Request failed: ${response.status}`);
+  }
+
+  return (await response.json()) as TResponse;
+}
+
+async function patch<TResponse, TPayload>(path: string, payload: TPayload): Promise<TResponse> {
+  const response = await fetch(`${baseUrl}${path}`, {
+    method: 'PATCH',
     headers: {
       'Content-Type': 'application/json',
     },
@@ -67,4 +89,23 @@ export function getCenterClients(centerId: string) {
 
 export function registerCenter(payload: CenterRegistrationInput) {
   return post<CenterRegistrationResponse, CenterRegistrationInput>('/api/centers/register', payload);
+}
+
+export function updateCenterOnboarding(centerId: string, payload: CenterOnboardingInput) {
+  return patch<CenterOnboardingResponse, CenterOnboardingInput>(
+    `/api/centers/${centerId}/onboarding`,
+    payload,
+  );
+}
+
+export function loginCenter(payload: LoginInput) {
+  return post<CenterAuthResponse, LoginInput>('/api/auth/centers/login', payload);
+}
+
+export function registerClient(payload: ClientRegistrationInput) {
+  return post<ClientAuthResponse, ClientRegistrationInput>('/api/auth/clients/register', payload);
+}
+
+export function loginClient(payload: LoginInput) {
+  return post<ClientAuthResponse, LoginInput>('/api/auth/clients/login', payload);
 }

@@ -1,15 +1,18 @@
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { getCenterClients, getCenters } from '../lib/api';
+import { getCenterClients } from '../lib/api';
 import type { Center, CenterClient } from '../types/api';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { SectionCard } from '../components/SectionCard';
 import { colors } from '../theme/colors';
 import { spacing } from '../theme/spacing';
 
-export function CenterClientsScreen() {
-  const [center, setCenter] = useState<Center | null>(null);
+type CenterClientsScreenProps = {
+  center: Center;
+};
+
+export function CenterClientsScreen({ center }: CenterClientsScreenProps) {
   const [clients, setClients] = useState<CenterClient[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -17,13 +20,8 @@ export function CenterClientsScreen() {
   useEffect(() => {
     let mounted = true;
 
-    getCenters()
-      .then(async (centers) => {
-        const selectedCenter = centers[0] ?? null;
-        if (!mounted) return;
-        setCenter(selectedCenter);
-        if (!selectedCenter) return;
-        const response = await getCenterClients(selectedCenter.id);
+    getCenterClients(center.id)
+      .then((response) => {
         if (mounted) setClients(response);
       })
       .catch(() => {
@@ -36,13 +34,13 @@ export function CenterClientsScreen() {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [center.id]);
 
   return (
     <ScrollView contentContainerStyle={styles.content} style={styles.container}>
       <ScreenHeader
         eyebrow="Clienti"
-        title={center ? `CRM ${center.name}` : 'CRM clienti'}
+        title={`CRM ${center.name}`}
         subtitle="Schede clienti reali aggregate dalle prenotazioni presenti nel database."
       />
 

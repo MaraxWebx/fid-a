@@ -93,6 +93,8 @@ export type CenterClient = {
 
 export type CenterRegistrationInput = {
   name: string;
+  email: string;
+  password: string;
   vat_number: string;
   address: string;
   city: string;
@@ -112,7 +114,42 @@ export type ActivationStatus = {
 
 export type CenterRegistrationResponse = {
   center: Center;
-  checkout_url: string;
+  checkout_url: string | null;
   checkout_session_id: string;
+  checkout_bypassed: boolean;
+  activation: ActivationStatus;
+};
+
+export type CenterOnboardingInput = {
+  logo_url: string;
+  brand_color: string;
+  opening_days: string[];
+  opening_hours: Record<string, { start: string | null; end: string | null }>;
+  primary_services: string[];
+};
+
+export type CenterOnboardingResponse = {
+  center: Center;
+  activation: ActivationStatus;
+};
+
+export type LoginInput = {
+  email: string;
+  password: string;
+};
+
+export type ClientRegistrationInput = {
+  name: string;
+  email: string;
+  password: string;
+  phone: string;
+};
+
+export type ClientAuthResponse = {
+  user: UserProfile;
+};
+
+export type CenterAuthResponse = {
+  center: Center;
   activation: ActivationStatus;
 };

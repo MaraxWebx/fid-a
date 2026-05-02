@@ -1,4 +1,7 @@
 from datetime import UTC, datetime
+import hashlib
+import hmac
+import secrets
 
 from bson import ObjectId
 from fastapi import FastAPI, HTTPException, Query, Request
@@ -8,6 +11,7 @@ from pydantic import BaseModel, Field
 import stripe
 
 from .config import (
+    DEMO_BYPASS_STRIPE,
     DEFAULT_PROFILE_EMAIL,
     MONGODB_DB_NAME,
     STRIPE_CHECKOUT_CANCEL_URL,
@@ -106,12 +110,34 @@ def parse_object_id(value: str, label: str):
 
 class CenterRegistrationPayload(BaseModel):
     name: str = Field(min_length=2, max_length=120)
+    email: str = Field(min_length=5, max_length=160)
+    password: str = Field(min_length=6, max_length=128)
     vat_number: str = Field(min_length=5, max_length=32)
     address: str = Field(min_length=4, max_length=180)
     city: str = Field(min_length=2, max_length=120)
     postal_code: str = Field(min_length=3, max_length=16)
     province: str = Field(min_length=2, max_length=64)
     country: str = Field(min_length=2, max_length=64)
+
+
+class CenterOnboardingPayload(BaseModel):
+    logo_url: str | None = None
+    brand_color: str | None = None
+    opening_days: list[str] = Field(default_factory=list)
+    opening_hours: dict[str, dict[str, str | None]] = Field(default_factory=dict)
+    primary_services: list[str] = Field(default_factory=list)
+
+
+class ClientRegistrationPayload(BaseModel):
+    name: str = Field(min_length=2, max_length=120)
+    email: str = Field(min_length=5, max_length=160)
+    password: str = Field(min_length=6, max_length=128)
+    phone: str | None = None
+
+
+class LoginPayload(BaseModel):
+    email: str = Field(min_length=5, max_length=160)
+    password: str = Field(min_length=6, max_length=128)
 
 
 def build_activation_status(document):
@@ -148,6 +174,21 @@ def build_activation_status(document):
         "is_listable": is_listable,
         "message": message,
     }
+
+
+def hash_password(password: str):
+    salt = secrets.token_hex(16)
+    digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt.encode("utf-8"), 100000)
+    return f"{salt}${digest.hex()}"
+
+
+def verify_password(password: str, stored_hash: str | None):
+    if not stored_hash or "$" not in stored_hash:
+        return False
+
+    salt, digest = stored_hash.split("$", 1)
+    computed = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt.encode("utf-8"), 100000)
+    return hmac.compare_digest(digest, computed.hex())
 
 
 def build_checkout_urls(request: Request):
@@ -231,9 +272,16 @@ def api_health():
 
 @app.post("/api/centers/register")
 def register_center(payload: CenterRegistrationPayload, request: Request):
+    normalized_email = payload.email.strip().lower()
+
+    if db.centers.find_one({"email": normalized_email}):
+        raise HTTPException(status_code=409, detail="Center email already registered.")
+
     now = datetime.now(UTC)
     center_document = {
         "name": payload.name,
+        "email": normalized_email,
+        "password_hash": hash_password(payload.password),
         "vat_number": payload.vat_number,
         "address": payload.address,
         "city": payload.city,
@@ -254,32 +302,102 @@ def register_center(payload: CenterRegistrationPayload, request: Request):
 
     result = db.centers.insert_one(center_document)
     center_id = str(result.inserted_id)
-    session = create_checkout_session(center_id, payload.name, request)
 
-    db.centers.update_one(
-        {"_id": result.inserted_id},
-        {
-            "$set": {
-                "registration_status": "payment_pending",
-                "stripe": {
-                    "checkout_session_id": session.id,
-                    "checkout_url": session.url,
-                    "price_id": STRIPE_PRICE_ID,
-                },
-                "updated_at": datetime.now(UTC),
-            }
-        },
-    )
+    if DEMO_BYPASS_STRIPE:
+        db.centers.update_one(
+            {"_id": result.inserted_id},
+            {
+                "$set": {
+                    "registration_status": "onboarding_pending",
+                    "subscription_status": "active",
+                    "stripe": {
+                        "demo_bypass": True,
+                        "price_id": STRIPE_PRICE_ID,
+                    },
+                    "updated_at": datetime.now(UTC),
+                }
+            },
+        )
+        checkout_url = None
+        checkout_session_id = "demo-bypass"
+    else:
+        session = create_checkout_session(center_id, payload.name, request)
+        db.centers.update_one(
+            {"_id": result.inserted_id},
+            {
+                "$set": {
+                    "registration_status": "payment_pending",
+                    "stripe": {
+                        "checkout_session_id": session.id,
+                        "checkout_url": session.url,
+                        "price_id": STRIPE_PRICE_ID,
+                    },
+                    "updated_at": datetime.now(UTC),
+                }
+            },
+        )
+        checkout_url = session.url
+        checkout_session_id = session.id
 
     created_center = db.centers.find_one({"_id": result.inserted_id})
     activation_status = build_activation_status(created_center)
 
     return {
         "center": serialize_center(created_center),
-        "checkout_url": session.url,
-        "checkout_session_id": session.id,
+        "checkout_url": checkout_url,
+        "checkout_session_id": checkout_session_id,
+        "checkout_bypassed": DEMO_BYPASS_STRIPE,
         "activation": activation_status,
     }
+
+
+@app.post("/api/auth/centers/login")
+def login_center(payload: LoginPayload):
+    normalized_email = payload.email.strip().lower()
+    center = db.centers.find_one({"email": normalized_email})
+
+    if not center or not verify_password(payload.password, center.get("password_hash")):
+        raise HTTPException(status_code=401, detail="Invalid center credentials.")
+
+    return {
+        "center": serialize_center(center),
+        "activation": build_activation_status(center),
+    }
+
+
+@app.post("/api/auth/clients/register")
+def register_client(payload: ClientRegistrationPayload):
+    normalized_email = payload.email.strip().lower()
+
+    if db.users.find_one({"email": normalized_email}):
+        raise HTTPException(status_code=409, detail="Client email already registered.")
+
+    now = datetime.now(UTC)
+    user_document = {
+        "email": normalized_email,
+        "password_hash": hash_password(payload.password),
+        "name": payload.name,
+        "role": "client",
+        "phone": payload.phone,
+        "center_id": None,
+        "created_at": now,
+        "updated_at": now,
+    }
+
+    result = db.users.insert_one(user_document)
+    user = db.users.find_one({"_id": result.inserted_id})
+    return {"user": serialize_user(user)}
+
+
+@app.post("/api/auth/clients/login")
+def login_client(payload: LoginPayload):
+    normalized_email = payload.email.strip().lower()
+    user = db.users.find_one({"email": normalized_email, "role": "client"})
+
+    if not user or not verify_password(payload.password, user.get("password_hash")):
+        raise HTTPException(status_code=401, detail="Invalid client credentials.")
+
+    return {"user": serialize_user(user)}
 
 
 @app.get("/api/centers/{center_id}/activation-status")
@@ -294,6 +412,51 @@ def get_center_activation_status(center_id: str):
         "center_id": center_id,
         "center_name": center.get("name"),
         "activation": build_activation_status(center),
+    }
+
+
+@app.patch("/api/centers/{center_id}/onboarding")
+def update_center_onboarding(center_id: str, payload: CenterOnboardingPayload):
+    object_id = parse_object_id(center_id, "center id")
+    center = db.centers.find_one({"_id": object_id})
+
+    if not center:
+        raise HTTPException(status_code=404, detail="Center not found.")
+
+    opening_days = [day.strip() for day in payload.opening_days if day.strip()]
+    primary_services = [service.strip() for service in payload.primary_services if service.strip()]
+    branding = center.get("branding", {})
+
+    if payload.logo_url is not None:
+        branding["logo"] = payload.logo_url.strip()
+
+    if payload.brand_color is not None:
+        branding["primary_color"] = payload.brand_color.strip()
+
+    update_fields = {
+        "branding": branding,
+        "opening_days": opening_days,
+        "opening_hours": payload.opening_hours,
+        "primary_services": primary_services,
+        "updated_at": datetime.now(UTC),
+    }
+
+    provisional_document = {
+        **center,
+        **update_fields,
+        "subscription_status": center.get("subscription_status", "pending"),
+    }
+    activation_status = build_activation_status(provisional_document)
+    update_fields["onboarding_completed"] = activation_status["onboarding_completed"]
+    update_fields["is_listable"] = activation_status["is_listable"]
+    update_fields["registration_status"] = activation_status["state"]
+
+    db.centers.update_one({"_id": object_id}, {"$set": update_fields})
+    updated_center = db.centers.find_one({"_id": object_id})
+
+    return {
+        "center": serialize_center(updated_center),
+        "activation": build_activation_status(updated_center),
     }
 
 

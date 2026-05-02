@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { getCenterDashboard, getCenters } from '../lib/api';
+import { getCenterDashboard } from '../lib/api';
 import type { Center, CenterDashboard } from '../types/api';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { SectionCard } from '../components/SectionCard';
@@ -9,8 +9,11 @@ import { StatTile } from '../components/StatTile';
 import { colors } from '../theme/colors';
 import { spacing } from '../theme/spacing';
 
-export function CenterDashboardScreen() {
-  const [center, setCenter] = useState<Center | null>(null);
+type CenterDashboardScreenProps = {
+  center: Center;
+};
+
+export function CenterDashboardScreen({ center }: CenterDashboardScreenProps) {
   const [dashboard, setDashboard] = useState<CenterDashboard | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -18,13 +21,8 @@ export function CenterDashboardScreen() {
   useEffect(() => {
     let mounted = true;
 
-    getCenters()
-      .then(async (centers) => {
-        const selectedCenter = centers[0] ?? null;
-        if (!mounted) return;
-        setCenter(selectedCenter);
-        if (!selectedCenter) return;
-        const dashboardResponse = await getCenterDashboard(selectedCenter.id);
+    getCenterDashboard(center.id)
+      .then((dashboardResponse) => {
         if (mounted) setDashboard(dashboardResponse);
       })
       .catch(() => {
@@ -37,12 +35,12 @@ export function CenterDashboardScreen() {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [center.id]);
 
   return (
     <ScrollView contentContainerStyle={styles.content} style={styles.container}>
       <ScreenHeader
-        eyebrow={center ? `Beauty Center ${center.name}` : 'Beauty Center Fidèa'}
+        eyebrow={`Beauty Center ${center.name}`}
         title="Dashboard"
         subtitle="Panoramica generale dell'attivita con dati reali letti dal database."
       />

@@ -7,13 +7,13 @@ import { spacing } from '../theme/spacing';
 type Role = 'client' | 'center';
 
 type PublicLandingScreenProps = {
-  onComplete: (role: Role) => void;
-  onOpenCenterRegistration: () => void;
+  onOpenClientAuth: () => void;
+  onOpenCenterAuth: () => void;
 };
 
 export function PublicLandingScreen({
-  onComplete,
-  onOpenCenterRegistration,
+  onOpenClientAuth,
+  onOpenCenterAuth,
 }: PublicLandingScreenProps) {
   return (
     <ScrollView contentContainerStyle={styles.content} style={styles.container}>
@@ -53,30 +53,21 @@ export function PublicLandingScreen({
       <View style={styles.entryGrid}>
         <EntryCard
           eyebrow="Percorso pubblico"
-          title="Accedi come cliente"
-          description="Home con centro selezionabile, prenotazioni prossime e flusso booking piu lineare."
-          buttonLabel="Entra lato cliente"
-          onPress={() => onComplete('client')}
+          title="Accedi / Registrati come cliente!"
+          description="Pagina di accesso cliente con CTA verso registrazione se non hai ancora un account."
+          buttonLabel="Apri accesso cliente"
+          onPress={onOpenClientAuth}
           accentStyle={styles.clientAccent}
           variant="primary"
         />
         <EntryCard
           eyebrow="Operativita centro"
-          title="Accedi come centro"
-          description="Dashboard, agenda, clienti e impostazioni con un tono piu beauty-tech che gestionale."
-          buttonLabel="Entra lato centro"
-          onPress={() => onComplete('center')}
+          title="Accedi / Registrati come centro!"
+          description="Pagina di accesso centro con CTA verso registrazione del centro se non sei ancora registrato."
+          buttonLabel="Apri accesso centro"
+          onPress={onOpenCenterAuth}
           accentStyle={styles.centerAccent}
           variant="secondary"
-        />
-        <EntryCard
-          eyebrow="Nuovi partner"
-          title="Registra il tuo centro"
-          description="Inserisci i dati anagrafici del centro e prosegui al checkout Stripe del piano mensile da 20 euro."
-          buttonLabel="Avvia registrazione"
-          onPress={onOpenCenterRegistration}
-          accentStyle={styles.registrationAccent}
-          variant="primary"
         />
       </View>
     </ScrollView>
@@ -264,9 +255,6 @@ const styles = StyleSheet.create({
   },
   centerAccent: {
     backgroundColor: colors.surfaceLavender,
-  },
-  registrationAccent: {
-    backgroundColor: colors.warning,
   },
   entryEyebrow: {
     color: colors.textMuted,

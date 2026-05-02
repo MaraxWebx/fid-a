@@ -6,28 +6,43 @@ import { ScreenHeader } from '../components/ScreenHeader';
 import { SectionCard } from '../components/SectionCard';
 import { colors } from '../theme/colors';
 import { spacing } from '../theme/spacing';
+import type { ActivationStatus, Center } from '../types/api';
 
 type CenterSettingsScreenProps = {
+  activation: ActivationStatus;
+  center: Center;
   onLogout: () => void;
 };
 
-export function CenterSettingsScreen({ onLogout }: CenterSettingsScreenProps) {
+export function CenterSettingsScreen({ activation, center, onLogout }: CenterSettingsScreenProps) {
   return (
     <ScrollView contentContainerStyle={styles.content} style={styles.container}>
       <ScreenHeader
         eyebrow="Impostazioni"
-        title="Configura il centro"
+        title={`Configura ${center.name}`}
         subtitle="Brand, informazioni, posizione e catalogo trattamenti in un'unica sezione."
       />
 
+      {!activation.is_listable ? (
+        <SectionCard eyebrow="Attivazione" title="Centro non ancora visibile" tone="sand">
+          <Text style={styles.catalogDetail}>{activation.message}</Text>
+          <Text style={styles.catalogDetail}>
+            Mancano: {activation.missing_fields.join(', ') || 'nessun campo'}
+          </Text>
+        </SectionCard>
+      ) : null}
+
       <SectionCard eyebrow="Branding" title="Identita centro">
-        <SettingRow label="Nome centro" value={centerSettings.brandName} />
-        <SettingRow label="Logo" value={centerSettings.logoStatus} />
-        <SettingRow label="Colore principale" value={centerSettings.primaryColor} />
+        <SettingRow label="Nome centro" value={center.name} />
+        <SettingRow label="Logo" value={center.branding.logo ?? centerSettings.logoStatus} />
+        <SettingRow
+          label="Colore principale"
+          value={center.branding.primary_color ?? centerSettings.primaryColor}
+        />
       </SectionCard>
 
       <SectionCard eyebrow="Informazioni" title="Contatti e posizione">
-        <SettingRow label="Telefono" value={centerSettings.phone} />
+        <SettingRow label="Email accesso" value={center.email} />
         <SettingRow label="Indirizzo" value={centerSettings.location} />
         <SettingRow label="Coordinate" value={centerSettings.coordinates} />
       </SectionCard>
@@ -54,7 +69,7 @@ export function CenterSettingsScreen({ onLogout }: CenterSettingsScreenProps) {
 
       <SectionCard eyebrow="Sessione" title="Torna alla home app">
         <Text style={styles.catalogDetail}>
-          Esci dalla demo del centro e torna alla schermata iniziale pubblica di Fidèa.
+          Esci dalla sessione del centro e torna alla schermata iniziale pubblica di Fidea.
         </Text>
         <View style={styles.logoutWrap}>
           <PrimaryButton label="Log out" onPress={onLogout} variant="secondary" />

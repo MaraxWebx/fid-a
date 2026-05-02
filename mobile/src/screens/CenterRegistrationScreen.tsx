@@ -4,16 +4,24 @@ import { useState } from 'react';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { registerCenter } from '../lib/api';
-import type { CenterRegistrationInput, CenterRegistrationResponse } from '../types/api';
+import type {
+  ActivationStatus,
+  Center,
+  CenterRegistrationInput,
+  CenterRegistrationResponse,
+} from '../types/api';
 import { colors } from '../theme/colors';
 import { spacing } from '../theme/spacing';
 
 type CenterRegistrationScreenProps = {
   onBack: () => void;
+  onRegistered: (center: Center, activation: ActivationStatus) => void;
 };
 
 const initialForm: CenterRegistrationInput = {
   name: '',
+  email: '',
+  password: '',
   vat_number: '',
   address: '',
   city: '',
@@ -22,7 +30,7 @@ const initialForm: CenterRegistrationInput = {
   country: 'Italia',
 };
 
-export function CenterRegistrationScreen({ onBack }: CenterRegistrationScreenProps) {
+export function CenterRegistrationScreen({ onBack, onRegistered }: CenterRegistrationScreenProps) {
   const [form, setForm] = useState<CenterRegistrationInput>(initialForm);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -45,7 +53,11 @@ export function CenterRegistrationScreen({ onBack }: CenterRegistrationScreenPro
     try {
       const response = await registerCenter(form);
       setResult(response);
-      await Linking.openURL(response.checkout_url);
+      if (response.checkout_bypassed || !response.checkout_url) {
+        onRegistered(response.center, response.activation);
+      } else {
+        await Linking.openURL(response.checkout_url);
+      }
     } catch (submissionError) {
       setError(
         submissionError instanceof Error
@@ -62,7 +74,7 @@ export function CenterRegistrationScreen({ onBack }: CenterRegistrationScreenPro
       <ScreenHeader
         eyebrow="Registrazione centro"
         title="Attiva il tuo centro"
-        subtitle="Inserisci i dati anagrafici del centro. Al termine ti mandiamo al checkout Stripe del piano mensile da 20 euro."
+        subtitle="Inserisci i dati anagrafici del centro. Nella demo saltiamo Stripe e passiamo direttamente all'onboarding del profilo."
       />
 
       <View style={styles.card}>
@@ -71,6 +83,22 @@ export function CenterRegistrationScreen({ onBack }: CenterRegistrationScreenPro
           value={form.name}
           onChangeText={(value) => handleChange('name', value)}
           placeholder="Maison Glow Milano"
+        />
+        <Field
+          label="Email accesso centro"
+          value={form.email}
+          onChangeText={(value) => handleChange('email', value)}
+          placeholder="centro@dominio.it"
+          autoCapitalize="none"
+          keyboardType="email-address"
+        />
+        <Field
+          label="Password"
+          value={form.password}
+          onChangeText={(value) => handleChange('password', value)}
+          placeholder="Minimo 6 caratteri"
+          autoCapitalize="none"
+          secureTextEntry
         />
         <Field
           label="Partita IVA"
@@ -117,8 +145,8 @@ export function CenterRegistrationScreen({ onBack }: CenterRegistrationScreenPro
         />
 
         <Text style={styles.note}>
-          Il backend crea il profilo centro in stato iniziale e genera una sessione Stripe Checkout
-          per l'abbonamento mensile di 20 EUR.
+          Il backend crea il profilo centro, marca la sottoscrizione come valida in demo e ti porta
+          subito al completamento del profilo.
         </Text>
 
         {error ? <Text style={styles.error}>{error}</Text> : null}
@@ -127,7 +155,7 @@ export function CenterRegistrationScreen({ onBack }: CenterRegistrationScreenPro
           <PrimaryButton label="Torna indietro" onPress={onBack} variant="secondary" />
           <PrimaryButton
             disabled={!isFormValid || isSubmitting}
-            label={isSubmitting ? 'Preparazione checkout...' : 'Continua al checkout'}
+            label={isSubmitting ? 'Creazione centro...' : 'Continua all onboarding'}
             onPress={handleSubmit}
           />
         </View>
@@ -139,14 +167,18 @@ export function CenterRegistrationScreen({ onBack }: CenterRegistrationScreenPro
           <Text style={styles.statusTitle}>{result.center.name}</Text>
           <Text style={styles.statusBody}>{result.activation.message}</Text>
           <Text style={styles.statusMeta}>Stato: {result.activation.state}</Text>
-          <View style={styles.statusAction}>
-            <PrimaryButton
-              label="Riapri checkout Stripe"
-              onPress={() => {
-                void Linking.openURL(result.checkout_url);
-              }}
-            />
-          </View>
+          {result.checkout_url ? (
+            <View style={styles.statusAction}>
+              <PrimaryButton
+                label="Riapri checkout Stripe"
+                onPress={() => {
+                  if (result.checkout_url) {
+                    void Linking.openURL(result.checkout_url);
+                  }
+                }}
+              />
+            </View>
+          ) : null}
         </View>
       ) : null}
     </ScrollView>
@@ -160,6 +192,7 @@ type FieldProps = {
   label: string;
   onChangeText: (value: string) => void;
   placeholder: string;
+  secureTextEntry?: boolean;
   value: string;
 };
 
@@ -170,6 +203,7 @@ function Field({
   label,
   onChangeText,
   placeholder,
+  secureTextEntry = false,
   value,
 }: FieldProps) {
   return (
@@ -181,6 +215,7 @@ function Field({
         onChangeText={onChangeText}
         placeholder={placeholder}
         placeholderTextColor={colors.textSoft}
+        secureTextEntry={secureTextEntry}
         style={styles.input}
         value={value}
       />
