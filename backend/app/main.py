@@ -6,18 +6,19 @@ import secrets
 from bson import ObjectId
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
 from pymongo.errors import PyMongoError
 from pydantic import BaseModel, Field
 import stripe
 
 from .config import (
-    DEMO_BYPASS_STRIPE,
     DEFAULT_PROFILE_EMAIL,
     MONGODB_DB_NAME,
     STRIPE_CHECKOUT_CANCEL_URL,
     STRIPE_CHECKOUT_SUCCESS_URL,
     STRIPE_PRICE_ID,
     STRIPE_SECRET_KEY,
+    STRIPE_WEBHOOK_SECRET,
 )
 from .db import client, db
 
@@ -200,8 +201,8 @@ def build_checkout_urls(request: Request):
 
     base_url = str(request.base_url).rstrip("/")
     return (
-        success_url or f"{base_url}/health?checkout=success",
-        cancel_url or f"{base_url}/health?checkout=cancel",
+        success_url or f"{base_url}/checkout/success?center_id={{CHECKOUT_CENTER_ID}}",
+        cancel_url or f"{base_url}/checkout/cancel?center_id={{CHECKOUT_CENTER_ID}}",
     )
 
 
@@ -214,6 +215,8 @@ def create_checkout_session(center_id: str, center_name: str, request: Request):
 
     stripe.api_key = STRIPE_SECRET_KEY
     success_url, cancel_url = build_checkout_urls(request)
+    success_url = success_url.replace("{CHECKOUT_CENTER_ID}", center_id)
+    cancel_url = cancel_url.replace("{CHECKOUT_CENTER_ID}", center_id)
 
     try:
         return stripe.checkout.Session.create(
@@ -229,6 +232,36 @@ def create_checkout_session(center_id: str, center_name: str, request: Request):
         )
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=502, detail=f"Stripe checkout creation failed: {exc}") from exc
+
+
+def update_center_payment_state(center_id: str, subscription_status: str, stripe_payload: dict):
+    object_id = parse_object_id(center_id, "center id")
+    center = db.centers.find_one({"_id": object_id})
+
+    if not center:
+        raise HTTPException(status_code=404, detail="Center not found.")
+
+    next_registration_status = (
+        "onboarding_pending" if subscription_status == "active" else "payment_pending"
+    )
+    next_is_listable = subscription_status == "active" and bool(center.get("primary_services")) and bool(
+        center.get("opening_days")
+    )
+    if next_is_listable:
+        next_registration_status = "active"
+
+    db.centers.update_one(
+        {"_id": object_id},
+        {
+            "$set": {
+                "subscription_status": subscription_status,
+                "registration_status": next_registration_status,
+                "is_listable": next_is_listable,
+                "stripe": stripe_payload,
+                "updated_at": datetime.now(UTC),
+            }
+        },
+    )
 
 
 @app.get("/health")
@@ -302,42 +335,23 @@ def register_center(payload: CenterRegistrationPayload, request: Request):
 
     result = db.centers.insert_one(center_document)
     center_id = str(result.inserted_id)
-
-    if DEMO_BYPASS_STRIPE:
-        db.centers.update_one(
-            {"_id": result.inserted_id},
-            {
-                "$set": {
-                    "registration_status": "onboarding_pending",
-                    "subscription_status": "active",
-                    "stripe": {
-                        "demo_bypass": True,
-                        "price_id": STRIPE_PRICE_ID,
-                    },
-                    "updated_at": datetime.now(UTC),
-                }
-            },
-        )
-        checkout_url = None
-        checkout_session_id = "demo-bypass"
-    else:
-        session = create_checkout_session(center_id, payload.name, request)
-        db.centers.update_one(
-            {"_id": result.inserted_id},
-            {
-                "$set": {
-                    "registration_status": "payment_pending",
-                    "stripe": {
-                        "checkout_session_id": session.id,
-                        "checkout_url": session.url,
-                        "price_id": STRIPE_PRICE_ID,
-                    },
-                    "updated_at": datetime.now(UTC),
-                }
-            },
-        )
-        checkout_url = session.url
-        checkout_session_id = session.id
+    session = create_checkout_session(center_id, payload.name, request)
+    db.centers.update_one(
+        {"_id": result.inserted_id},
+        {
+            "$set": {
+                "registration_status": "payment_pending",
+                "stripe": {
+                    "checkout_session_id": session.id,
+                    "checkout_url": session.url,
+                    "price_id": STRIPE_PRICE_ID,
+                },
+                "updated_at": datetime.now(UTC),
+            }
+        },
+    )
+    checkout_url = session.url
+    checkout_session_id = session.id
 
     created_center = db.centers.find_one({"_id": result.inserted_id})
     activation_status = build_activation_status(created_center)
@@ -346,7 +360,6 @@ def register_center(payload: CenterRegistrationPayload, request: Request):
         "center": serialize_center(created_center),
         "checkout_url": checkout_url,
         "checkout_session_id": checkout_session_id,
-        "checkout_bypassed": DEMO_BYPASS_STRIPE,
         "activation": activation_status,
     }
 
@@ -363,6 +376,85 @@ def login_center(payload: LoginPayload):
         "center": serialize_center(center),
         "activation": build_activation_status(center),
     }
+
+
+@app.post("/api/stripe/webhook")
+async def stripe_webhook(request: Request):
+    if not STRIPE_SECRET_KEY:
+        raise HTTPException(status_code=500, detail="Missing STRIPE_SECRET_KEY environment variable.")
+
+    if not STRIPE_WEBHOOK_SECRET:
+        raise HTTPException(status_code=500, detail="Missing STRIPE_WEBHOOK_SECRET environment variable.")
+
+    stripe.api_key = STRIPE_SECRET_KEY
+    payload = await request.body()
+    signature = request.headers.get("stripe-signature")
+
+    try:
+        event = stripe.Webhook.construct_event(payload, signature, STRIPE_WEBHOOK_SECRET)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=400, detail=f"Invalid Stripe webhook: {exc}") from exc
+
+    event_type = event["type"]
+    event_data = event["data"]["object"]
+
+    if event_type == "checkout.session.completed":
+        center_id = event_data.get("metadata", {}).get("center_id") or event_data.get("client_reference_id")
+        if center_id:
+            update_center_payment_state(
+                center_id,
+                "active",
+                {
+                    "checkout_session_id": event_data.get("id"),
+                    "customer_id": event_data.get("customer"),
+                    "subscription_id": event_data.get("subscription"),
+                    "price_id": STRIPE_PRICE_ID,
+                    "checkout_completed_at": datetime.now(UTC),
+                },
+            )
+    elif event_type == "invoice.payment_failed":
+        subscription_id = event_data.get("subscription")
+        center = db.centers.find_one({"stripe.subscription_id": subscription_id})
+        if center:
+            update_center_payment_state(
+                str(center["_id"]),
+                "payment_failed",
+                {
+                    **(center.get("stripe") or {}),
+                    "subscription_id": subscription_id,
+                    "last_invoice_id": event_data.get("id"),
+                    "last_payment_failed_at": datetime.now(UTC),
+                },
+            )
+    elif event_type == "customer.subscription.deleted":
+        subscription_id = event_data.get("id")
+        center = db.centers.find_one({"stripe.subscription_id": subscription_id})
+        if center:
+            update_center_payment_state(
+                str(center["_id"]),
+                "canceled",
+                {
+                    **(center.get("stripe") or {}),
+                    "subscription_id": subscription_id,
+                    "canceled_at": datetime.now(UTC),
+                },
+            )
+    elif event_type == "invoice.paid":
+        subscription_id = event_data.get("subscription")
+        center = db.centers.find_one({"stripe.subscription_id": subscription_id})
+        if center:
+            update_center_payment_state(
+                str(center["_id"]),
+                "active",
+                {
+                    **(center.get("stripe") or {}),
+                    "subscription_id": subscription_id,
+                    "last_invoice_id": event_data.get("id"),
+                    "last_invoice_paid_at": datetime.now(UTC),
+                },
+            )
+
+    return {"received": True}
 
 
 @app.post("/api/auth/clients/register")
@@ -413,6 +505,46 @@ def get_center_activation_status(center_id: str):
         "center_name": center.get("name"),
         "activation": build_activation_status(center),
     }
+
+
+@app.get("/checkout/success", response_class=HTMLResponse)
+def checkout_success(center_id: str | None = None):
+    title = "Pagamento completato"
+    description = (
+        "Il pagamento e stato registrato. Torna nell'app e continua l'onboarding del centro."
+    )
+    if center_id:
+        description = (
+            f"Il pagamento per il centro {center_id} e stato registrato. Torna nell'app e continua "
+            "l'onboarding del centro."
+        )
+
+    return f"""
+    <html>
+      <head><title>{title}</title></head>
+      <body style="font-family: Arial, sans-serif; padding: 32px; background: #faf9f7;">
+        <h1 style="color:#20364E;">{title}</h1>
+        <p style="color:#243F5C; max-width: 520px;">{description}</p>
+      </body>
+    </html>
+    """
+
+
+@app.get("/checkout/cancel", response_class=HTMLResponse)
+def checkout_cancel(center_id: str | None = None):
+    description = "Il checkout e stato annullato. Torna nell'app per riprovare."
+    if center_id:
+        description = f"Il checkout del centro {center_id} e stato annullato. Torna nell'app per riprovare."
+
+    return f"""
+    <html>
+      <head><title>Pagamento annullato</title></head>
+      <body style="font-family: Arial, sans-serif; padding: 32px; background: #faf9f7;">
+        <h1 style="color:#20364E;">Pagamento annullato</h1>
+        <p style="color:#243F5C; max-width: 520px;">{description}</p>
+      </body>
+    </html>
+    """
 
 
 @app.patch("/api/centers/{center_id}/onboarding")
