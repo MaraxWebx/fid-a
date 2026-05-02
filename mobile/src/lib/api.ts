@@ -1,5 +1,3 @@
-import { Platform } from 'react-native';
-
 import type {
   Booking,
   Center,
@@ -11,7 +9,7 @@ import type {
 
 const baseUrl =
   process.env.EXPO_PUBLIC_API_BASE_URL ??
-  (Platform.OS === 'android' ? 'http://10.0.2.2:8000' : 'http://127.0.0.1:8000');
+  'https://fid-a-production.up.railway.app';
 
 async function request<T>(path: string): Promise<T> {
   const response = await fetch(`${baseUrl}${path}`);

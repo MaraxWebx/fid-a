@@ -3,9 +3,10 @@ from datetime import UTC, datetime
 from bson import ObjectId
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from pymongo.errors import PyMongoError
 
 from .config import DEFAULT_PROFILE_EMAIL, MONGODB_DB_NAME
-from .db import db
+from .db import client, db
 
 app = FastAPI(title="Fidea Local API", version="0.2.0")
 
@@ -91,11 +92,41 @@ def parse_object_id(value: str, label: str):
 
 @app.get("/health")
 def health():
+    database_status = "ok"
+    database_error = None
+
+    try:
+        client.admin.command("ping")
+    except PyMongoError as exc:
+        database_status = "error"
+        database_error = str(exc)
+
     return {
-        "status": "ok",
-        "database": MONGODB_DB_NAME,
+        "status": "ok" if database_status == "ok" else "degraded",
+        "api": {
+            "status": "ok",
+            "name": app.title,
+            "version": app.version,
+        },
+        "services": {
+            "database": {
+                "status": database_status,
+                "name": MONGODB_DB_NAME,
+                "error": database_error,
+            }
+        },
+        "endpoints": {
+            "health": "/health",
+            "centers": "/api/centers",
+            "profile": "/api/users/profile",
+        },
         "timestamp": datetime.now(UTC).isoformat(),
     }
+
+
+@app.get("/api/health")
+def api_health():
+    return health()
 
 
 @app.get("/api/centers")
