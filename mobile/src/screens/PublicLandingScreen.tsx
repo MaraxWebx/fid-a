@@ -1,47 +1,177 @@
-import { ImageBackground, StyleSheet, Text, View, Image } from "react-native";
+import {
+  StyleSheet,
+  Text,
+  View,
+  TextInput,
+  Pressable,
+  Image,
+} from "react-native";
+import { useState } from "react";
 
 import { PrimaryButton } from "../components/PrimaryButton";
 import { colors } from "../theme/colors";
 import { spacing } from "../theme/spacing";
 import { textStyles } from "../theme/typography";
-import { LinearGradient } from "expo-linear-gradient";
+
 type PublicLandingScreenProps = {
-  onOpenClientAuth: () => void;
-  onOpenCenterAuth: () => void;
+  clientEmail: string;
+  clientPassword: string;
+  clientError: string | null;
+  clientLoading: boolean;
+  onClientEmailChange: (value: string) => void;
+  onClientPasswordChange: (value: string) => void;
+  onClientLogin: () => void;
+  onGoToClientRegister: () => void;
+  centerEmail: string;
+  centerPassword: string;
+  centerError: string | null;
+  centerLoading: boolean;
+  onCenterEmailChange: (value: string) => void;
+  onCenterPasswordChange: (value: string) => void;
+  onCenterLogin: () => void;
+  onGoToCenterRegister: () => void;
 };
 
+type TabType = "cliente" | "centro";
+
 export function PublicLandingScreen({
-  onOpenClientAuth,
-  onOpenCenterAuth,
+  clientEmail,
+  clientPassword,
+  clientError,
+  clientLoading,
+  onClientEmailChange,
+  onClientPasswordChange,
+  onClientLogin,
+  onGoToClientRegister,
+  centerEmail,
+  centerPassword,
+  centerError,
+  centerLoading,
+  onCenterEmailChange,
+  onCenterPasswordChange,
+  onCenterLogin,
+  onGoToCenterRegister,
 }: PublicLandingScreenProps) {
+  const [activeTab, setActiveTab] = useState<TabType>("cliente");
+
+  const handleLogin = () => {
+    if (activeTab === "cliente") {
+      onClientLogin();
+    } else {
+      onCenterLogin();
+    }
+  };
+
+  const email = activeTab === "cliente" ? clientEmail : centerEmail;
+  const password = activeTab === "cliente" ? clientPassword : centerPassword;
+  const error = activeTab === "cliente" ? clientError : centerError;
+  const isLoading = activeTab === "cliente" ? clientLoading : centerLoading;
+
   return (
     <View style={styles.container}>
-      <ImageBackground
-        source={require("../../assets/imgCard.jpeg")}
-        style={styles.image}
-        resizeMode="cover"
-      >
-        <LinearGradient
-          colors={["rgba(255, 255, 255, 0)", "rgb(255, 255, 255)"]}
-          style={styles.overlay}
-        >
-          <Text style={styles.title}>Skincare Made Simple.</Text>
-          <Text style={styles.subtitle}>Radiance Made Easy.</Text>
+      <View style={styles.header}>
+        <Image
+          source={require("../../assets/FidèaLogo.png")}
+          style={styles.logoImage}
+          resizeMode="contain"
+        />
+      </View>
+      <View
+        style={{
+          flex: 1,
+          borderTopEndRadius: 40,
 
-          <View style={styles.buttonRow}>
-            <PrimaryButton
-              label="Cliente"
-              onPress={onOpenClientAuth}
-              variant="secondary"
-            />
-            <PrimaryButton
-              label="Centro"
-              onPress={onOpenCenterAuth}
-              variant="primary"
-            />
-          </View>
-        </LinearGradient>
-      </ImageBackground>
+          backgroundColor: colors.surface,
+        }}
+      >
+        <View style={styles.tabContainer}>
+          <Pressable
+            style={[styles.tab, activeTab === "cliente" && styles.tabActive]}
+            onPress={() => setActiveTab("cliente")}
+          >
+            <Text
+              style={[
+                styles.tabLabel,
+                activeTab === "cliente" && styles.tabLabelActive,
+              ]}
+            >
+              Cliente
+            </Text>
+          </Pressable>
+          <Pressable
+            style={[styles.tab, activeTab === "centro" && styles.tabActive]}
+            onPress={() => setActiveTab("centro")}
+          >
+            <Text
+              style={[
+                styles.tabLabel,
+                activeTab === "centro" && styles.tabLabelActive,
+              ]}
+            >
+              Centro
+            </Text>
+          </Pressable>
+        </View>
+
+        <View style={styles.formContainer}>
+          <Text style={styles.formTitle}>
+            {activeTab === "cliente"
+              ? "Accedi come Cliente"
+              : "Accedi come Centro"}
+          </Text>
+
+          <TextInput
+            style={styles.input}
+            placeholder="Email"
+            placeholderTextColor={colors.textMuted}
+            keyboardType="email-address"
+            value={email}
+            onChangeText={
+              activeTab === "cliente"
+                ? onClientEmailChange
+                : onCenterEmailChange
+            }
+          />
+
+          <TextInput
+            style={styles.input}
+            placeholder="Password"
+            placeholderTextColor={colors.textMuted}
+            secureTextEntry
+            value={password}
+            onChangeText={
+              activeTab === "cliente"
+                ? onClientPasswordChange
+                : onCenterPasswordChange
+            }
+          />
+
+          {error ? <Text style={styles.errorText}>{error}</Text> : null}
+
+          <PrimaryButton
+            label={isLoading ? "Accesso in corso..." : "Accedi"}
+            onPress={handleLogin}
+            variant="primary"
+          />
+
+          <Pressable
+            onPress={() => {
+              if (activeTab === "cliente") {
+                onGoToClientRegister();
+              } else {
+                onGoToCenterRegister();
+              }
+            }}
+            style={styles.registerLink}
+          >
+            <Text style={styles.registerText}>
+              {activeTab === "cliente"
+                ? "Non hai un account? Registrati"
+                : "Non hai un account? Registrati"}
+            </Text>
+          </Pressable>
+        </View>
+      </View>
     </View>
   );
 }
@@ -50,29 +180,73 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.canvas,
   },
-  image: {
-    flex: 1,
-    justifyContent: "flex-end",
-  },
-  overlay: {
-    padding: spacing.xl,
-    justifyContent: "flex-end",
+  header: {
+    paddingTop: spacing.xl,
+    paddingBottom: spacing.lg,
     alignItems: "center",
-    width: "100%",
+    borderBottomWidth: 1,
+    borderBottomColor: "#f0f0f0",
   },
-  title: {
+  headerTitle: {
     ...textStyles.screenTitle,
-    textAlign: "center",
+    color: colors.brand,
   },
-  subtitle: {
-    ...textStyles.titleBase,
-    textAlign: "center",
-    marginTop: spacing.sm,
-    marginBottom: spacing.lg,
-  },
-  buttonRow: {
+  tabContainer: {
     flexDirection: "row",
-    gap: spacing.md,
+    borderBottomWidth: 0,
+    borderBottomColor: "#e0e0e0",
+  },
+  tab: {
+    flex: 1,
+    paddingVertical: spacing.md,
+    alignItems: "center",
+    borderBottomWidth: 3,
+    borderBottomColor: "transparent",
+  },
+  tabActive: {
+    /* s */
+  },
+  tabLabel: {
+    ...textStyles.titleBase,
+    color: colors.textMuted,
+  },
+  tabLabelActive: {
+    color: colors.brand,
+    fontWeight: "600",
+  },
+  formContainer: {
+    padding: spacing.xl,
+    flex: 1,
+    justifyContent: "flex-start",
+  },
+  formTitle: {
+    ...textStyles.screenTitle,
+    marginBottom: spacing.lg,
+    textAlign: "center",
+  },
+  input: {
+    borderWidth: 1,
+    borderColor: "#d0d0d0",
+    borderRadius: 8,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+    marginBottom: spacing.md,
+    fontSize: 16,
+    color: colors.brand,
+  },
+  registerLink: {
+    marginTop: spacing.lg,
+    alignItems: "center",
+  },
+  registerText: {
+    color: colors.brand,
+    ...textStyles.titleBase,
+    textDecorationLine: "underline",
+  },
+  errorText: {
+    color: "#B05252",
+    marginBottom: spacing.md,
+    ...textStyles.titleBase,
   },
   logoImage: {
     height: 120,

@@ -8,8 +8,8 @@ import {
   View,
 } from "react-native";
 
-import { bookingOperators, bookingSlots } from "../data/mockData";
-import { getCenterServices, getCenters } from "../lib/api";
+import { bookingSlots } from "../data/mockData";
+import { createBooking, getCenterServices, getCenters } from "../lib/api";
 import type { Center, Service } from "../types/api";
 import { PrimaryButton } from "../components/PrimaryButton";
 import { ScreenHeader } from "../components/ScreenHeader";
@@ -18,12 +18,14 @@ import { colors } from "../theme/colors";
 import { spacing } from "../theme/spacing";
 
 type ClientBookingScreenProps = {
+  userEmail: string;
   selectedCenterId: string | null;
   selectedServiceId: string | null;
   onBookingConfirmed: () => void;
 };
 
 export function ClientBookingScreen({
+  userEmail,
   selectedCenterId,
   selectedServiceId,
   onBookingConfirmed,
@@ -32,9 +34,16 @@ export function ClientBookingScreen({
   const [services, setServices] = useState<Service[]>([]);
   const [servicesLoading, setServicesLoading] = useState(true);
   const [servicesError, setServicesError] = useState<string | null>(null);
+  const [localCenterId, setLocalCenterId] = useState<string | null>(
+    selectedCenterId,
+  );
   const [serviceId, setServiceId] = useState<string | null>(selectedServiceId);
-  const [operatorId, setOperatorId] = useState<string | null>(null);
   const [slotId, setSlotId] = useState<string | null>(null);
+  const [bookingLoading, setBookingLoading] = useState(false);
+  const [bookingError, setBookingError] = useState<string | null>(null);
+
+  // Use local center selection if provided, otherwise use passed prop
+  const activeCenterId = localCenterId ?? selectedCenterId;
 
   useEffect(() => {
     let mounted = true;
@@ -49,7 +58,7 @@ export function ClientBookingScreen({
   }, []);
 
   useEffect(() => {
-    if (!selectedCenterId) {
+    if (!activeCenterId) {
       setServices([]);
       setServicesLoading(false);
       return;
@@ -59,13 +68,12 @@ export function ClientBookingScreen({
     setServicesLoading(true);
     setServicesError(null);
 
-    getCenterServices(selectedCenterId)
+    getCenterServices(activeCenterId)
       .then((response) => {
         if (!mounted) return;
         setServices(response);
         const defaultServiceId = selectedServiceId ?? response[0]?.id ?? null;
         setServiceId(defaultServiceId);
-        setOperatorId(null);
         setSlotId(null);
       })
       .catch(() => {
@@ -79,24 +87,76 @@ export function ClientBookingScreen({
     return () => {
       mounted = false;
     };
-  }, [selectedCenterId, selectedServiceId]);
+  }, [activeCenterId, selectedServiceId]);
 
   const selectedService = useMemo(
     () => services.find((item) => item.id === serviceId) ?? null,
     [serviceId, services],
   );
   const selectedCenter = useMemo(
-    () => centers.find((center) => center.id === selectedCenterId) ?? null,
-    [centers, selectedCenterId],
+    () => centers.find((center) => center.id === activeCenterId) ?? null,
+    [centers, activeCenterId],
   );
+
+  const handleConfirmBooking = async () => {
+    if (!activeCenterId || !serviceId || !slotId) {
+      setBookingError("Completa tutti i campi prima di confermare.");
+      return;
+    }
+
+    setBookingLoading(true);
+    setBookingError(null);
+
+    try {
+      await createBooking({
+        center_id: activeCenterId,
+        user_email: userEmail,
+        service_id: serviceId,
+        slot_id: slotId,
+      });
+      onBookingConfirmed();
+    } catch (error) {
+      setBookingError(
+        error instanceof Error
+          ? error.message
+          : "Errore durante la prenotazione.",
+      );
+    } finally {
+      setBookingLoading(false);
+    }
+  };
 
   return (
     <ScrollView contentContainerStyle={styles.content} style={styles.container}>
       <ScreenHeader
         eyebrow="Booking flow"
-        title="Prenota dal centro scelto"
-        subtitle="Selezione centro, servizio, operatore e slot. Base locale pronta per il backend reale."
+        title={
+          activeCenterId ? "Prenota dal centro scelto" : "Seleziona il centro"
+        }
+        subtitle={
+          activeCenterId
+            ? "Selezione servizio, data e ora."
+            : "Scegli il centro per iniziare la prenotazione."
+        }
       />
+
+      {!activeCenterId ? (
+        <SectionCard eyebrow="Step 0" title="Scegli il centro">
+          {centers.length === 0 ? (
+            <ActivityIndicator color={colors.brand} />
+          ) : (
+            centers.map((center) => (
+              <SelectableRow
+                key={center.id}
+                active={center.id === localCenterId}
+                title={center.name}
+                subtitle={center.email}
+                onPress={() => setLocalCenterId(center.id)}
+              />
+            ))
+          )}
+        </SectionCard>
+      ) : null}
 
       <SectionCard
         eyebrow="Centro"
@@ -105,7 +165,7 @@ export function ClientBookingScreen({
         <Text style={styles.notice}>
           {selectedCenter
             ? `${selectedCenter.email} - ${selectedCenter.branding?.primary_color ?? "palette non impostata"}`
-            : "Torna in Home e scegli prima il centro."}
+            : "Seleziona un centro per continuare."}
         </Text>
       </SectionCard>
 
@@ -125,19 +185,7 @@ export function ClientBookingScreen({
         ))}
       </SectionCard>
 
-      <SectionCard eyebrow="Step 2" title="Scegli l'operatore">
-        {bookingOperators.map((operator) => (
-          <SelectableRow
-            key={operator.id}
-            active={operator.id === operatorId}
-            title={operator.name}
-            subtitle={operator.skill}
-            onPress={() => setOperatorId(operator.id)}
-          />
-        ))}
-      </SectionCard>
-
-      <SectionCard eyebrow="Step 3" title="Scegli data e ora">
+      <SectionCard eyebrow="Step 2" title="Scegli data e ora">
         {bookingSlots.map((slot) => (
           <SelectableRow
             key={slot.id}
@@ -149,17 +197,12 @@ export function ClientBookingScreen({
         ))}
       </SectionCard>
 
-      <SectionCard eyebrow="Step 4" title="Conferma prenotazione">
+      <SectionCard eyebrow="Step 3" title="Conferma prenotazione">
         <Text style={styles.summaryLine}>
           Centro: {selectedCenter?.name ?? "Da selezionare"}
         </Text>
         <Text style={styles.summaryLine}>
           Servizio: {selectedService?.name ?? "Da selezionare"}
-        </Text>
-        <Text style={styles.summaryLine}>
-          Operatore:{" "}
-          {bookingOperators.find((operator) => operator.id === operatorId)
-            ?.name ?? "Seleziona un operatore"}
         </Text>
         <Text style={styles.summaryLine}>
           Slot:{" "}
@@ -170,10 +213,16 @@ export function ClientBookingScreen({
           Demo locale: availability e lock slot verranno collegati al backend
           reale.
         </Text>
+        {bookingError ? (
+          <Text style={styles.errorText}>{bookingError}</Text>
+        ) : null}
         <View style={styles.buttonRow}>
           <PrimaryButton
-            label="Conferma booking"
-            onPress={onBookingConfirmed}
+            label={
+              bookingLoading ? "Prenotazione in corso..." : "Conferma booking"
+            }
+            onPress={handleConfirmBooking}
+            disabled={bookingLoading}
           />
         </View>
       </SectionCard>
@@ -265,6 +314,12 @@ const styles = StyleSheet.create({
   notice: {
     color: colors.textMuted,
     fontSize: 14,
+    lineHeight: 21,
+  },
+  errorText: {
+    color: "#B05252",
+    fontSize: 14,
+    marginBottom: spacing.md,
     lineHeight: 21,
   },
   buttonRow: {

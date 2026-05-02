@@ -12,8 +12,6 @@ import { PrimaryButton } from "../components/PrimaryButton";
 import { ScreenHeader } from "../components/ScreenHeader";
 import { registerCenter } from "../lib/api";
 import type {
-  ActivationStatus,
-  Center,
   CenterRegistrationInput,
   CenterRegistrationResponse,
 } from "../types/api";
@@ -42,7 +40,8 @@ export function CenterRegistrationScreen({
   onBack,
   onRegistered,
 }: CenterRegistrationScreenProps) {
-  const [form, setForm] = useState<CenterRegistrationInput>(initialForm);
+  const [step, setStep] = useState<"plan" | "form">("plan");
+  const [form, setForm] = useState(initialForm);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<CenterRegistrationResponse | null>(null);
@@ -59,9 +58,7 @@ export function CenterRegistrationScreen({
   };
 
   const handleSubmit = async () => {
-    if (!isFormValid || isSubmitting) {
-      return;
-    }
+    if (!isFormValid || isSubmitting) return;
 
     setIsSubmitting(true);
     setError(null);
@@ -70,13 +67,14 @@ export function CenterRegistrationScreen({
       const response = await registerCenter(form);
       setResult(response);
       onRegistered(response);
+
       if (response.checkout_url) {
         await Linking.openURL(response.checkout_url);
       }
-    } catch (submissionError) {
+    } catch (err) {
       setError(
-        submissionError instanceof Error
-          ? submissionError.message
+        err instanceof Error
+          ? err.message
           : "Registrazione non completata. Riprova.",
       );
     } finally {
@@ -89,162 +87,165 @@ export function CenterRegistrationScreen({
       <ScreenHeader
         eyebrow="Registrazione centro"
         title="Attiva il tuo centro"
-        subtitle="Inserisci i dati del centro. Dopo questo step andiamo al checkout Stripe e poi all'onboarding guidato."
+        subtitle="Inizia scegliendo il piano, poi inserisci i dati."
+        onBack={onBack}
       />
 
-      <View style={styles.card}>
-        <Field
-          label="Nome centro estetico"
-          value={form.name}
-          onChangeText={(value) => handleChange("name", value)}
-          placeholder="Maison Glow Milano"
-        />
-        <Field
-          label="Email accesso centro"
-          value={form.email}
-          onChangeText={(value) => handleChange("email", value)}
-          placeholder="centro@dominio.it"
-          autoCapitalize="none"
-          keyboardType="email-address"
-        />
-        <Field
-          label="Password"
-          value={form.password}
-          onChangeText={(value) => handleChange("password", value)}
-          placeholder="Minimo 6 caratteri"
-          autoCapitalize="none"
-          secureTextEntry
-        />
-        <Field
-          label="Partita IVA"
-          value={form.vat_number}
-          onChangeText={(value) => handleChange("vat_number", value)}
-          placeholder="IT12345678901"
-          autoCapitalize="characters"
-        />
-        <Field
-          label="Indirizzo"
-          value={form.address}
-          onChangeText={(value) => handleChange("address", value)}
-          placeholder="Via Roma 24"
-        />
-        <Field
-          label="Citta"
-          value={form.city}
-          onChangeText={(value) => handleChange("city", value)}
-          placeholder="Milano"
-        />
-        <View style={styles.row}>
+      {step === "plan" ? (
+        <PlanCard onContinue={() => setStep("form")} />
+      ) : (
+        <View style={styles.card}>
           <Field
-            compact
-            label="CAP"
-            value={form.postal_code}
-            onChangeText={(value) => handleChange("postal_code", value)}
-            placeholder="20100"
-            keyboardType="number-pad"
+            label="Nome centro"
+            value={form.name}
+            onChangeText={(v) => handleChange("name", v)}
+            placeholder="Maison Glow Milano"
           />
+
           <Field
-            compact
-            label="Provincia"
-            value={form.province}
-            onChangeText={(value) => handleChange("province", value)}
-            placeholder="MI"
-            autoCapitalize="characters"
+            label="Email"
+            value={form.email}
+            onChangeText={(v) => handleChange("email", v)}
+            placeholder="centro@dominio.it"
+            autoCapitalize="none"
+            keyboardType="email-address"
           />
+
+          <Field
+            label="Password"
+            value={form.password}
+            onChangeText={(v) => handleChange("password", v)}
+            placeholder="Minimo 6 caratteri"
+            secureTextEntry
+          />
+
+          <Field
+            label="Partita IVA"
+            value={form.vat_number}
+            onChangeText={(v) => handleChange("vat_number", v)}
+            placeholder="IT12345678901"
+          />
+
+          <Field
+            label="Indirizzo"
+            value={form.address}
+            onChangeText={(v) => handleChange("address", v)}
+            placeholder="Via Roma 24"
+          />
+
+          <Field
+            label="Città"
+            value={form.city}
+            onChangeText={(v) => handleChange("city", v)}
+            placeholder="Milano"
+          />
+
+          <View style={styles.row}>
+            <Field
+              compact
+              label="CAP"
+              value={form.postal_code}
+              onChangeText={(v) => handleChange("postal_code", v)}
+              placeholder="20100"
+            />
+            <Field
+              compact
+              label="Provincia"
+              value={form.province}
+              onChangeText={(v) => handleChange("province", v)}
+              placeholder="MI"
+            />
+          </View>
+
+          <Field
+            label="Paese"
+            value={form.country}
+            onChangeText={(v) => handleChange("country", v)}
+            placeholder="Italia"
+          />
+
+          {error ? <Text style={styles.error}>{error}</Text> : null}
+
+          <View style={styles.actions}>
+            <PrimaryButton
+              disabled={!isFormValid || isSubmitting}
+              label={
+                isSubmitting
+                  ? "Preparazione checkout..."
+                  : "Continua al checkout"
+              }
+              onPress={handleSubmit}
+            />
+          </View>
         </View>
-        <Field
-          label="Paese"
-          value={form.country}
-          onChangeText={(value) => handleChange("country", value)}
-          placeholder="Italia"
-        />
+      )}
 
-        <Text style={styles.note}>
-          Il backend crea il centro in stato pending payment e prepara la
-          sessione Stripe Checkout.
-        </Text>
-
-        {error ? <Text style={styles.error}>{error}</Text> : null}
-
-        <View style={styles.actions}>
-          <PrimaryButton
-            label="Torna indietro"
-            onPress={onBack}
-            variant="secondary"
-          />
-          <PrimaryButton
-            disabled={!isFormValid || isSubmitting}
-            label={
-              isSubmitting ? "Preparazione checkout..." : "Continua al checkout"
-            }
-            onPress={handleSubmit}
-          />
-        </View>
-      </View>
-
-      {result ? (
+      {result && (
         <View style={styles.statusCard}>
-          <Text style={styles.statusEyebrow}>Registrazione creata</Text>
           <Text style={styles.statusTitle}>{result.center.name}</Text>
-          <Text style={styles.statusBody}>{result.activation.message}</Text>
-          <Text style={styles.statusMeta}>
-            Stato: {result.activation.state}
-          </Text>
-          {result.checkout_url ? (
-            <View style={styles.statusAction}>
-              <PrimaryButton
-                label="Riapri checkout Stripe"
-                onPress={() => {
-                  if (result.checkout_url) {
-                    void Linking.openURL(result.checkout_url);
-                  }
-                }}
-              />
-            </View>
-          ) : null}
+          <Text>{result.activation.message}</Text>
         </View>
-      ) : null}
+      )}
     </ScrollView>
   );
 }
 
-type FieldProps = {
-  autoCapitalize?: "none" | "sentences" | "words" | "characters";
-  compact?: boolean;
-  keyboardType?: "default" | "email-address" | "number-pad";
-  label: string;
-  onChangeText: (value: string) => void;
-  placeholder: string;
-  secureTextEntry?: boolean;
-  value: string;
-};
+/* ---------------- COMPONENTS ---------------- */
+
+function PlanCard({ onContinue }: { onContinue: () => void }) {
+  return (
+    <View style={styles.planCard}>
+      <Text style={styles.planTitle}>Piano Centro</Text>
+
+      <Text style={styles.planPrice}>
+        €20<Text style={styles.planSmall}>/mese</Text>
+      </Text>
+
+      <View style={styles.features}>
+        <Feature text="Gestione clienti" />
+        <Feature text="Agenda trattamenti" />
+        <Feature text="Prenotazioni online" />
+        <Feature text="Dashboard analytics" />
+      </View>
+
+      <PrimaryButton label="Continua" onPress={onContinue} />
+    </View>
+  );
+}
+
+function Feature({ text }: { text: string }) {
+  return (
+    <View style={styles.featureRow}>
+      <Text style={styles.check}>✓</Text>
+      <Text>{text}</Text>
+    </View>
+  );
+}
 
 function Field({
-  autoCapitalize = "words",
-  compact = false,
-  keyboardType = "default",
   label,
+  value,
   onChangeText,
   placeholder,
-  secureTextEntry = false,
-  value,
-}: FieldProps) {
+  compact,
+  ...props
+}: any) {
   return (
-    <View style={[styles.fieldWrap, compact ? styles.fieldCompact : null]}>
+    <View style={[styles.field, compact && { flex: 1 }]}>
       <Text style={styles.label}>{label}</Text>
       <TextInput
-        autoCapitalize={autoCapitalize}
-        keyboardType={keyboardType}
+        style={styles.input}
+        value={value}
         onChangeText={onChangeText}
         placeholder={placeholder}
         placeholderTextColor={colors.textSoft}
-        secureTextEntry={secureTextEntry}
-        style={styles.input}
-        value={value}
+        {...props}
       />
     </View>
   );
 }
+
+/* ---------------- STYLES ---------------- */
 
 const styles = StyleSheet.create({
   container: {
@@ -252,76 +253,93 @@ const styles = StyleSheet.create({
     backgroundColor: colors.canvas,
   },
   content: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.xl,
-    paddingBottom: spacing.xxl,
+    padding: spacing.lg,
   },
+
   card: {
     backgroundColor: colors.surface,
-    borderColor: colors.overlayBorder,
-    borderRadius: 12,
-    borderWidth: 1,
     padding: spacing.xl,
+    borderRadius: 16,
   },
-  fieldWrap: {
-    marginBottom: spacing.md,
-  },
-  fieldCompact: {
-    flex: 1,
-  },
+
   row: {
     flexDirection: "row",
     gap: spacing.md,
   },
+
+  field: {
+    marginBottom: spacing.md,
+  },
+
   label: {
     ...textStyles.fieldLabel,
-    marginBottom: spacing.xs,
+    marginBottom: 4,
   },
+
   input: {
     backgroundColor: colors.surfaceSoft,
-    borderColor: colors.border,
     borderRadius: 12,
-    borderWidth: 1,
-    color: colors.text,
-    fontSize: 16,
-    minHeight: 54,
-    paddingHorizontal: spacing.md,
+    padding: 14,
   },
-  note: {
-    ...textStyles.bodyMuted,
-    marginTop: spacing.sm,
-  },
-  error: {
-    color: "#B05252",
-    fontSize: 14,
-    marginTop: spacing.md,
-  },
+
   actions: {
-    gap: spacing.md,
-    marginTop: spacing.xl,
+    marginTop: spacing.lg,
   },
-  statusCard: {
-    backgroundColor: colors.surfaceSand,
-    borderRadius: 12,
-    marginTop: spacing.xl,
+
+  error: {
+    color: "red",
+    marginTop: 8,
+  },
+
+  /* PLAN */
+
+  planCard: {
+    backgroundColor: colors.surface,
     padding: spacing.xl,
+    borderRadius: 16,
   },
-  statusEyebrow: {
+
+  planTitle: {
+    textAlign: "center",
     ...textStyles.eyebrow,
   },
+
+  planPrice: {
+    textAlign: "center",
+    fontSize: 36,
+    fontWeight: "700",
+    marginVertical: spacing.md,
+  },
+
+  planSmall: {
+    fontSize: 16,
+  },
+
+  features: {
+    marginBottom: spacing.lg,
+    gap: 8,
+  },
+
+  featureRow: {
+    flexDirection: "row",
+    gap: 8,
+  },
+
+  check: {
+    color: colors.brand,
+  },
+
+  /* STATUS */
+
+  statusCard: {
+    marginTop: spacing.xl,
+    padding: spacing.lg,
+    backgroundColor: colors.surfaceSand,
+    borderRadius: 12,
+  },
+
   statusTitle: {
-    ...textStyles.cardTitle,
-    marginTop: spacing.sm,
-  },
-  statusBody: {
-    ...textStyles.body,
-    marginTop: spacing.sm,
-  },
-  statusMeta: {
-    ...textStyles.caption,
-    marginTop: spacing.md,
-  },
-  statusAction: {
-    marginTop: spacing.lg,
+    fontWeight: "600",
+    marginBottom: 8,
   },
 });

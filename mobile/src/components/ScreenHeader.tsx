@@ -19,9 +19,12 @@ export function ScreenHeader({
 }: ScreenHeaderProps) {
   return (
     <View style={styles.wrap}>
-      <TouchableOpacity onPress={onBack} style={{ marginBottom: 16 }}>
-        <Ionicons name="arrow-back" size={24} color="#000" />
-      </TouchableOpacity>
+      {onBack && (
+        <TouchableOpacity onPress={onBack} style={{ marginBottom: 16 }}>
+          <Ionicons name="arrow-back" size={24} color="#000" />
+        </TouchableOpacity>
+      )}
+
       {eyebrow ? <Text style={styles.eyebrow}>{eyebrow}</Text> : null}
       <Text style={styles.title}>{title}</Text>
       <Text style={styles.subtitle}>{subtitle}</Text>

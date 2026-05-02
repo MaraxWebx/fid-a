@@ -25,6 +25,7 @@ import { spacing } from "../theme/spacing";
 import { textStyles } from "../theme/typography";
 
 type ClientHomeScreenProps = {
+  userName: string;
   selectedCenterId: string | null;
   onChangeCenter: (centerId: string) => void;
   onOpenAppointments: () => void;
@@ -32,6 +33,7 @@ type ClientHomeScreenProps = {
 };
 
 export function ClientHomeScreen({
+  userName,
   selectedCenterId,
   onChangeCenter,
   onOpenAppointments,
@@ -48,9 +50,6 @@ export function ClientHomeScreen({
       .then((response) => {
         if (!mounted) return;
         setCenters(response);
-        if (!selectedCenterId && response[0]) {
-          onChangeCenter(response[0].id);
-        }
       })
       .catch(() => {
         if (!mounted) return;
@@ -63,7 +62,7 @@ export function ClientHomeScreen({
     return () => {
       mounted = false;
     };
-  }, [onChangeCenter, selectedCenterId]);
+  }, []);
 
   const activeCenter = useMemo(
     () => centers.find((center) => center.id === selectedCenterId) ?? null,
@@ -74,50 +73,17 @@ export function ClientHomeScreen({
     <ScrollView contentContainerStyle={styles.content} style={styles.container}>
       <ScreenHeader
         eyebrow="Cliente"
-        title="Ciao, Martina"
-        subtitle="Scegli il centro, tieni sotto controllo la routine beauty e apri il booking in pochi tocchi."
+        title={`Ciao, ${userName}`}
+        subtitle="Tieni sotto controllo la routine beauty e apri il booking in pochi tocchi."
       />
 
-      <SectionCard
-        eyebrow="Centro selezionato"
-        title={activeCenter ? activeCenter.name : "Scegli il centro"}
-        tone="sky"
-      >
-        <Text style={styles.secondaryLine}>
-          {activeCenter
-            ? `${activeCenter.email}  •  colore ${activeCenter.branding?.primary_color ?? "non impostato"}`
-            : "Seleziona un centro prima di aprire la prenotazione."}
-        </Text>
-        <View style={styles.centerList}>
-          {loading ? (
-            <ActivityIndicator color={colors.brand} style={styles.loader} />
-          ) : null}
-          {error ? <Text style={styles.errorText}>{error}</Text> : null}
-          {centers.map((center) => {
-            const active = center.id === selectedCenterId;
-
-            return (
-              <Pressable
-                key={center.id}
-                onPress={() => onChangeCenter(center.id)}
-                style={[
-                  styles.centerCard,
-                  active ? styles.centerCardActive : null,
-                ]}
-              >
-                <View style={styles.centerPill}>
-                  <Text style={styles.centerPillText}>Centro</Text>
-                </View>
-                <Text style={styles.centerName}>{center.name}</Text>
-                <Text style={styles.centerMeta}>{center.email}</Text>
-                <Text style={styles.centerTag}>
-                  {center.branding?.primary_color ?? "Palette non impostata"}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
-      </SectionCard>
+      <View style={styles.quickBookingSection}>
+        <PrimaryButton
+          label="Effettua prenotazione"
+          onPress={() => onOpenBooking(null)}
+          variant="primary"
+        />
+      </View>
 
       <SectionCard eyebrow="Panoramica" title="I tuoi numeri">
         <View style={styles.metricsRow}>
@@ -195,6 +161,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.xl,
     paddingBottom: spacing.xxl,
+  },
+  quickBookingSection: {
+    marginBottom: spacing.lg,
   },
   centerList: {
     gap: spacing.sm,

@@ -54,6 +54,13 @@ export type Booking = {
   created_at?: string;
 };
 
+export type BookingInput = {
+  center_id: string;
+  user_email: string;
+  service_id: string;
+  slot_id: string;
+};
+
 export type DashboardMetric = {
   id: string;
   label: string;

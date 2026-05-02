@@ -1,5 +1,6 @@
 import type {
   Booking,
+  BookingInput,
   Center,
   CenterActivationStatusResponse,
   CenterAuthResponse,
@@ -113,4 +114,8 @@ export function loginClient(payload: LoginInput) {
 
 export function getCenterActivationStatus(centerId: string) {
   return request<CenterActivationStatusResponse>(`/api/centers/${centerId}/activation-status`);
+}
+
+export function createBooking(payload: BookingInput) {
+  return post<Booking, BookingInput>('/api/bookings', payload);
 }

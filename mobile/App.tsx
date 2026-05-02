@@ -158,8 +158,34 @@ export default function App() {
         <StatusBar style="dark" />
         {publicRoute === "landing" ? (
           <PublicLandingScreen
-            onOpenClientAuth={() => setPublicRoute("client-auth")}
-            onOpenCenterAuth={() => setPublicRoute("center-auth")}
+            clientEmail={clientAuth.email}
+            clientPassword={clientAuth.password}
+            clientError={clientAuth.error || null}
+            clientLoading={clientAuth.loading}
+            onClientEmailChange={(value) =>
+              setClientAuth((current) => ({ ...current, email: value }))
+            }
+            onClientPasswordChange={(value) =>
+              setClientAuth((current) => ({ ...current, password: value }))
+            }
+            onClientLogin={() => {
+              void handleClientLogin();
+            }}
+            onGoToClientRegister={() => setPublicRoute("client-register")}
+            centerEmail={centerAuth.email}
+            centerPassword={centerAuth.password}
+            centerError={centerAuth.error || null}
+            centerLoading={centerAuth.loading}
+            onCenterEmailChange={(value) =>
+              setCenterAuth((current) => ({ ...current, email: value }))
+            }
+            onCenterPasswordChange={(value) =>
+              setCenterAuth((current) => ({ ...current, password: value }))
+            }
+            onCenterLogin={() => {
+              void handleCenterLogin();
+            }}
+            onGoToCenterRegister={() => setPublicRoute("center-register")}
           />
         ) : null}
         {publicRoute === "client-auth" ? (
@@ -275,6 +301,7 @@ export default function App() {
         <>
           {clientTab === "home" ? (
             <ClientHomeScreen
+              userName={session.user.name}
               selectedCenterId={selectedCenterId}
               onChangeCenter={setSelectedCenterId}
               onOpenAppointments={() => setClientTab("appointments")}
@@ -286,6 +313,7 @@ export default function App() {
           ) : null}
           {clientTab === "booking" ? (
             <ClientBookingScreen
+              userEmail={session.user.email}
               selectedCenterId={selectedCenterId}
               selectedServiceId={selectedServiceId}
               onBookingConfirmed={() => setClientTab("appointments")}
