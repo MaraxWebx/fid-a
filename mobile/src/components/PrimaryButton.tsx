@@ -4,20 +4,27 @@ import { colors } from '../theme/colors';
 import { spacing } from '../theme/spacing';
 
 type PrimaryButtonProps = {
+  disabled?: boolean;
   label: string;
   onPress: () => void;
   variant?: 'primary' | 'secondary';
 };
 
 export function PrimaryButton({
+  disabled = false,
   label,
   onPress,
   variant = 'primary',
 }: PrimaryButtonProps) {
   return (
     <Pressable
+      disabled={disabled}
       onPress={onPress}
-      style={[styles.button, variant === 'secondary' ? styles.secondary : styles.primary]}
+      style={[
+        styles.button,
+        variant === 'secondary' ? styles.secondary : styles.primary,
+        disabled ? styles.disabled : null,
+      ]}
     >
       <Text
         style={[styles.label, variant === 'secondary' ? styles.secondaryLabel : styles.primaryLabel]}
@@ -48,6 +55,9 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surfaceSky,
     borderColor: colors.overlayBorder,
     borderWidth: 1,
+  },
+  disabled: {
+    opacity: 0.5,
   },
   label: {
     fontSize: 15,

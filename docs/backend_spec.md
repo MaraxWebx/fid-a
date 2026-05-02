@@ -1,73 +1,90 @@
-# Fidèa - Backend Specification
+# Fidea - Backend Specification
 
-## Obiettivo
+## Stato attuale
 
-Fornire una API locale minima ma reale che permetta al frontend Expo di leggere dati veri da MongoDB Atlas.
+Il backend e una API FastAPI deployata su Railway e collegata a MongoDB.
 
----
+Responsabilita attuali:
 
-# Stack attuale
+* lettura dati centro
+* lettura servizi
+* lettura profilo cliente demo
+* lettura prenotazioni cliente demo
+* dashboard centro
+* clienti centro
+* health check API e database
+
+## Stack
 
 * FastAPI
-* PyMongo
-* Python dotenv
 * Uvicorn
+* PyMongo
+* python-dotenv
+* Railway
 
----
-
-# Struttura attuale
+## Struttura
 
 ```txt
 backend/
-  .env
-  .env.example
   app/
     __init__.py
     config.py
     db.py
     main.py
-  requirements.txt
+  .env
   README.md
+  requirements.txt
 ```
 
----
-
-# Configurazione
-
-Il backend legge le variabili da:
-
-* `backend/.env`
+## Configurazione
 
 Variabili usate:
 
-* `MONGODB_URI`
-* `MONGODB_DB_NAME` opzionale
+* `MONGODB_URI` obbligatoria
+* `MONGODB_DB_NAME` opzionale, default `fidea`
 * `DEFAULT_PROFILE_EMAIL` opzionale
 
-Default:
+## Endpoint attivi
 
-* database: `fidea`
-* profile email: `anotniomarettax@gmail.com`
+### Health
 
----
+* `GET /health`
+* `GET /api/health`
 
-# Collection usate oggi
+Risposta attuale:
 
-## `centers`
+* stato API
+* stato database
+* nome database
+* eventuale errore database
+* endpoint principali
+* timestamp
 
-Campi attualmente letti:
+### Dati app
+
+* `GET /api/centers`
+* `GET /api/centers/{center_id}/services`
+* `GET /api/users/profile?email=...`
+* `GET /api/users/bookings?email=...`
+* `GET /api/centers/{center_id}/dashboard`
+* `GET /api/centers/{center_id}/clients`
+
+## Collection oggi usate
+
+### `centers`
+
+Campi letti oggi:
 
 * `_id`
-* `email`
-* `mail`
+* `email` o `mail`
 * `name`
 * `branding`
 * `opening_hours`
 * `created_at`
 
-## `services`
+### `services`
 
-Campi attualmente letti:
+Campi letti oggi:
 
 * `_id`
 * `center_id`
@@ -80,9 +97,9 @@ Campi attualmente letti:
 * `visibility`
 * `created_at`
 
-## `users`
+### `users`
 
-Campi attualmente letti:
+Campi letti oggi:
 
 * `_id`
 * `email`
@@ -92,9 +109,9 @@ Campi attualmente letti:
 * `center_id`
 * `created_at`
 
-## `bookings`
+### `bookings`
 
-Campi attualmente letti:
+Campi letti oggi:
 
 * `_id`
 * `user_id`
@@ -107,65 +124,77 @@ Campi attualmente letti:
 * `status`
 * `created_at`
 
-Nota:
-al momento non esiste collection `operators` nel flusso reale del progetto.
-
----
-
-# Endpoint attivi
-
-## `GET /health`
-
-Verifica avvio API e database attivo.
-
-## `GET /api/centers`
-
-Restituisce i centri disponibili.
-
-## `GET /api/centers/{center_id}/services`
-
-Restituisce i servizi attivi del centro.
-
-## `GET /api/users/profile?email=...`
-
-Restituisce il profilo cliente.
-
-## `GET /api/users/bookings?email=...`
-
-Restituisce le prenotazioni del cliente con dettagli servizio.
-
-## `GET /api/centers/{center_id}/dashboard`
-
-Restituisce:
-
-* KPI centro
-* agenda del giorno
-* clienti recenti
-
-## `GET /api/centers/{center_id}/clients`
-
-Restituisce i clienti del centro aggregati dalle prenotazioni.
-
----
-
-# Seed attuale
+## Seed attuale
 
 Lo script `mobile/scripts/seed-demo-data.mjs` crea o aggiorna:
 
-* 1 centro
-* 40 servizi del listino
-* 1 utente cliente
+* 1 centro demo
+* 40 servizi demo
+* 1 cliente demo
 * 3 prenotazioni demo
 
-Legge le variabili da `backend/.env`.
+## Prossimo scope backend: registrazione centro
 
----
+Il backend dovra supportare il flusso di acquisizione centro con persistenza stato e checkout Stripe.
 
-# Cosa manca ancora
+### Campi centro richiesti in registrazione
 
-* autenticazione OTP
-* refresh token
-* creazione booking da API
-* disponibilita reali
-* lock slot
-* calendario centro persistente
+* `name`
+* `vat_number`
+* `address`
+* `city`
+* `postal_code`
+* `province`
+* `country`
+
+### Campi onboarding centro richiesti
+
+* `logo_url` o asset equivalente
+* `brand_color`
+* `opening_days`
+* `opening_hours`
+* `primary_services`
+
+### Stati centro suggeriti
+
+* `draft`
+* `payment_pending`
+* `payment_completed`
+* `onboarding_pending`
+* `inactive_incomplete`
+* `active`
+
+### Flag derivati suggeriti
+
+* `subscription_status`
+* `onboarding_completed`
+* `has_opening_days`
+* `has_primary_services`
+* `is_listable`
+
+## Endpoint da introdurre nel prossimo step
+
+### Registrazione e checkout
+
+* `POST /api/centers/register`
+* `POST /api/centers/{center_id}/checkout-session`
+* `POST /api/stripe/webhooks`
+
+### Onboarding centro
+
+* `GET /api/centers/{center_id}/onboarding-status`
+* `PATCH /api/centers/{center_id}/profile`
+* `PATCH /api/centers/{center_id}/availability`
+* `PATCH /api/centers/{center_id}/primary-services`
+
+### Notifiche e gating
+
+* `GET /api/centers/{center_id}/activation-status`
+
+Risposta attesa:
+
+* stato pagamento
+* stato onboarding
+* campi mancanti
+* `is_listable`
+* eventuale messaggio da mostrare come pop notifica in app

@@ -4,6 +4,7 @@ import { SafeAreaView, StyleSheet } from 'react-native';
 
 import { demoAppointments } from './src/data/mockData';
 import { BottomTabs } from './src/components/BottomTabs';
+import { CenterRegistrationScreen } from './src/screens/CenterRegistrationScreen';
 import { ClientAppointmentsScreen } from './src/screens/ClientAppointmentsScreen';
 import { ClientBookingScreen } from './src/screens/ClientBookingScreen';
 import { ClientHomeScreen } from './src/screens/ClientHomeScreen';
@@ -18,9 +19,11 @@ import { colors } from './src/theme/colors';
 type Role = 'client' | 'center';
 type ClientTab = 'home' | 'appointments' | 'profile' | 'booking';
 type CenterTab = 'home' | 'calendar' | 'clients' | 'settings';
+type PublicRoute = 'landing' | 'center-registration';
 
 export default function App() {
   const [sessionRole, setSessionRole] = useState<Role | null>(null);
+  const [publicRoute, setPublicRoute] = useState<PublicRoute>('landing');
   const [clientTab, setClientTab] = useState<ClientTab>('home');
   const [centerTab, setCenterTab] = useState<CenterTab>('home');
   const [selectedServiceId, setSelectedServiceId] = useState<string | null>(null);
@@ -28,6 +31,7 @@ export default function App() {
 
   const handleLogout = () => {
     setSessionRole(null);
+    setPublicRoute('landing');
     setClientTab('home');
     setCenterTab('home');
     setSelectedServiceId(null);
@@ -38,16 +42,21 @@ export default function App() {
     return (
       <SafeAreaView style={styles.safeArea}>
         <StatusBar style="dark" />
-        <PublicLandingScreen
-          onComplete={(role) => {
-            setSessionRole(role);
-            if (role === 'client') {
-              setClientTab('home');
-            } else {
-              setCenterTab('home');
-            }
-          }}
-        />
+        {publicRoute === 'landing' ? (
+          <PublicLandingScreen
+            onComplete={(role) => {
+              setSessionRole(role);
+              if (role === 'client') {
+                setClientTab('home');
+              } else {
+                setCenterTab('home');
+              }
+            }}
+            onOpenCenterRegistration={() => setPublicRoute('center-registration')}
+          />
+        ) : (
+          <CenterRegistrationScreen onBack={() => setPublicRoute('landing')} />
+        )}
       </SafeAreaView>
     );
   }

@@ -1,130 +1,151 @@
-# Beauty SaaS App - MVP Specification
+# Fidea - Product Specification
 
-## Obiettivo Prodotto
+## Obiettivo
 
-Costruire una piattaforma mobile multi-tenant per centri estetici con:
+Fidea e una piattaforma mobile per centri estetici con due aree prodotto:
 
-* gestione appuntamenti
-* CRM clienti
-* prenotazione lato cliente finale
+* B2B per il centro
+* B2C per il cliente finale
 
-Focus MVP:
-velocita, semplicita, utilizzo reale.
+L'obiettivo dell'MVP e rendere reale il flusso di:
 
----
+* scoperta centro
+* consultazione servizi
+* dashboard operativa del centro
+* onboarding commerciale del centro con abbonamento mensile
 
-# Architettura Prodotto
+## Stato attuale
 
-## Tipologia
+Oggi il prodotto e strutturato come monorepo con:
 
-* app unica configurabile
-* branding e catalogo personalizzati per ogni centro
-* dati isolati logicamente per tenant
+* `mobile/` app Expo React Native
+* `backend/` API FastAPI
+* `docs/` specifiche di prodotto e tecniche
+
+Stato dei servizi:
+
+* repository GitHub attivo
+* backend deployato su Railway
+* database MongoDB collegato al backend
+* app mobile collegata di default all'endpoint Railway
 
 ## Ruoli
 
 1. Cliente finale
 2. Centro estetico
 
----
+## Funzionalita attuali cliente
 
-# B2C - Funzionalita Cliente
+Il lato cliente mostra gia:
 
-## Accesso
+* elenco centri
+* elenco servizi per centro
+* profilo utente demo
+* storico prenotazioni demo
 
-* prodotto reale: login telefono OTP
-* demo frontend pubblica: solo scelta "accedi come cliente" o "accedi come centro"
+## Funzionalita attuali centro
 
-## Navigazione Cliente
+Il lato centro mostra gia:
 
-Il menu cliente deve avere:
+* dashboard con KPI del giorno
+* agenda della giornata
+* lista clienti aggregata dalle prenotazioni
+* area impostazioni ancora parziale
 
-* Home
-* Prenotazioni
-* Profilo
+## Prossima simulazione prioritaria: registrazione centro
 
-## Home
+Il prossimo flusso da implementare e simulare e la registrazione del centro estetico.
 
-La home cliente deve mostrare:
+### Step 1 - Registrazione anagrafica centro
 
-* KPI personali
-* prenotazioni prossime
-* scelta del centro
-* accesso al booking solo dopo scelta del centro
+La schermata di registrazione deve raccogliere:
 
-## Prenotazioni
+* nome centro estetico
+* partita IVA
+* indirizzo
+* citta
+* CAP
+* provincia
+* paese
 
-La sezione prenotazioni deve contenere:
+Output atteso:
 
-* storico prenotazioni cliente
-* prenotazioni attive
-* prenotazioni completate
+* creazione record centro in stato preliminare
+* avanzamento al checkout Stripe
 
-## Profilo
+### Step 2 - Checkout Stripe
 
-La sezione profilo deve contenere:
+Dopo il form anagrafico il centro deve essere inviato al checkout Stripe di test.
 
-* dati cliente
-* centro preferito
-* note o preferenze
+Prodotto richiesto:
 
-## Prenotazione
+* abbonamento mensile
+* prezzo: 20 EUR al mese
 
-Flusso:
+Vincoli:
 
-1. scelta centro
-2. selezione servizio
-3. selezione operatore opzionale
-4. selezione data e ora
-5. conferma
+* il checkout deve essere agganciato al centro appena registrato
+* l'esito pagamento deve aggiornare lo stato sottoscrizione del centro
 
----
+### Step 3 - Onboarding post pagamento
 
-# B2B - Funzionalita Centro
+Dopo la registrazione e il pagamento, il centro deve completare un onboarding profilo.
 
-## Navigazione Centro
-
-Il menu del centro deve avere:
-
-* Home
-* Calendario
-* Clienti
-* Impostazioni
-
-## Home
-
-La home centro deve mostrare:
-
-* KPI del giorno
-* prossimi appuntamenti
-* stato operativo della giornata
-
-## Calendario
-
-La sezione calendario deve permettere:
-
-* vista agenda giornaliera o settimanale
-* aggiunta slot
-* gestione slot
-* gestione disponibilita operatori
-
-## Clienti
-
-La sezione clienti deve includere:
-
-* anagrafica cliente
-* telefono
-* storico appuntamenti
-* note
-* informazioni operative utili
-
-## Impostazioni
-
-La sezione impostazioni deve permettere la configurazione del centro:
+Campi richiesti:
 
 * logo
-* informazioni centro
-* posizione
-* catalogo trattamenti
-* branding base
+* colore brand
+* orari di apertura
+* giorni di apertura
+* servizi principali
 
+### Regola di disponibilita
+
+Un centro non deve essere disponibile in app finche non ha completato almeno:
+
+* giorni di apertura
+* servizi principali
+
+Stato logico suggerito:
+
+* `draft`
+* `payment_pending`
+* `onboarding_pending`
+* `inactive_incomplete`
+* `active`
+
+### Notifica in-app
+
+Se il pagamento e completato ma onboarding minimo non e ancora completo, il centro deve ricevere una notifica pop in app che segnala:
+
+* profilo incompleto
+* impossibilita di essere pubblicato
+* call to action per completare giorni di apertura e servizi principali
+
+## Requisiti UX per il flusso centro
+
+La registrazione centro deve essere:
+
+* lineare
+* corta nel primo step
+* orientata alla conversione
+* con chiaro stato avanzamento
+
+Flusso consigliato:
+
+1. form registrazione centro
+2. checkout Stripe
+3. conferma pagamento
+4. onboarding profilo
+5. avviso di attivazione incompleta finche mancano giorni o servizi
+
+## Scope prossimo sviluppo
+
+Per partire con la simulazione del flusso centro servono:
+
+* schermata registrazione centro
+* integrazione Stripe Checkout test
+* persistenza stato centro
+* schermata onboarding centro
+* controllo `is_listable` o equivalente
+* pop notifica in app per onboarding incompleto

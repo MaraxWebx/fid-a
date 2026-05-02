@@ -8,9 +8,13 @@ type Role = 'client' | 'center';
 
 type PublicLandingScreenProps = {
   onComplete: (role: Role) => void;
+  onOpenCenterRegistration: () => void;
 };
 
-export function PublicLandingScreen({ onComplete }: PublicLandingScreenProps) {
+export function PublicLandingScreen({
+  onComplete,
+  onOpenCenterRegistration,
+}: PublicLandingScreenProps) {
   return (
     <ScrollView contentContainerStyle={styles.content} style={styles.container}>
       <View style={styles.logoWrap}>
@@ -64,6 +68,15 @@ export function PublicLandingScreen({ onComplete }: PublicLandingScreenProps) {
           onPress={() => onComplete('center')}
           accentStyle={styles.centerAccent}
           variant="secondary"
+        />
+        <EntryCard
+          eyebrow="Nuovi partner"
+          title="Registra il tuo centro"
+          description="Inserisci i dati anagrafici del centro e prosegui al checkout Stripe del piano mensile da 20 euro."
+          buttonLabel="Avvia registrazione"
+          onPress={onOpenCenterRegistration}
+          accentStyle={styles.registrationAccent}
+          variant="primary"
         />
       </View>
     </ScrollView>
@@ -251,6 +264,9 @@ const styles = StyleSheet.create({
   },
   centerAccent: {
     backgroundColor: colors.surfaceLavender,
+  },
+  registrationAccent: {
+    backgroundColor: colors.warning,
   },
   entryEyebrow: {
     color: colors.textMuted,

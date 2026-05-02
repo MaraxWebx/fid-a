@@ -7,6 +7,11 @@ export type Center = {
     primary_color?: string;
   };
   opening_hours: Record<string, { start: string | null; end: string | null }>;
+  opening_days?: string[];
+  primary_services?: string[];
+  registration_status?: string;
+  subscription_status?: string;
+  is_listable?: boolean;
   created_at?: string;
 };
 
@@ -84,4 +89,30 @@ export type CenterClient = {
   email?: string;
   bookings: number;
   last_visit: string | null;
+};
+
+export type CenterRegistrationInput = {
+  name: string;
+  vat_number: string;
+  address: string;
+  city: string;
+  postal_code: string;
+  province: string;
+  country: string;
+};
+
+export type ActivationStatus = {
+  state: string;
+  subscription_status: string;
+  onboarding_completed: boolean;
+  missing_fields: string[];
+  is_listable: boolean;
+  message: string;
+};
+
+export type CenterRegistrationResponse = {
+  center: Center;
+  checkout_url: string;
+  checkout_session_id: string;
+  activation: ActivationStatus;
 };

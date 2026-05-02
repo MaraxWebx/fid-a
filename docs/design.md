@@ -1,107 +1,106 @@
-# 🎨 Fidéa App – Color System (Powered by Fidest)
+# Fidea - UX and Design Notes
 
-## 🎯 Obiettivo
-Creare un'identità visiva elegante, moderna e sensoriale che funzioni sia per:
-- *B2B (centri estetici)* → chiarezza, controllo, affidabilità
-- *B2C (clienti finali)* → relax, bellezza, desiderio
+## Direzione prodotto
 
----
+Fidea deve sembrare una esperienza beauty premium, non un gestionale grigio o un CRM tradizionale.
 
-## 🧩 Palette Principale
+L'interfaccia deve tenere insieme:
 
-### Base Colors (UI foundation)
-- *Warm White*
-  - #FAF9F7
-  - Uso: background principali, superfici
+* chiarezza operativa per il centro
+* percezione premium per il cliente
+* conversione nel flusso di acquisizione del centro
 
-- *Soft Sky Blue*
-  - #DCEEF5
-  - Uso: sezioni, card leggere, highlight soft
+## Palette attuale
 
----
+Colori guida:
 
-### Neutral & Elegant Tones
-- *Soft Nude / Light Sand*
-  - #EADFD8
-  - Uso: elementi premium, sfondi secondari, moduli
+* warm white `#FAF9F7`
+* soft sky blue `#DCEEF5`
+* light sand `#EADFD8`
+* warm grey `#8A8F94`
+* deep desaturated blue `#2F4F6F`
 
-- *Warm Grey*
-  - #8A8F94
-  - Uso: testi secondari, icone, placeholder
+Uso consigliato:
 
----
+* background principali: warm white
+* CTA principali: deep desaturated blue
+* card e superfici soft: sky blue o light sand
+* testi secondari: warm grey
 
-### Brand Accent (Fidest DNA)
-- *Deep Desaturated Blue*
-  - #2F4F6F
-  - Uso: CTA, bottoni primari, elementi attivi
+## Principi UX
 
----
+* pochi step
+* stato chiaro
+* lessico semplice
+* frizione minima sui task principali
 
-### Optional Accent (Wellness touch)
-- *Soft Lavender*
-  - #E6E0F2
-  - Uso: stati speciali, sezioni relax, micro-highlight
+## Flusso prioritario da disegnare: registrazione centro
 
----
+La registrazione centro e un funnel commerciale, non un semplice form amministrativo.
 
-## ⚙️ UI Usage Guidelines
+### Step 1 - Form centro
 
-### Background
-- Primary: #FAF9F7
-- Secondary: #DCEEF5 o #EADFD8
+Campi:
 
-### Buttons
-- Primary: #2F4F6F (testo bianco)
-- Secondary: #DCEEF5 (testo scuro)
-- Ghost: trasparente + bordo #8A8F94
+* nome centro estetico
+* partita IVA
+* indirizzo
+* citta
+* CAP
+* provincia
+* paese
 
-### Text
-- Primary: #2F4F6F
-- Secondary: #8A8F94
-- Disabled: #C5C7CA
+Linee guida:
 
-### Cards / Surfaces
-- Default: #FFFFFF
-- Soft: #FAF9F7
-- Highlight: #EADFD8
+* una colonna
+* CTA unica e chiara
+* rassicurazione su attivazione rapida
 
----
+### Step 2 - Checkout
 
-## 🚨 Stati UI
+Il passaggio a Stripe deve sembrare una prosecuzione naturale del funnel.
 
-- Success: usare variante desaturata del blu o neutro elegante (evitare verde acceso)
-- Error: rosso soft desaturato (es. #D88C8C)
-- Warning: sabbia calda (#E6C9A8)
+Messaggi chiave:
 
----
+* abbonamento mensile da 20 EUR
+* attivazione account centro
+* completamento profilo subito dopo il pagamento
 
-## ❌ Cosa evitare
+### Step 3 - Onboarding post checkout
 
-- Solo celeste + bianco → effetto clinico
-- Beige troppo scuro → effetto corporate vecchio
-- Colori saturi → perdita di eleganza
-- Gradienti casuali → look non premium
+L'onboarding deve raccogliere:
 
----
+* logo
+* colore brand
+* giorni apertura
+* orari apertura
+* servizi principali
 
-## 🧠 Note strategiche
+Va progettato come checklist di attivazione.
 
-- Il *blu profondo* mantiene fiducia (coerenza Fidest)
-- Il *nude* aggiunge lusso e calore
-- Il *celeste* comunica pulizia e skincare
+## Regola di pubblicazione
 
-👉 Il sistema deve sembrare più *brand beauty premium* che software gestionale
+Il centro non e disponibile in app finche non completa almeno:
 
----
+* giorni di apertura
+* servizi principali
 
-## 🔚 Sintesi
+UX attesa:
 
-Minimal, soft, elegante.
+* banner o pop notifica persistente
+* messaggio esplicito sul perche il centro non e attivo
+* CTA per completare i campi mancanti
 
-Non deve sembrare:
-- un CRM
-- un gestionale
+## Copy suggerito per notifica in app
 
-Deve sembrare:
-→ *un'esperienza beauty digitale*
+Titolo:
+
+* `Completa il profilo del centro`
+
+Messaggio:
+
+* `Il pagamento e completato, ma il centro non e ancora visibile finche non inserisci giorni di apertura e servizi principali.`
+
+CTA:
+
+* `Completa ora`
