@@ -1,9 +1,8 @@
-import { useMemo, useState } from 'react';
-import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useState } from 'react';
+import { StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { PrimaryButton } from '../components/PrimaryButton';
 import { ScreenHeader } from '../components/ScreenHeader';
-import { SectionCard } from '../components/SectionCard';
 import { updateCenterOnboarding } from '../lib/api';
 import type { ActivationStatus, Center, CenterOnboardingInput } from '../types/api';
 import { colors } from '../theme/colors';
@@ -16,12 +15,17 @@ type CenterOnboardingScreenProps = {
   onComplete: (center: Center, activation: ActivationStatus) => void;
 };
 
+type OnboardingStep = 'welcome' | 'brand' | 'schedule' | 'services' | 'summary';
+
+const stepOrder: OnboardingStep[] = ['welcome', 'brand', 'schedule', 'services', 'summary'];
+
 export function CenterOnboardingScreen({
   center,
   initialActivation,
   onBack,
   onComplete,
 }: CenterOnboardingScreenProps) {
+  const [stepIndex, setStepIndex] = useState(0);
   const [logoUrl, setLogoUrl] = useState(center.branding.logo ?? '');
   const [brandColor, setBrandColor] = useState(center.branding.primary_color ?? '#2F4F6F');
   const [openingDaysInput, setOpeningDaysInput] = useState((center.opening_days ?? []).join(', '));
@@ -34,11 +38,102 @@ export function CenterOnboardingScreen({
   const [error, setError] = useState<string | null>(null);
   const [activation, setActivation] = useState(initialActivation);
 
-  const suggestedDays = useMemo(() => 'Lun, Mar, Mer, Gio, Ven, Sab', []);
+  const step = stepOrder[stepIndex];
+  const canGoBack = stepIndex > 0;
 
-  const handleSave = async () => {
-    setIsSaving(true);
+  const renderStep = () => {
+    if (step === 'welcome') {
+      return (
+        <>
+          <Text style={styles.stepKicker}>Step 1 di 5</Text>
+          <Text style={styles.stepTitle}>Benvenuto in Fidea</Text>
+          <Text style={styles.stepBody}>
+            Il pagamento e confermato. Ora completiamo il profilo del centro in pochi step full
+            screen, come nel flusso reference.
+          </Text>
+        </>
+      );
+    }
+
+    if (step === 'brand') {
+      return (
+        <>
+          <Text style={styles.stepKicker}>Step 2 di 5</Text>
+          <Text style={styles.stepTitle}>Definisci il brand</Text>
+          <Text style={styles.stepBody}>Logo e colore primario danno identita al centro.</Text>
+          <Field label="Logo URL" placeholder="https://..." value={logoUrl} onChangeText={setLogoUrl} />
+          <Field
+            label="Colore brand"
+            placeholder="#2F4F6F"
+            value={brandColor}
+            onChangeText={setBrandColor}
+            autoCapitalize="characters"
+          />
+        </>
+      );
+    }
+
+    if (step === 'schedule') {
+      return (
+        <>
+          <Text style={styles.stepKicker}>Step 3 di 5</Text>
+          <Text style={styles.stepTitle}>Imposta giorni e orari</Text>
+          <Text style={styles.stepBody}>
+            Se mancano i giorni di apertura, il centro non puo essere pubblicato ai clienti.
+          </Text>
+          <Field
+            label="Giorni di apertura"
+            placeholder="Lun, Mar, Mer, Gio, Ven, Sab"
+            value={openingDaysInput}
+            onChangeText={setOpeningDaysInput}
+          />
+          <Field label="Apre alle" placeholder="09:00" value={startHour} onChangeText={setStartHour} />
+          <Field label="Chiude alle" placeholder="19:00" value={endHour} onChangeText={setEndHour} />
+        </>
+      );
+    }
+
+    if (step === 'services') {
+      return (
+        <>
+          <Text style={styles.stepKicker}>Step 4 di 5</Text>
+          <Text style={styles.stepTitle}>Scegli i servizi principali</Text>
+          <Text style={styles.stepBody}>
+            Inserisci i trattamenti chiave separati da virgola. Senza questi il centro resta non
+            pubblicabile.
+          </Text>
+          <Field
+            label="Servizi principali"
+            placeholder="Hydra Glow Facial, Manicure Premium, Brow Design"
+            value={primaryServicesInput}
+            onChangeText={setPrimaryServicesInput}
+          />
+        </>
+      );
+    }
+
+    return (
+      <>
+        <Text style={styles.stepKicker}>Step 5 di 5</Text>
+        <Text style={styles.stepTitle}>Riepilogo attivazione</Text>
+        <Text style={styles.stepBody}>{activation.message}</Text>
+        <Text style={styles.meta}>Stato: {activation.state}</Text>
+        <Text style={styles.meta}>
+          Mancano: {activation.missing_fields.join(', ') || 'nessun campo'}
+        </Text>
+      </>
+    );
+  };
+
+  const handleNext = async () => {
     setError(null);
+
+    if (step !== 'summary') {
+      setStepIndex((current) => Math.min(current + 1, stepOrder.length - 1));
+      return;
+    }
+
+    setIsSaving(true);
 
     const openingDays = openingDaysInput
       .split(',')
@@ -48,7 +143,6 @@ export function CenterOnboardingScreen({
       .split(',')
       .map((service) => service.trim())
       .filter(Boolean);
-
     const openingHours: CenterOnboardingInput['opening_hours'] = Object.fromEntries(
       openingDays.map((day) => [day, { start: startHour || null, end: endHour || null }]),
     );
@@ -71,77 +165,47 @@ export function CenterOnboardingScreen({
   };
 
   return (
-    <ScrollView contentContainerStyle={styles.content} style={styles.container}>
-      <ScreenHeader
-        eyebrow="Onboarding centro"
-        title={`Completa ${center.name}`}
-        subtitle="Nella demo il pagamento e gia validato. Completa il profilo del centro per renderlo visibile in app."
-      />
-
-      <SectionCard
-        eyebrow="Stato attivazione"
-        title={activation.is_listable ? 'Centro pronto' : 'Centro non ancora pubblicabile'}
-        tone={activation.is_listable ? 'sky' : 'sand'}
-      >
-        <Text style={styles.statusMessage}>{activation.message}</Text>
-        <Text style={styles.statusMeta}>Stato: {activation.state}</Text>
-        {!activation.is_listable ? (
-          <Text style={styles.statusMissing}>
-            Mancano: {activation.missing_fields.join(', ') || 'nessun campo'}
-          </Text>
-        ) : null}
-      </SectionCard>
-
-      <SectionCard eyebrow="Brand" title="Identita centro">
-        <Field label="Logo URL" placeholder="https://..." value={logoUrl} onChangeText={setLogoUrl} />
-        <Field
-          label="Colore brand"
-          placeholder="#2F4F6F"
-          value={brandColor}
-          onChangeText={setBrandColor}
-          autoCapitalize="characters"
-        />
-      </SectionCard>
-
-      <SectionCard eyebrow="Apertura" title="Giorni e orari">
-        <Field
-          label="Giorni di apertura"
-          placeholder={suggestedDays}
-          value={openingDaysInput}
-          onChangeText={setOpeningDaysInput}
-        />
-        <View style={styles.row}>
-          <Field compact label="Apre alle" placeholder="09:00" value={startHour} onChangeText={setStartHour} />
-          <Field compact label="Chiude alle" placeholder="19:00" value={endHour} onChangeText={setEndHour} />
-        </View>
-      </SectionCard>
-
-      <SectionCard eyebrow="Catalogo" title="Servizi principali">
-        <Field
-          label="Servizi principali"
-          placeholder="Hydra Glow Facial, Manicure Premium, Brow Design"
-          value={primaryServicesInput}
-          onChangeText={setPrimaryServicesInput}
-        />
-      </SectionCard>
-
-      {error ? <Text style={styles.error}>{error}</Text> : null}
-
-      <View style={styles.actions}>
-        <PrimaryButton label="Torna al form" onPress={onBack} variant="secondary" />
-        <PrimaryButton
-          disabled={isSaving}
-          label={isSaving ? 'Salvataggio...' : 'Completa onboarding'}
-          onPress={handleSave}
-        />
+    <View style={styles.container}>
+      <View style={styles.progressTrack}>
+        <View style={[styles.progressValue, { width: `${((stepIndex + 1) / stepOrder.length) * 100}%` }]} />
       </View>
-    </ScrollView>
+      <View style={styles.content}>
+        <ScreenHeader
+          eyebrow="Onboarding centro"
+          title={`Completa ${center.name}`}
+          subtitle="Step-by-step fullscreen, senza formone unico."
+        />
+        <View style={styles.stepCard}>{renderStep()}</View>
+        {error ? <Text style={styles.error}>{error}</Text> : null}
+        <View style={styles.actions}>
+          <PrimaryButton
+            label={canGoBack ? 'Indietro' : 'Esci'}
+            onPress={() => {
+              if (canGoBack) {
+                setStepIndex((current) => Math.max(current - 1, 0));
+              } else {
+                onBack();
+              }
+            }}
+            variant="secondary"
+          />
+          <PrimaryButton
+            disabled={isSaving}
+            label={
+              isSaving ? 'Salvataggio...' : step === 'summary' ? 'Entra nella dashboard' : 'Continua'
+            }
+            onPress={() => {
+              void handleNext();
+            }}
+          />
+        </View>
+      </View>
+    </View>
   );
 }
 
 type FieldProps = {
   autoCapitalize?: 'none' | 'sentences' | 'words' | 'characters';
-  compact?: boolean;
   label: string;
   onChangeText: (value: string) => void;
   placeholder: string;
@@ -150,14 +214,13 @@ type FieldProps = {
 
 function Field({
   autoCapitalize = 'sentences',
-  compact = false,
   label,
   onChangeText,
   placeholder,
   value,
 }: FieldProps) {
   return (
-    <View style={[styles.fieldWrap, compact ? styles.fieldCompact : null]}>
+    <View style={styles.fieldWrap}>
       <Text style={styles.label}>{label}</Text>
       <TextInput
         autoCapitalize={autoCapitalize}
@@ -174,38 +237,51 @@ function Field({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.canvas,
+    backgroundColor: colors.brand,
+  },
+  progressTrack: {
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    height: 6,
+    width: '100%',
+  },
+  progressValue: {
+    backgroundColor: '#F6E6A8',
+    height: 6,
   },
   content: {
+    flex: 1,
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.xl,
     paddingBottom: spacing.xxl,
   },
-  statusMessage: {
+  stepCard: {
+    flex: 1,
+    backgroundColor: colors.surface,
+    borderRadius: 32,
+    padding: spacing.xl,
+  },
+  stepKicker: {
+    color: colors.textMuted,
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 1.4,
+    textTransform: 'uppercase',
+  },
+  stepTitle: {
+    color: colors.brandInk,
+    fontSize: 30,
+    fontWeight: '800',
+    lineHeight: 36,
+    marginTop: spacing.sm,
+  },
+  stepBody: {
     color: colors.text,
     fontSize: 15,
-    lineHeight: 22,
-  },
-  statusMeta: {
-    color: colors.brandInk,
-    fontSize: 13,
-    fontWeight: '700',
+    lineHeight: 23,
     marginTop: spacing.md,
   },
-  statusMissing: {
-    color: colors.textMuted,
-    fontSize: 13,
-    marginTop: spacing.xs,
-  },
   fieldWrap: {
-    marginBottom: spacing.md,
-  },
-  fieldCompact: {
-    flex: 1,
-  },
-  row: {
-    flexDirection: 'row',
-    gap: spacing.md,
+    marginTop: spacing.lg,
   },
   label: {
     color: colors.textMuted,
@@ -223,12 +299,18 @@ const styles = StyleSheet.create({
     minHeight: 54,
     paddingHorizontal: spacing.md,
   },
-  error: {
-    color: '#B05252',
+  meta: {
+    color: colors.textMuted,
     fontSize: 14,
-    marginBottom: spacing.md,
+    marginTop: spacing.sm,
+  },
+  error: {
+    color: '#FDE2E2',
+    fontSize: 14,
+    marginTop: spacing.md,
   },
   actions: {
     gap: spacing.md,
+    marginTop: spacing.lg,
   },
 });

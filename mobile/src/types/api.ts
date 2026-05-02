@@ -116,7 +116,6 @@ export type CenterRegistrationResponse = {
   center: Center;
   checkout_url: string | null;
   checkout_session_id: string;
-  checkout_bypassed: boolean;
   activation: ActivationStatus;
 };
 
@@ -151,5 +150,11 @@ export type ClientAuthResponse = {
 
 export type CenterAuthResponse = {
   center: Center;
+  activation: ActivationStatus;
+};
+
+export type CenterActivationStatusResponse = {
+  center_id: string;
+  center_name: string;
   activation: ActivationStatus;
 };

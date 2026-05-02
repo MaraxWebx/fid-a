@@ -5,6 +5,7 @@ import { SafeAreaView, StyleSheet } from 'react-native';
 import { BottomTabs } from './src/components/BottomTabs';
 import { AuthScreen } from './src/screens/AuthScreen';
 import { CenterOnboardingScreen } from './src/screens/CenterOnboardingScreen';
+import { CenterPaymentScreen } from './src/screens/CenterPaymentScreen';
 import { CenterRegistrationScreen } from './src/screens/CenterRegistrationScreen';
 import { ClientAppointmentsScreen } from './src/screens/ClientAppointmentsScreen';
 import { ClientBookingScreen } from './src/screens/ClientBookingScreen';
@@ -28,6 +29,7 @@ type PublicRoute =
   | 'client-register'
   | 'center-auth'
   | 'center-register'
+  | 'center-payment'
   | 'center-onboarding';
 
 type AppSession =
@@ -45,6 +47,7 @@ export default function App() {
   const [registeredCenterActivation, setRegisteredCenterActivation] = useState<ActivationStatus | null>(
     null,
   );
+  const [registeredCenterCheckoutUrl, setRegisteredCenterCheckoutUrl] = useState<string | null>(null);
   const [clientAuth, setClientAuth] = useState({ email: '', password: '', error: '', loading: false });
   const [centerAuth, setCenterAuth] = useState({ email: '', password: '', error: '', loading: false });
 
@@ -57,6 +60,7 @@ export default function App() {
     setSelectedCenterId(null);
     setRegisteredCenter(null);
     setRegisteredCenterActivation(null);
+    setRegisteredCenterCheckoutUrl(null);
   };
 
   const handleClientLogin = async () => {
@@ -97,7 +101,12 @@ export default function App() {
         email: centerAuth.email,
         password: centerAuth.password,
       });
-      if (!response.activation.is_listable) {
+      if (response.activation.subscription_status !== 'active') {
+        setRegisteredCenter(response.center);
+        setRegisteredCenterActivation(response.activation);
+        setRegisteredCenterCheckoutUrl(null);
+        setPublicRoute('center-payment');
+      } else if (!response.activation.is_listable) {
         setRegisteredCenter(response.center);
         setRegisteredCenterActivation(response.activation);
         setPublicRoute('center-onboarding');
@@ -185,7 +194,21 @@ export default function App() {
         {publicRoute === 'center-register' ? (
           <CenterRegistrationScreen
             onBack={() => setPublicRoute('center-auth')}
-            onRegistered={(center, activation) => {
+            onRegistered={(response) => {
+              setRegisteredCenter(response.center);
+              setRegisteredCenterActivation(response.activation);
+              setRegisteredCenterCheckoutUrl(response.checkout_url);
+              setPublicRoute('center-payment');
+            }}
+          />
+        ) : null}
+        {publicRoute === 'center-payment' && registeredCenter && registeredCenterActivation ? (
+          <CenterPaymentScreen
+            activation={registeredCenterActivation}
+            center={registeredCenter}
+            checkoutUrl={registeredCenterCheckoutUrl}
+            onBack={() => setPublicRoute('center-register')}
+            onPaid={(center, activation) => {
               setRegisteredCenter(center);
               setRegisteredCenterActivation(activation);
               setPublicRoute('center-onboarding');
@@ -196,7 +219,7 @@ export default function App() {
           <CenterOnboardingScreen
             center={registeredCenter}
             initialActivation={registeredCenterActivation}
-            onBack={() => setPublicRoute('center-register')}
+            onBack={() => setPublicRoute('center-payment')}
             onComplete={(center, activation) => {
               setRegisteredCenter(center);
               setRegisteredCenterActivation(activation);

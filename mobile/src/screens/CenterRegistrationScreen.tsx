@@ -15,7 +15,7 @@ import { spacing } from '../theme/spacing';
 
 type CenterRegistrationScreenProps = {
   onBack: () => void;
-  onRegistered: (center: Center, activation: ActivationStatus) => void;
+  onRegistered: (response: CenterRegistrationResponse) => void;
 };
 
 const initialForm: CenterRegistrationInput = {
@@ -53,9 +53,8 @@ export function CenterRegistrationScreen({ onBack, onRegistered }: CenterRegistr
     try {
       const response = await registerCenter(form);
       setResult(response);
-      if (response.checkout_bypassed || !response.checkout_url) {
-        onRegistered(response.center, response.activation);
-      } else {
+      onRegistered(response);
+      if (response.checkout_url) {
         await Linking.openURL(response.checkout_url);
       }
     } catch (submissionError) {
@@ -74,7 +73,7 @@ export function CenterRegistrationScreen({ onBack, onRegistered }: CenterRegistr
       <ScreenHeader
         eyebrow="Registrazione centro"
         title="Attiva il tuo centro"
-        subtitle="Inserisci i dati anagrafici del centro. Nella demo saltiamo Stripe e passiamo direttamente all'onboarding del profilo."
+        subtitle="Inserisci i dati del centro. Dopo questo step andiamo al checkout Stripe e poi all'onboarding guidato."
       />
 
       <View style={styles.card}>
@@ -145,8 +144,7 @@ export function CenterRegistrationScreen({ onBack, onRegistered }: CenterRegistr
         />
 
         <Text style={styles.note}>
-          Il backend crea il profilo centro, marca la sottoscrizione come valida in demo e ti porta
-          subito al completamento del profilo.
+          Il backend crea il centro in stato pending payment e prepara la sessione Stripe Checkout.
         </Text>
 
         {error ? <Text style={styles.error}>{error}</Text> : null}
@@ -155,7 +153,7 @@ export function CenterRegistrationScreen({ onBack, onRegistered }: CenterRegistr
           <PrimaryButton label="Torna indietro" onPress={onBack} variant="secondary" />
           <PrimaryButton
             disabled={!isFormValid || isSubmitting}
-            label={isSubmitting ? 'Creazione centro...' : 'Continua all onboarding'}
+            label={isSubmitting ? 'Preparazione checkout...' : 'Continua al checkout'}
             onPress={handleSubmit}
           />
         </View>
