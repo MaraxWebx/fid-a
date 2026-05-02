@@ -1,17 +1,25 @@
-import { Linking, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { useState } from 'react';
+import {
+  Linking,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
+import { useState } from "react";
 
-import { PrimaryButton } from '../components/PrimaryButton';
-import { ScreenHeader } from '../components/ScreenHeader';
-import { registerCenter } from '../lib/api';
+import { PrimaryButton } from "../components/PrimaryButton";
+import { ScreenHeader } from "../components/ScreenHeader";
+import { registerCenter } from "../lib/api";
 import type {
   ActivationStatus,
   Center,
   CenterRegistrationInput,
   CenterRegistrationResponse,
-} from '../types/api';
-import { colors } from '../theme/colors';
-import { spacing } from '../theme/spacing';
+} from "../types/api";
+import { colors } from "../theme/colors";
+import { spacing } from "../theme/spacing";
+import { textStyles } from "../theme/typography";
 
 type CenterRegistrationScreenProps = {
   onBack: () => void;
@@ -19,26 +27,34 @@ type CenterRegistrationScreenProps = {
 };
 
 const initialForm: CenterRegistrationInput = {
-  name: '',
-  email: '',
-  password: '',
-  vat_number: '',
-  address: '',
-  city: '',
-  postal_code: '',
-  province: '',
-  country: 'Italia',
+  name: "",
+  email: "",
+  password: "",
+  vat_number: "",
+  address: "",
+  city: "",
+  postal_code: "",
+  province: "",
+  country: "Italia",
 };
 
-export function CenterRegistrationScreen({ onBack, onRegistered }: CenterRegistrationScreenProps) {
+export function CenterRegistrationScreen({
+  onBack,
+  onRegistered,
+}: CenterRegistrationScreenProps) {
   const [form, setForm] = useState<CenterRegistrationInput>(initialForm);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<CenterRegistrationResponse | null>(null);
 
-  const isFormValid = Object.values(form).every((value) => value.trim().length > 0);
+  const isFormValid = Object.values(form).every(
+    (value) => value.trim().length > 0,
+  );
 
-  const handleChange = (field: keyof CenterRegistrationInput, value: string) => {
+  const handleChange = (
+    field: keyof CenterRegistrationInput,
+    value: string,
+  ) => {
     setForm((current) => ({ ...current, [field]: value }));
   };
 
@@ -61,7 +77,7 @@ export function CenterRegistrationScreen({ onBack, onRegistered }: CenterRegistr
       setError(
         submissionError instanceof Error
           ? submissionError.message
-          : 'Registrazione non completata. Riprova.',
+          : "Registrazione non completata. Riprova.",
       );
     } finally {
       setIsSubmitting(false);
@@ -80,13 +96,13 @@ export function CenterRegistrationScreen({ onBack, onRegistered }: CenterRegistr
         <Field
           label="Nome centro estetico"
           value={form.name}
-          onChangeText={(value) => handleChange('name', value)}
+          onChangeText={(value) => handleChange("name", value)}
           placeholder="Maison Glow Milano"
         />
         <Field
           label="Email accesso centro"
           value={form.email}
-          onChangeText={(value) => handleChange('email', value)}
+          onChangeText={(value) => handleChange("email", value)}
           placeholder="centro@dominio.it"
           autoCapitalize="none"
           keyboardType="email-address"
@@ -94,7 +110,7 @@ export function CenterRegistrationScreen({ onBack, onRegistered }: CenterRegistr
         <Field
           label="Password"
           value={form.password}
-          onChangeText={(value) => handleChange('password', value)}
+          onChangeText={(value) => handleChange("password", value)}
           placeholder="Minimo 6 caratteri"
           autoCapitalize="none"
           secureTextEntry
@@ -102,20 +118,20 @@ export function CenterRegistrationScreen({ onBack, onRegistered }: CenterRegistr
         <Field
           label="Partita IVA"
           value={form.vat_number}
-          onChangeText={(value) => handleChange('vat_number', value)}
+          onChangeText={(value) => handleChange("vat_number", value)}
           placeholder="IT12345678901"
           autoCapitalize="characters"
         />
         <Field
           label="Indirizzo"
           value={form.address}
-          onChangeText={(value) => handleChange('address', value)}
+          onChangeText={(value) => handleChange("address", value)}
           placeholder="Via Roma 24"
         />
         <Field
           label="Citta"
           value={form.city}
-          onChangeText={(value) => handleChange('city', value)}
+          onChangeText={(value) => handleChange("city", value)}
           placeholder="Milano"
         />
         <View style={styles.row}>
@@ -123,7 +139,7 @@ export function CenterRegistrationScreen({ onBack, onRegistered }: CenterRegistr
             compact
             label="CAP"
             value={form.postal_code}
-            onChangeText={(value) => handleChange('postal_code', value)}
+            onChangeText={(value) => handleChange("postal_code", value)}
             placeholder="20100"
             keyboardType="number-pad"
           />
@@ -131,7 +147,7 @@ export function CenterRegistrationScreen({ onBack, onRegistered }: CenterRegistr
             compact
             label="Provincia"
             value={form.province}
-            onChangeText={(value) => handleChange('province', value)}
+            onChangeText={(value) => handleChange("province", value)}
             placeholder="MI"
             autoCapitalize="characters"
           />
@@ -139,21 +155,28 @@ export function CenterRegistrationScreen({ onBack, onRegistered }: CenterRegistr
         <Field
           label="Paese"
           value={form.country}
-          onChangeText={(value) => handleChange('country', value)}
+          onChangeText={(value) => handleChange("country", value)}
           placeholder="Italia"
         />
 
         <Text style={styles.note}>
-          Il backend crea il centro in stato pending payment e prepara la sessione Stripe Checkout.
+          Il backend crea il centro in stato pending payment e prepara la
+          sessione Stripe Checkout.
         </Text>
 
         {error ? <Text style={styles.error}>{error}</Text> : null}
 
         <View style={styles.actions}>
-          <PrimaryButton label="Torna indietro" onPress={onBack} variant="secondary" />
+          <PrimaryButton
+            label="Torna indietro"
+            onPress={onBack}
+            variant="secondary"
+          />
           <PrimaryButton
             disabled={!isFormValid || isSubmitting}
-            label={isSubmitting ? 'Preparazione checkout...' : 'Continua al checkout'}
+            label={
+              isSubmitting ? "Preparazione checkout..." : "Continua al checkout"
+            }
             onPress={handleSubmit}
           />
         </View>
@@ -164,7 +187,9 @@ export function CenterRegistrationScreen({ onBack, onRegistered }: CenterRegistr
           <Text style={styles.statusEyebrow}>Registrazione creata</Text>
           <Text style={styles.statusTitle}>{result.center.name}</Text>
           <Text style={styles.statusBody}>{result.activation.message}</Text>
-          <Text style={styles.statusMeta}>Stato: {result.activation.state}</Text>
+          <Text style={styles.statusMeta}>
+            Stato: {result.activation.state}
+          </Text>
           {result.checkout_url ? (
             <View style={styles.statusAction}>
               <PrimaryButton
@@ -184,9 +209,9 @@ export function CenterRegistrationScreen({ onBack, onRegistered }: CenterRegistr
 }
 
 type FieldProps = {
-  autoCapitalize?: 'none' | 'sentences' | 'words' | 'characters';
+  autoCapitalize?: "none" | "sentences" | "words" | "characters";
   compact?: boolean;
-  keyboardType?: 'default' | 'email-address' | 'number-pad';
+  keyboardType?: "default" | "email-address" | "number-pad";
   label: string;
   onChangeText: (value: string) => void;
   placeholder: string;
@@ -195,9 +220,9 @@ type FieldProps = {
 };
 
 function Field({
-  autoCapitalize = 'words',
+  autoCapitalize = "words",
   compact = false,
-  keyboardType = 'default',
+  keyboardType = "default",
   label,
   onChangeText,
   placeholder,
@@ -234,7 +259,7 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: colors.surface,
     borderColor: colors.overlayBorder,
-    borderRadius: 28,
+    borderRadius: 12,
     borderWidth: 1,
     padding: spacing.xl,
   },
@@ -245,19 +270,17 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   row: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: spacing.md,
   },
   label: {
-    color: colors.textMuted,
-    fontSize: 13,
-    fontWeight: '700',
+    ...textStyles.fieldLabel,
     marginBottom: spacing.xs,
   },
   input: {
     backgroundColor: colors.surfaceSoft,
     borderColor: colors.border,
-    borderRadius: 18,
+    borderRadius: 12,
     borderWidth: 1,
     color: colors.text,
     fontSize: 16,
@@ -265,13 +288,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
   },
   note: {
-    color: colors.textMuted,
-    fontSize: 14,
-    lineHeight: 21,
+    ...textStyles.bodyMuted,
     marginTop: spacing.sm,
   },
   error: {
-    color: '#B05252',
+    color: "#B05252",
     fontSize: 14,
     marginTop: spacing.md,
   },
@@ -281,32 +302,23 @@ const styles = StyleSheet.create({
   },
   statusCard: {
     backgroundColor: colors.surfaceSand,
-    borderRadius: 28,
+    borderRadius: 12,
     marginTop: spacing.xl,
     padding: spacing.xl,
   },
   statusEyebrow: {
-    color: colors.textMuted,
-    fontSize: 11,
-    fontWeight: '700',
-    letterSpacing: 1.2,
-    textTransform: 'uppercase',
+    ...textStyles.eyebrow,
   },
   statusTitle: {
-    color: colors.brandInk,
-    fontSize: 26,
-    fontWeight: '800',
+    ...textStyles.cardTitle,
     marginTop: spacing.sm,
   },
   statusBody: {
-    color: colors.text,
-    fontSize: 15,
-    lineHeight: 23,
+    ...textStyles.body,
     marginTop: spacing.sm,
   },
   statusMeta: {
-    color: colors.textMuted,
-    fontSize: 13,
+    ...textStyles.caption,
     marginTop: spacing.md,
   },
   statusAction: {

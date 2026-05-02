@@ -1,13 +1,19 @@
-import { useEffect, useState } from 'react';
-import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useState } from "react";
+import {
+  ActivityIndicator,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 
-import { getCenterDashboard } from '../lib/api';
-import type { Center, CenterDashboard } from '../types/api';
-import { ScreenHeader } from '../components/ScreenHeader';
-import { SectionCard } from '../components/SectionCard';
-import { StatTile } from '../components/StatTile';
-import { colors } from '../theme/colors';
-import { spacing } from '../theme/spacing';
+import { getCenterDashboard } from "../lib/api";
+import type { Center, CenterDashboard } from "../types/api";
+import { ScreenHeader } from "../components/ScreenHeader";
+import { SectionCard } from "../components/SectionCard";
+import { StatTile } from "../components/StatTile";
+import { colors } from "../theme/colors";
+import { spacing } from "../theme/spacing";
 
 type CenterDashboardScreenProps = {
   center: Center;
@@ -26,7 +32,8 @@ export function CenterDashboardScreen({ center }: CenterDashboardScreenProps) {
         if (mounted) setDashboard(dashboardResponse);
       })
       .catch(() => {
-        if (mounted) setError('Impossibile caricare la dashboard reale del centro.');
+        if (mounted)
+          setError("Impossibile caricare la dashboard reale del centro.");
       })
       .finally(() => {
         if (mounted) setLoading(false);
@@ -57,7 +64,11 @@ export function CenterDashboardScreen({ center }: CenterDashboardScreenProps) {
         </View>
       </SectionCard>
 
-      <SectionCard eyebrow="Agenda di oggi" title="Prossimi appuntamenti" tone="sky">
+      <SectionCard
+        eyebrow="Agenda di oggi"
+        title="Prossimi appuntamenti"
+        tone="sky"
+      >
         {dashboard?.agenda.map((entry) => (
           <View key={entry.id} style={styles.scheduleRow}>
             <View style={styles.timeBlock}>
@@ -79,13 +90,15 @@ export function CenterDashboardScreen({ center }: CenterDashboardScreenProps) {
         {dashboard?.clients.map((client) => (
           <View key={client.id} style={styles.crmRow}>
             <View style={styles.crmAvatar}>
-              <Text style={styles.crmAvatarText}>{client.name.slice(0, 2).toUpperCase()}</Text>
+              <Text style={styles.crmAvatarText}>
+                {client.name.slice(0, 2).toUpperCase()}
+              </Text>
             </View>
             <View style={styles.crmMain}>
               <Text style={styles.scheduleTitle}>{client.name}</Text>
               <Text style={styles.scheduleMeta}>{client.phone}</Text>
             </View>
-            <Text style={styles.lastVisit}>{client.last_visit ?? 'n/a'}</Text>
+            <Text style={styles.lastVisit}>{client.last_visit ?? "n/a"}</Text>
           </View>
         ))}
       </SectionCard>
@@ -104,12 +117,12 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.xxl,
   },
   metricsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+    flexDirection: "row",
+    flexWrap: "wrap",
     gap: spacing.sm,
   },
   metricWrap: {
-    flexBasis: '48%',
+    flexBasis: "48%",
   },
   metricHint: {
     color: colors.textMuted,
@@ -117,10 +130,10 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
   },
   scheduleRow: {
-    alignItems: 'center',
+    alignItems: "center",
     borderTopColor: colors.overlayBorder,
     borderTopWidth: 1,
-    flexDirection: 'row',
+    flexDirection: "row",
     paddingVertical: spacing.md,
   },
   timeBlock: {
@@ -129,7 +142,7 @@ const styles = StyleSheet.create({
   timeValue: {
     color: colors.brandInk,
     fontSize: 15,
-    fontWeight: '700',
+    fontWeight: "700",
   },
   timeMeta: {
     color: colors.textMuted,
@@ -142,7 +155,7 @@ const styles = StyleSheet.create({
   scheduleTitle: {
     color: colors.brandInk,
     fontSize: 16,
-    fontWeight: '700',
+    fontWeight: "700",
   },
   scheduleMeta: {
     color: colors.textMuted,
@@ -152,7 +165,7 @@ const styles = StyleSheet.create({
   statusPill: {
     backgroundColor: colors.surface,
     borderColor: colors.overlayBorder,
-    borderRadius: 999,
+    borderRadius: 12,
     borderWidth: 1,
     paddingHorizontal: spacing.sm,
     paddingVertical: 8,
@@ -160,28 +173,28 @@ const styles = StyleSheet.create({
   statusText: {
     color: colors.brand,
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: "700",
   },
   crmRow: {
-    alignItems: 'center',
+    alignItems: "center",
     borderTopColor: colors.border,
     borderTopWidth: 1,
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: spacing.md,
     paddingVertical: spacing.md,
   },
   crmAvatar: {
-    alignItems: 'center',
+    alignItems: "center",
     backgroundColor: colors.surfaceSand,
-    borderRadius: 18,
+    borderRadius: 12,
     height: 42,
-    justifyContent: 'center',
+    justifyContent: "center",
     width: 42,
   },
   crmAvatarText: {
     color: colors.brandInk,
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: "700",
   },
   crmMain: {
     flex: 1,

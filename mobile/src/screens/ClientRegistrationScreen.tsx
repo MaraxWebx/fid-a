@@ -1,12 +1,12 @@
-import { useState } from 'react';
-import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useState } from "react";
+import { ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 
-import { PrimaryButton } from '../components/PrimaryButton';
-import { ScreenHeader } from '../components/ScreenHeader';
-import { registerClient } from '../lib/api';
-import type { ClientRegistrationInput, UserProfile } from '../types/api';
-import { colors } from '../theme/colors';
-import { spacing } from '../theme/spacing';
+import { PrimaryButton } from "../components/PrimaryButton";
+import { ScreenHeader } from "../components/ScreenHeader";
+import { registerClient } from "../lib/api";
+import type { ClientRegistrationInput, UserProfile } from "../types/api";
+import { colors } from "../theme/colors";
+import { spacing } from "../theme/spacing";
 
 type ClientRegistrationScreenProps = {
   onBack: () => void;
@@ -14,10 +14,10 @@ type ClientRegistrationScreenProps = {
 };
 
 const initialForm: ClientRegistrationInput = {
-  name: '',
-  email: '',
-  password: '',
-  phone: '',
+  name: "",
+  email: "",
+  password: "",
+  phone: "",
 };
 
 export function ClientRegistrationScreen({
@@ -28,9 +28,13 @@ export function ClientRegistrationScreen({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const isFormValid = form.name.trim() && form.email.trim() && form.password.trim().length >= 6;
+  const isFormValid =
+    form.name.trim() && form.email.trim() && form.password.trim().length >= 6;
 
-  const handleChange = (field: keyof ClientRegistrationInput, value: string) => {
+  const handleChange = (
+    field: keyof ClientRegistrationInput,
+    value: string,
+  ) => {
     setForm((current) => ({ ...current, [field]: value }));
   };
 
@@ -47,7 +51,9 @@ export function ClientRegistrationScreen({
       onRegistered(response.user);
     } catch (submissionError) {
       setError(
-        submissionError instanceof Error ? submissionError.message : 'Registrazione non completata.',
+        submissionError instanceof Error
+          ? submissionError.message
+          : "Registrazione non completata.",
       );
     } finally {
       setIsSubmitting(false);
@@ -66,13 +72,13 @@ export function ClientRegistrationScreen({
         <Field
           label="Nome e cognome"
           value={form.name}
-          onChangeText={(value) => handleChange('name', value)}
+          onChangeText={(value) => handleChange("name", value)}
           placeholder="Giulia Rossi"
         />
         <Field
           label="Email"
           value={form.email}
-          onChangeText={(value) => handleChange('email', value)}
+          onChangeText={(value) => handleChange("email", value)}
           placeholder="giulia@dominio.it"
           autoCapitalize="none"
           keyboardType="email-address"
@@ -80,7 +86,7 @@ export function ClientRegistrationScreen({
         <Field
           label="Password"
           value={form.password}
-          onChangeText={(value) => handleChange('password', value)}
+          onChangeText={(value) => handleChange("password", value)}
           placeholder="Minimo 6 caratteri"
           autoCapitalize="none"
           secureTextEntry
@@ -88,16 +94,22 @@ export function ClientRegistrationScreen({
         <Field
           label="Telefono"
           value={form.phone}
-          onChangeText={(value) => handleChange('phone', value)}
+          onChangeText={(value) => handleChange("phone", value)}
           placeholder="+39 333 123 4567"
           keyboardType="default"
         />
         {error ? <Text style={styles.error}>{error}</Text> : null}
         <View style={styles.actions}>
-          <PrimaryButton label="Torna indietro" onPress={onBack} variant="secondary" />
+          <PrimaryButton
+            label="Torna indietro"
+            onPress={onBack}
+            variant="secondary"
+          />
           <PrimaryButton
             disabled={!isFormValid || isSubmitting}
-            label={isSubmitting ? 'Creazione account...' : 'Registrati come cliente'}
+            label={
+              isSubmitting ? "Creazione account..." : "Registrati come cliente"
+            }
             onPress={handleSubmit}
           />
         </View>
@@ -107,8 +119,8 @@ export function ClientRegistrationScreen({
 }
 
 type FieldProps = {
-  autoCapitalize?: 'none' | 'sentences' | 'words' | 'characters';
-  keyboardType?: 'default' | 'email-address' | 'number-pad';
+  autoCapitalize?: "none" | "sentences" | "words" | "characters";
+  keyboardType?: "default" | "email-address" | "number-pad";
   label: string;
   onChangeText: (value: string) => void;
   placeholder: string;
@@ -117,8 +129,8 @@ type FieldProps = {
 };
 
 function Field({
-  autoCapitalize = 'words',
-  keyboardType = 'default',
+  autoCapitalize = "words",
+  keyboardType = "default",
   label,
   onChangeText,
   placeholder,
@@ -155,7 +167,7 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: colors.surface,
     borderColor: colors.overlayBorder,
-    borderRadius: 28,
+    borderRadius: 12,
     borderWidth: 1,
     padding: spacing.xl,
   },
@@ -165,13 +177,13 @@ const styles = StyleSheet.create({
   label: {
     color: colors.textMuted,
     fontSize: 13,
-    fontWeight: '700',
+    fontWeight: "700",
     marginBottom: spacing.xs,
   },
   input: {
     backgroundColor: colors.surfaceSoft,
     borderColor: colors.border,
-    borderRadius: 18,
+    borderRadius: 12,
     borderWidth: 1,
     color: colors.text,
     fontSize: 16,
@@ -179,7 +191,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
   },
   error: {
-    color: '#B05252',
+    color: "#B05252",
     fontSize: 14,
     marginTop: spacing.sm,
   },

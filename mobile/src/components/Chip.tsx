@@ -1,7 +1,7 @@
-import { Pressable, StyleSheet, Text } from 'react-native';
+import { Pressable, StyleSheet, Text } from "react-native";
 
-import { colors } from '../theme/colors';
-import { spacing } from '../theme/spacing';
+import { colors } from "../theme/colors";
+import { spacing } from "../theme/spacing";
 
 type ChipProps = {
   label: string;
@@ -18,7 +18,7 @@ export function Chip({ label }: ChipProps) {
 const styles = StyleSheet.create({
   chip: {
     backgroundColor: colors.surface,
-    borderRadius: 999,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: colors.border,
     paddingHorizontal: spacing.md,
@@ -28,6 +28,6 @@ const styles = StyleSheet.create({
   label: {
     color: colors.brandDark,
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: "600",
   },
 });

@@ -1,10 +1,16 @@
-import { ScrollView, StyleSheet, Text, View, type ViewStyle } from 'react-native';
+import {
+  Image,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+  type ViewStyle,
+} from "react-native";
 
-import { PrimaryButton } from '../components/PrimaryButton';
-import { colors } from '../theme/colors';
-import { spacing } from '../theme/spacing';
-
-type Role = 'client' | 'center';
+import { PrimaryButton } from "../components/PrimaryButton";
+import { colors } from "../theme/colors";
+import { spacing } from "../theme/spacing";
+import { textStyles } from "../theme/typography";
 
 type PublicLandingScreenProps = {
   onOpenClientAuth: () => void;
@@ -18,34 +24,38 @@ export function PublicLandingScreen({
   return (
     <ScrollView contentContainerStyle={styles.content} style={styles.container}>
       <View style={styles.logoWrap}>
-        <View style={styles.logoMark}>
-          <View style={styles.logoStroke} />
-          <View style={[styles.logoStroke, styles.logoStrokeMid]} />
-          <View style={[styles.logoStroke, styles.logoStrokeSmall]} />
-        </View>
-        <Text style={styles.logoTitle}>FIDÈA</Text>
+        <Image
+          source={require("../../assets/FidèaLogo.png")}
+          style={styles.logoImage}
+          resizeMode="contain"
+        />
         <Text style={styles.logoSub}>Powered by Fidest</Text>
       </View>
 
       <View style={styles.heroCard}>
         <View style={styles.heroCopy}>
           <Text style={styles.heroEyebrow}>Beauty digital experience</Text>
-          <Text style={styles.heroTitle}>Una demo piu soft, editoriale e premium.</Text>
+          <Text style={styles.heroTitle}>
+            La tua bellezza, il nostro impegno.
+          </Text>
           <Text style={styles.heroText}>
-            Palette chiara, card sospese e navigazione gentile ispirate alla reference e al
-            design system aggiornato.
+            Un ingresso piu pulito e luminoso, con immagine protagonista e toni
+            soft blue piu vicini alla reference.
           </Text>
         </View>
-        <View style={styles.heroPreview}>
+
+        <View style={styles.heroFeature}>
           <View style={styles.previewPanelSky}>
-            <Text style={styles.previewKicker}>Cliente</Text>
-            <Text style={styles.previewTitle}>Routine su misura</Text>
-            <Text style={styles.previewBody}>Scegli il centro e apri il booking.</Text>
-          </View>
-          <View style={styles.previewPanelSand}>
-            <Text style={styles.previewKicker}>Centro</Text>
-            <Text style={styles.previewTitle}>Dashboard morbida</Text>
-            <Text style={styles.previewBody}>KPI, agenda e gestione elegante.</Text>
+            <Text style={styles.previewTitle}>
+              Scopri i trattamenti pensati per te.
+            </Text>
+            <Text style={styles.previewBody}>
+              Un percorso cliente e centro piu chiaro, piu leggero e piu vicino
+              a un&apos;app beauty premium.
+            </Text>
+            <View style={styles.heroButtonWrap}>
+              <PrimaryButton label="Scopri di piu" onPress={onOpenClientAuth} />
+            </View>
           </View>
         </View>
       </View>
@@ -81,7 +91,7 @@ type EntryCardProps = {
   eyebrow: string;
   onPress: () => void;
   title: string;
-  variant: 'primary' | 'secondary';
+  variant: "primary" | "secondary";
 };
 
 function EntryCard({
@@ -115,124 +125,79 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.xxl,
   },
   logoWrap: {
-    alignItems: 'center',
+    alignItems: "center",
     marginBottom: spacing.xl,
     paddingTop: spacing.lg,
   },
-  logoMark: {
-    alignItems: 'center',
-    height: 54,
-    justifyContent: 'center',
-    marginBottom: spacing.md,
-    width: 54,
-  },
-  logoStroke: {
-    backgroundColor: colors.brand,
-    borderRadius: 999,
-    height: 10,
-    position: 'absolute',
-    top: 14,
-    transform: [{ rotate: '-34deg' }],
-    width: 28,
-  },
-  logoStrokeMid: {
-    top: 22,
-    width: 24,
-  },
-  logoStrokeSmall: {
-    top: 30,
-    width: 18,
-  },
-  logoTitle: {
-    color: colors.brandInk,
-    fontSize: 34,
-    fontWeight: '500',
-    letterSpacing: 5,
+  logoImage: {
+    height: 120,
+    width: 120,
   },
   logoSub: {
-    color: colors.textMuted,
+    ...textStyles.bodyMuted,
     fontSize: 14,
     marginTop: spacing.xs,
   },
   heroCard: {
     backgroundColor: colors.surface,
     borderColor: colors.overlayBorder,
-    borderRadius: 34,
+    borderRadius: 12,
     borderWidth: 1,
     marginBottom: spacing.xl,
-    overflow: 'hidden',
+    overflow: "hidden",
     padding: spacing.xl,
-    shadowColor: '#243F5C',
-    shadowOffset: { width: 0, height: 16 },
-    shadowOpacity: 0.08,
-    shadowRadius: 30,
+    shadowColor: "#1F4F84",
+    shadowOffset: { width: 0, height: 14 },
+    shadowOpacity: 0.1,
+    shadowRadius: 24,
     elevation: 4,
   },
   heroCopy: {
-    marginBottom: spacing.xl,
+    marginBottom: spacing.lg,
   },
   heroEyebrow: {
-    color: colors.textMuted,
-    fontSize: 11,
-    fontWeight: '700',
-    letterSpacing: 1.5,
+    ...textStyles.eyebrow,
     marginBottom: spacing.sm,
-    textTransform: 'uppercase',
   },
   heroTitle: {
-    color: colors.brandInk,
-    fontSize: 32,
-    fontWeight: '800',
-    letterSpacing: -0.8,
-    lineHeight: 38,
-    maxWidth: 310,
-  },
-  heroText: {
-    color: colors.textMuted,
-    fontSize: 15,
-    lineHeight: 23,
-    marginTop: spacing.md,
+    ...textStyles.screenTitle,
     maxWidth: 320,
   },
-  heroPreview: {
-    flexDirection: 'row',
+  heroText: {
+    ...textStyles.bodyMuted,
+    marginTop: spacing.md,
+    maxWidth: 330,
+  },
+  heroFeature: {
+    flexDirection: "row",
     gap: spacing.sm,
+    minHeight: 196,
   },
   previewPanelSky: {
     backgroundColor: colors.surfaceSky,
-    borderRadius: 26,
+    borderRadius: 12,
     flex: 1,
-    minHeight: 170,
+    justifyContent: "space-between",
+    minHeight: 196,
     padding: spacing.lg,
   },
-  previewPanelSand: {
-    backgroundColor: colors.surfaceSand,
-    borderRadius: 26,
-    flex: 1,
-    justifyContent: 'flex-end',
-    minHeight: 170,
-    padding: spacing.lg,
-  },
-  previewKicker: {
-    color: colors.textMuted,
-    fontSize: 11,
-    fontWeight: '700',
-    letterSpacing: 1.2,
-    marginBottom: spacing.sm,
-    textTransform: 'uppercase',
+  heroImage: {
+    borderRadius: 12,
+    minHeight: 196,
+    width: 146,
   },
   previewTitle: {
-    color: colors.brandInk,
-    fontSize: 22,
-    fontWeight: '700',
-    lineHeight: 28,
+    ...textStyles.cardTitle,
   },
   previewBody: {
-    color: colors.brandInk,
-    fontSize: 14,
-    lineHeight: 21,
+    ...textStyles.body,
     marginTop: spacing.sm,
-    opacity: 0.75,
+    maxWidth: 180,
+    opacity: 0.78,
+  },
+  heroButtonWrap: {
+    alignSelf: "flex-start",
+    marginTop: spacing.md,
   },
   entryGrid: {
     gap: spacing.lg,
@@ -240,12 +205,17 @@ const styles = StyleSheet.create({
   entryCard: {
     backgroundColor: colors.surface,
     borderColor: colors.overlayBorder,
-    borderRadius: 28,
+    borderRadius: 12,
     borderWidth: 1,
     padding: spacing.xl,
+    shadowColor: "#1F4F84",
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.06,
+    shadowRadius: 20,
+    elevation: 2,
   },
   entryAccent: {
-    borderRadius: 999,
+    borderRadius: 12,
     height: 8,
     marginBottom: spacing.lg,
     width: 72,
@@ -254,26 +224,17 @@ const styles = StyleSheet.create({
     backgroundColor: colors.brand,
   },
   centerAccent: {
-    backgroundColor: colors.surfaceLavender,
+    backgroundColor: "#CFE1F3",
   },
   entryEyebrow: {
-    color: colors.textMuted,
-    fontSize: 11,
-    fontWeight: '700',
-    letterSpacing: 1.2,
+    ...textStyles.eyebrow,
     marginBottom: spacing.sm,
-    textTransform: 'uppercase',
   },
   entryTitle: {
-    color: colors.brandInk,
-    fontSize: 28,
-    fontWeight: '800',
-    lineHeight: 32,
+    ...textStyles.cardTitle,
   },
   entryDescription: {
-    color: colors.textMuted,
-    fontSize: 15,
-    lineHeight: 23,
+    ...textStyles.bodyMuted,
     marginBottom: spacing.lg,
     marginTop: spacing.sm,
   },

@@ -1,10 +1,11 @@
-import { useState } from 'react';
-import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useState } from "react";
+import { ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 
-import { PrimaryButton } from '../components/PrimaryButton';
-import { ScreenHeader } from '../components/ScreenHeader';
-import { colors } from '../theme/colors';
-import { spacing } from '../theme/spacing';
+import { PrimaryButton } from "../components/PrimaryButton";
+import { ScreenHeader } from "../components/ScreenHeader";
+import { colors } from "../theme/colors";
+import { spacing } from "../theme/spacing";
+import { textStyles, typeScale } from "../theme/typography";
 
 type AuthScreenProps = {
   ctaLabel: string;
@@ -80,10 +81,14 @@ export function AuthScreen({
         />
         {error ? <Text style={styles.error}>{error}</Text> : null}
         <View style={styles.actions}>
-          <PrimaryButton label="Torna indietro" onPress={onBack} variant="secondary" />
+          <PrimaryButton
+            label="Torna indietro"
+            onPress={onBack}
+            variant="secondary"
+          />
           <PrimaryButton
             disabled={isSubmitting}
-            label={isSubmitting ? 'Attendi...' : primaryLabel}
+            label={isSubmitting ? "Attendi..." : primaryLabel}
             onPress={onPrimaryAction}
           />
         </View>
@@ -92,7 +97,11 @@ export function AuthScreen({
       <View style={styles.footerCard}>
         <Text style={styles.footerText}>{ctaText}</Text>
         <View style={styles.footerButton}>
-          <PrimaryButton label={ctaLabel} onPress={onSecondaryAction} variant="secondary" />
+          <PrimaryButton
+            label={ctaLabel}
+            onPress={onSecondaryAction}
+            variant="secondary"
+          />
         </View>
       </View>
     </ScrollView>
@@ -100,8 +109,8 @@ export function AuthScreen({
 }
 
 type FieldProps = {
-  autoCapitalize?: 'none' | 'sentences' | 'words' | 'characters';
-  keyboardType?: 'default' | 'email-address' | 'number-pad';
+  autoCapitalize?: "none" | "sentences" | "words" | "characters";
+  keyboardType?: "default" | "email-address" | "number-pad";
   label: string;
   onChangeText: (value: string) => void;
   placeholder: string;
@@ -110,8 +119,8 @@ type FieldProps = {
 };
 
 function Field({
-  autoCapitalize = 'sentences',
-  keyboardType = 'default',
+  autoCapitalize = "sentences",
+  keyboardType = "default",
   label,
   onChangeText,
   placeholder,
@@ -148,35 +157,31 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: colors.surface,
     borderColor: colors.overlayBorder,
-    borderRadius: 28,
+    borderRadius: 12,
     borderWidth: 1,
     padding: spacing.xl,
   },
   rolePill: {
-    alignSelf: 'flex-start',
+    alignSelf: "flex-start",
     backgroundColor: colors.surfaceSky,
-    borderRadius: 999,
-    color: colors.brandInk,
-    fontSize: 11,
-    fontWeight: '700',
+    borderRadius: 12,
     marginBottom: spacing.lg,
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.xs,
-    textTransform: 'uppercase',
+    ...textStyles.microLabel,
+    color: colors.brandInk,
   },
   fieldWrap: {
     marginBottom: spacing.md,
   },
   label: {
-    color: colors.textMuted,
-    fontSize: 13,
-    fontWeight: '700',
+    ...textStyles.fieldLabel,
     marginBottom: spacing.xs,
   },
   input: {
     backgroundColor: colors.surfaceSoft,
     borderColor: colors.border,
-    borderRadius: 18,
+    borderRadius: 12,
     borderWidth: 1,
     color: colors.text,
     fontSize: 16,
@@ -184,8 +189,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
   },
   error: {
-    color: '#B05252',
-    fontSize: 14,
+    color: "#B05252",
+    fontSize: typeScale.body,
     marginTop: spacing.sm,
   },
   actions: {
@@ -199,9 +204,7 @@ const styles = StyleSheet.create({
     padding: spacing.xl,
   },
   footerText: {
-    color: colors.text,
-    fontSize: 15,
-    lineHeight: 22,
+    ...textStyles.body,
   },
   footerButton: {
     marginTop: spacing.md,

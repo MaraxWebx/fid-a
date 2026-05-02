@@ -8,6 +8,7 @@ import { getCenterActivationStatus } from '../lib/api';
 import type { ActivationStatus, Center } from '../types/api';
 import { colors } from '../theme/colors';
 import { spacing } from '../theme/spacing';
+import { textStyles } from '../theme/typography';
 
 type CenterPaymentScreenProps = {
   activation: ActivationStatus;
@@ -107,19 +108,14 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.xxl,
   },
   price: {
-    color: colors.brandInk,
-    fontSize: 28,
-    fontWeight: '800',
+    ...textStyles.metricValue,
   },
   body: {
-    color: colors.text,
-    fontSize: 15,
-    lineHeight: 22,
+    ...textStyles.body,
     marginTop: spacing.sm,
   },
   meta: {
-    color: colors.textMuted,
-    fontSize: 13,
+    ...textStyles.caption,
     marginTop: spacing.md,
   },
   error: {

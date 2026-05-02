@@ -1,7 +1,7 @@
 import { StyleSheet, Text, View } from 'react-native';
 
-import { colors } from '../theme/colors';
 import { spacing } from '../theme/spacing';
+import { textStyles } from '../theme/typography';
 
 type ScreenHeaderProps = {
   title: string;
@@ -24,24 +24,14 @@ const styles = StyleSheet.create({
     marginBottom: spacing.xl,
   },
   eyebrow: {
-    color: colors.textMuted,
-    fontSize: 12,
-    fontWeight: '700',
-    letterSpacing: 1.4,
+    ...textStyles.eyebrow,
     marginBottom: spacing.sm,
-    textTransform: 'uppercase',
   },
   title: {
-    color: colors.brandInk,
-    fontSize: 34,
-    fontWeight: '800',
-    letterSpacing: -0.8,
-    lineHeight: 40,
+    ...textStyles.screenTitle,
   },
   subtitle: {
-    color: colors.textMuted,
-    fontSize: 15,
-    lineHeight: 23,
+    ...textStyles.bodyMuted,
     marginTop: spacing.sm,
     maxWidth: 340,
   },

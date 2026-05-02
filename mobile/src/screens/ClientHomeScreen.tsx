@@ -1,20 +1,28 @@
-import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useMemo, useState } from "react";
+import {
+  ActivityIndicator,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 
 import {
   clientHomeStats,
   demoAppointments,
   loyaltyOverview,
   upcomingBooking,
-} from '../data/mockData';
-import { getCenters } from '../lib/api';
-import type { Center } from '../types/api';
-import { PrimaryButton } from '../components/PrimaryButton';
-import { ScreenHeader } from '../components/ScreenHeader';
-import { SectionCard } from '../components/SectionCard';
-import { StatTile } from '../components/StatTile';
-import { colors } from '../theme/colors';
-import { spacing } from '../theme/spacing';
+} from "../data/mockData";
+import { getCenters } from "../lib/api";
+import type { Center } from "../types/api";
+import { PrimaryButton } from "../components/PrimaryButton";
+import { ScreenHeader } from "../components/ScreenHeader";
+import { SectionCard } from "../components/SectionCard";
+import { StatTile } from "../components/StatTile";
+import { colors } from "../theme/colors";
+import { spacing } from "../theme/spacing";
+import { textStyles } from "../theme/typography";
 
 type ClientHomeScreenProps = {
   selectedCenterId: string | null;
@@ -46,7 +54,7 @@ export function ClientHomeScreen({
       })
       .catch(() => {
         if (!mounted) return;
-        setError('Impossibile caricare i centri.');
+        setError("Impossibile caricare i centri.");
       })
       .finally(() => {
         if (mounted) setLoading(false);
@@ -59,7 +67,7 @@ export function ClientHomeScreen({
 
   const activeCenter = useMemo(
     () => centers.find((center) => center.id === selectedCenterId) ?? null,
-    [centers, selectedCenterId]
+    [centers, selectedCenterId],
   );
 
   return (
@@ -70,14 +78,20 @@ export function ClientHomeScreen({
         subtitle="Scegli il centro, tieni sotto controllo la routine beauty e apri il booking in pochi tocchi."
       />
 
-      <SectionCard eyebrow="Centro selezionato" title={activeCenter ? activeCenter.name : 'Scegli il centro'} tone="sky">
+      <SectionCard
+        eyebrow="Centro selezionato"
+        title={activeCenter ? activeCenter.name : "Scegli il centro"}
+        tone="sky"
+      >
         <Text style={styles.secondaryLine}>
           {activeCenter
-            ? `${activeCenter.email}  •  colore ${activeCenter.branding?.primary_color ?? 'non impostato'}`
-            : 'Seleziona un centro prima di aprire la prenotazione.'}
+            ? `${activeCenter.email}  •  colore ${activeCenter.branding?.primary_color ?? "non impostato"}`
+            : "Seleziona un centro prima di aprire la prenotazione."}
         </Text>
         <View style={styles.centerList}>
-          {loading ? <ActivityIndicator color={colors.brand} style={styles.loader} /> : null}
+          {loading ? (
+            <ActivityIndicator color={colors.brand} style={styles.loader} />
+          ) : null}
           {error ? <Text style={styles.errorText}>{error}</Text> : null}
           {centers.map((center) => {
             const active = center.id === selectedCenterId;
@@ -86,7 +100,10 @@ export function ClientHomeScreen({
               <Pressable
                 key={center.id}
                 onPress={() => onChangeCenter(center.id)}
-                style={[styles.centerCard, active ? styles.centerCardActive : null]}
+                style={[
+                  styles.centerCard,
+                  active ? styles.centerCardActive : null,
+                ]}
               >
                 <View style={styles.centerPill}>
                   <Text style={styles.centerPillText}>Centro</Text>
@@ -94,7 +111,7 @@ export function ClientHomeScreen({
                 <Text style={styles.centerName}>{center.name}</Text>
                 <Text style={styles.centerMeta}>{center.email}</Text>
                 <Text style={styles.centerTag}>
-                  {center.branding?.primary_color ?? 'Palette non impostata'}
+                  {center.branding?.primary_color ?? "Palette non impostata"}
                 </Text>
               </Pressable>
             );
@@ -110,17 +127,23 @@ export function ClientHomeScreen({
         </View>
       </SectionCard>
 
-      <SectionCard eyebrow="Prossimo appuntamento" title={upcomingBooking.service} tone="sand">
+      <SectionCard
+        eyebrow="Prossimo appuntamento"
+        title={upcomingBooking.service}
+        tone="sand"
+      >
         <Text style={styles.primaryLine}>
           {upcomingBooking.dateLabel} alle {upcomingBooking.timeLabel}
         </Text>
-        <Text style={styles.secondaryLine}>Con {upcomingBooking.specialist}</Text>
+        <Text style={styles.secondaryLine}>
+          Con {upcomingBooking.specialist}
+        </Text>
         <View style={styles.actionsRow}>
           <View style={styles.actionItem}>
             <PrimaryButton
-              label={activeCenter ? 'Apri prenotazione' : 'Seleziona un centro'}
+              label={activeCenter ? "Apri prenotazione" : "Seleziona un centro"}
               onPress={() => onOpenBooking(null)}
-              variant={activeCenter ? 'primary' : 'secondary'}
+              variant={activeCenter ? "primary" : "secondary"}
             />
           </View>
           <View style={styles.actionItem}>
@@ -139,7 +162,9 @@ export function ClientHomeScreen({
         </Text>
         <View style={styles.walletRibbon}>
           <Text style={styles.walletLabel}>Centro preferito</Text>
-          <Text style={styles.walletValue}>{activeCenter?.name ?? 'Da selezionare'}</Text>
+          <Text style={styles.walletValue}>
+            {activeCenter?.name ?? "Da selezionare"}
+          </Text>
         </View>
       </SectionCard>
 
@@ -150,7 +175,7 @@ export function ClientHomeScreen({
             <View style={styles.historyMain}>
               <Text style={styles.serviceName}>{appointment.service}</Text>
               <Text style={styles.serviceMeta}>
-                {appointment.dateLabel}  •  {appointment.statusLabel}
+                {appointment.dateLabel} • {appointment.statusLabel}
               </Text>
             </View>
             <Text style={styles.priceBadge}>{appointment.price}</Text>
@@ -188,23 +213,19 @@ const styles = StyleSheet.create({
     borderColor: colors.brand,
   },
   centerPill: {
-    alignSelf: 'flex-start',
+    alignSelf: "flex-start",
     backgroundColor: colors.surfaceSky,
-    borderRadius: 999,
+    borderRadius: 12,
     marginBottom: spacing.md,
     paddingHorizontal: spacing.sm,
     paddingVertical: 6,
   },
   centerPillText: {
+    ...textStyles.microLabel,
     color: colors.brandInk,
-    fontSize: 11,
-    fontWeight: '700',
   },
   centerName: {
-    color: colors.brandInk,
-    fontSize: 16,
-    fontWeight: '700',
-    lineHeight: 21,
+    ...textStyles.titleXs,
   },
   centerMeta: {
     color: colors.textMuted,
@@ -215,7 +236,7 @@ const styles = StyleSheet.create({
   centerTag: {
     color: colors.brand,
     fontSize: 13,
-    fontWeight: '600',
+    fontWeight: "600",
     lineHeight: 18,
     marginTop: spacing.sm,
   },
@@ -228,9 +249,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
   },
   primaryLine: {
-    color: colors.brandInk,
-    fontSize: 19,
-    fontWeight: '700',
+    ...textStyles.titleBase,
   },
   secondaryLine: {
     color: colors.textMuted,
@@ -246,7 +265,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
   },
   metricsRow: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: spacing.sm,
   },
   walletRibbon: {
@@ -258,29 +277,23 @@ const styles = StyleSheet.create({
     padding: spacing.md,
   },
   walletLabel: {
-    color: colors.textMuted,
-    fontSize: 12,
-    fontWeight: '700',
-    letterSpacing: 1.2,
-    textTransform: 'uppercase',
+    ...textStyles.microLabel,
   },
   walletValue: {
-    color: colors.brandInk,
-    fontSize: 18,
-    fontWeight: '700',
+    ...textStyles.titleXs,
     marginTop: spacing.sm,
   },
   historyRow: {
-    alignItems: 'center',
+    alignItems: "center",
     borderTopColor: colors.border,
     borderTopWidth: 1,
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: spacing.md,
     paddingVertical: spacing.md,
   },
   historyBadge: {
     backgroundColor: colors.surfaceSky,
-    borderRadius: 18,
+    borderRadius: 12,
     height: 44,
     width: 44,
   },
@@ -288,9 +301,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   serviceName: {
-    color: colors.brandInk,
-    fontSize: 16,
-    fontWeight: '700',
+    ...textStyles.titleXs,
   },
   serviceMeta: {
     color: colors.textMuted,
@@ -300,6 +311,6 @@ const styles = StyleSheet.create({
   priceBadge: {
     color: colors.brand,
     fontSize: 15,
-    fontWeight: '700',
+    fontWeight: "700",
   },
 });

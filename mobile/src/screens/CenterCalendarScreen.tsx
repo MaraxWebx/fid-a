@@ -1,11 +1,12 @@
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from "react-native";
 
-import { centerCalendarDays, slotTemplates } from '../data/mockData';
-import { PrimaryButton } from '../components/PrimaryButton';
-import { ScreenHeader } from '../components/ScreenHeader';
-import { SectionCard } from '../components/SectionCard';
-import { colors } from '../theme/colors';
-import { spacing } from '../theme/spacing';
+import { centerCalendarDays, slotTemplates } from "../data/mockData";
+import { PrimaryButton } from "../components/PrimaryButton";
+import { ScreenHeader } from "../components/ScreenHeader";
+import { SectionCard } from "../components/SectionCard";
+import { colors } from "../theme/colors";
+import { spacing } from "../theme/spacing";
+import { textStyles } from "../theme/typography";
 
 export function CenterCalendarScreen() {
   return (
@@ -59,25 +60,22 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.xxl,
   },
   dayRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+    flexDirection: "row",
+    flexWrap: "wrap",
     gap: spacing.sm,
   },
   dayCard: {
     backgroundColor: colors.surfaceMuted,
-    borderRadius: 18,
+    borderRadius: 12,
     minWidth: 140,
     padding: spacing.md,
   },
   dayLabel: {
-    color: colors.textMuted,
-    fontSize: 13,
-    fontWeight: '600',
+    ...textStyles.caption,
   },
   dayValue: {
+    ...textStyles.metricValue,
     color: colors.brandDark,
-    fontSize: 28,
-    fontWeight: '800',
     marginTop: spacing.sm,
   },
   dayMeta: {
@@ -86,17 +84,16 @@ const styles = StyleSheet.create({
     marginTop: spacing.xs,
   },
   slotRow: {
-    alignItems: 'center',
+    alignItems: "center",
     borderTopColor: colors.border,
     borderTopWidth: 1,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    justifyContent: "space-between",
     paddingVertical: spacing.md,
   },
   slotTitle: {
+    ...textStyles.titleXs,
     color: colors.text,
-    fontSize: 16,
-    fontWeight: '700',
   },
   slotMeta: {
     color: colors.textMuted,
@@ -106,7 +103,7 @@ const styles = StyleSheet.create({
   slotStatus: {
     color: colors.brandDark,
     fontSize: 13,
-    fontWeight: '700',
+    fontWeight: "700",
   },
   buttonWrap: {
     marginTop: spacing.lg,

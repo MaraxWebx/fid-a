@@ -1,14 +1,21 @@
-import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useMemo, useState } from "react";
+import {
+  ActivityIndicator,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 
-import { bookingOperators, bookingSlots } from '../data/mockData';
-import { getCenterServices, getCenters } from '../lib/api';
-import type { Center, Service } from '../types/api';
-import { PrimaryButton } from '../components/PrimaryButton';
-import { ScreenHeader } from '../components/ScreenHeader';
-import { SectionCard } from '../components/SectionCard';
-import { colors } from '../theme/colors';
-import { spacing } from '../theme/spacing';
+import { bookingOperators, bookingSlots } from "../data/mockData";
+import { getCenterServices, getCenters } from "../lib/api";
+import type { Center, Service } from "../types/api";
+import { PrimaryButton } from "../components/PrimaryButton";
+import { ScreenHeader } from "../components/ScreenHeader";
+import { SectionCard } from "../components/SectionCard";
+import { colors } from "../theme/colors";
+import { spacing } from "../theme/spacing";
 
 type ClientBookingScreenProps = {
   selectedCenterId: string | null;
@@ -63,7 +70,7 @@ export function ClientBookingScreen({
       })
       .catch(() => {
         if (!mounted) return;
-        setServicesError('Impossibile caricare i trattamenti del centro.');
+        setServicesError("Impossibile caricare i trattamenti del centro.");
       })
       .finally(() => {
         if (mounted) setServicesLoading(false);
@@ -76,11 +83,11 @@ export function ClientBookingScreen({
 
   const selectedService = useMemo(
     () => services.find((item) => item.id === serviceId) ?? null,
-    [serviceId, services]
+    [serviceId, services],
   );
   const selectedCenter = useMemo(
     () => centers.find((center) => center.id === selectedCenterId) ?? null,
-    [centers, selectedCenterId]
+    [centers, selectedCenterId],
   );
 
   return (
@@ -91,23 +98,28 @@ export function ClientBookingScreen({
         subtitle="Selezione centro, servizio, operatore e slot. Base locale pronta per il backend reale."
       />
 
-      <SectionCard eyebrow="Centro" title={selectedCenter?.name ?? 'Centro non selezionato'}>
+      <SectionCard
+        eyebrow="Centro"
+        title={selectedCenter?.name ?? "Centro non selezionato"}
+      >
         <Text style={styles.notice}>
           {selectedCenter
-            ? `${selectedCenter.email} - ${selectedCenter.branding?.primary_color ?? 'palette non impostata'}`
-            : 'Torna in Home e scegli prima il centro.'}
+            ? `${selectedCenter.email} - ${selectedCenter.branding?.primary_color ?? "palette non impostata"}`
+            : "Torna in Home e scegli prima il centro."}
         </Text>
       </SectionCard>
 
       <SectionCard eyebrow="Step 1" title="Scegli il servizio">
         {servicesLoading ? <ActivityIndicator color={colors.brand} /> : null}
-        {servicesError ? <Text style={styles.notice}>{servicesError}</Text> : null}
+        {servicesError ? (
+          <Text style={styles.notice}>{servicesError}</Text>
+        ) : null}
         {services.map((service) => (
           <SelectableRow
             key={service.id}
             active={service.id === serviceId}
             title={service.name}
-            subtitle={`${service.category} - ${service.duration ?? '-'} min - ${service.price ?? '-'} EUR`}
+            subtitle={`${service.category} - ${service.duration ?? "-"} min - ${service.price ?? "-"} EUR`}
             onPress={() => setServiceId(service.id)}
           />
         ))}
@@ -138,20 +150,31 @@ export function ClientBookingScreen({
       </SectionCard>
 
       <SectionCard eyebrow="Step 4" title="Conferma prenotazione">
-        <Text style={styles.summaryLine}>Centro: {selectedCenter?.name ?? 'Da selezionare'}</Text>
-        <Text style={styles.summaryLine}>Servizio: {selectedService?.name ?? 'Da selezionare'}</Text>
         <Text style={styles.summaryLine}>
-          Operatore:{' '}
-          {bookingOperators.find((operator) => operator.id === operatorId)?.name ?? 'Seleziona un operatore'}
+          Centro: {selectedCenter?.name ?? "Da selezionare"}
         </Text>
         <Text style={styles.summaryLine}>
-          Slot: {bookingSlots.find((slot) => slot.id === slotId)?.timeLabel ?? 'Seleziona uno slot'}
+          Servizio: {selectedService?.name ?? "Da selezionare"}
+        </Text>
+        <Text style={styles.summaryLine}>
+          Operatore:{" "}
+          {bookingOperators.find((operator) => operator.id === operatorId)
+            ?.name ?? "Seleziona un operatore"}
+        </Text>
+        <Text style={styles.summaryLine}>
+          Slot:{" "}
+          {bookingSlots.find((slot) => slot.id === slotId)?.timeLabel ??
+            "Seleziona uno slot"}
         </Text>
         <Text style={styles.notice}>
-          Demo locale: availability e lock slot verranno collegati al backend reale.
+          Demo locale: availability e lock slot verranno collegati al backend
+          reale.
         </Text>
         <View style={styles.buttonRow}>
-          <PrimaryButton label="Conferma booking" onPress={onBookingConfirmed} />
+          <PrimaryButton
+            label="Conferma booking"
+            onPress={onBookingConfirmed}
+          />
         </View>
       </SectionCard>
     </ScrollView>
@@ -165,9 +188,17 @@ type SelectableRowProps = {
   title: string;
 };
 
-function SelectableRow({ active, onPress, subtitle, title }: SelectableRowProps) {
+function SelectableRow({
+  active,
+  onPress,
+  subtitle,
+  title,
+}: SelectableRowProps) {
   return (
-    <Pressable onPress={onPress} style={[styles.row, active ? styles.rowActive : null]}>
+    <Pressable
+      onPress={onPress}
+      style={[styles.row, active ? styles.rowActive : null]}
+    >
       <View style={styles.rowContent}>
         <Text style={styles.rowTitle}>{title}</Text>
         <Text style={styles.rowSubtitle}>{subtitle}</Text>
@@ -188,12 +219,12 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.xxl,
   },
   row: {
-    alignItems: 'center',
+    alignItems: "center",
     borderColor: colors.border,
-    borderRadius: 18,
+    borderRadius: 12,
     borderWidth: 1,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    justifyContent: "space-between",
     marginBottom: spacing.sm,
     padding: spacing.md,
   },
@@ -208,7 +239,7 @@ const styles = StyleSheet.create({
   rowTitle: {
     color: colors.text,
     fontSize: 16,
-    fontWeight: '700',
+    fontWeight: "700",
   },
   rowSubtitle: {
     color: colors.textMuted,
@@ -217,7 +248,7 @@ const styles = StyleSheet.create({
   },
   radio: {
     borderColor: colors.border,
-    borderRadius: 999,
+    borderRadius: 12,
     borderWidth: 2,
     height: 20,
     width: 20,

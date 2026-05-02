@@ -1,7 +1,8 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from "react-native";
 
-import { colors } from '../theme/colors';
-import { spacing } from '../theme/spacing';
+import { colors } from "../theme/colors";
+import { spacing } from "../theme/spacing";
+import { textStyles } from "../theme/typography";
 
 type StatTileProps = {
   label: string;
@@ -21,21 +22,17 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: colors.surface,
     borderColor: colors.overlayBorder,
-    borderRadius: 22,
+    borderRadius: 12,
     borderWidth: 1,
     flex: 1,
     minHeight: 110,
     padding: spacing.md,
   },
   value: {
-    color: colors.brandInk,
-    fontSize: 28,
-    fontWeight: '800',
+    ...textStyles.metricValue,
   },
   label: {
-    color: colors.textMuted,
-    fontSize: 13,
-    lineHeight: 18,
+    ...textStyles.caption,
     marginTop: spacing.sm,
   },
 });
