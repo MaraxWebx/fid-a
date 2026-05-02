@@ -1,14 +1,14 @@
-import { Linking, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { useState } from 'react';
+import { Linking, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useState } from "react";
 
-import { PrimaryButton } from '../components/PrimaryButton';
-import { ScreenHeader } from '../components/ScreenHeader';
-import { SectionCard } from '../components/SectionCard';
-import { getCenterActivationStatus } from '../lib/api';
-import type { ActivationStatus, Center } from '../types/api';
-import { colors } from '../theme/colors';
-import { spacing } from '../theme/spacing';
-import { textStyles } from '../theme/typography';
+import { PrimaryButton } from "../components/PrimaryButton";
+import { ScreenHeader } from "../components/ScreenHeader";
+import { SectionCard } from "../components/SectionCard";
+import { getCenterActivationStatus } from "../lib/api";
+import type { ActivationStatus, Center } from "../types/api";
+import { colors } from "../theme/colors";
+import { spacing } from "../theme/spacing";
+import { textStyles } from "../theme/typography";
 
 type CenterPaymentScreenProps = {
   activation: ActivationStatus;
@@ -36,7 +36,7 @@ export function CenterPaymentScreen({
     try {
       const response = await getCenterActivationStatus(center.id);
       setStatus(response.activation);
-      if (response.activation.subscription_status === 'active') {
+      if (response.activation.subscription_status === "active") {
         onPaid(
           {
             ...center,
@@ -48,7 +48,11 @@ export function CenterPaymentScreen({
         );
       }
     } catch (checkError) {
-      setError(checkError instanceof Error ? checkError.message : 'Verifica pagamento non riuscita.');
+      setError(
+        checkError instanceof Error
+          ? checkError.message
+          : "Verifica pagamento non riuscita.",
+      );
     } finally {
       setIsChecking(false);
     }
@@ -62,19 +66,26 @@ export function CenterPaymentScreen({
         subtitle="Dopo il checkout attiviamo il centro e ti portiamo all'onboarding guidato del profilo."
       />
 
-      <SectionCard eyebrow="Abbonamento" title="Piano centro mensile" tone="sky">
+      <SectionCard
+        eyebrow="Abbonamento"
+        title="Piano centro mensile"
+        tone="sky"
+      >
         <Text style={styles.price}>EUR 20 / mese</Text>
-        <Text style={styles.body}>Il centro viene attivato appena Stripe conferma il pagamento.</Text>
+        <Text style={styles.body}>
+          Il centro viene attivato appena Stripe conferma il pagamento.
+        </Text>
       </SectionCard>
 
       <SectionCard eyebrow="Stato" title="Verifica attivazione">
         <Text style={styles.body}>{status.message}</Text>
-        <Text style={styles.meta}>Stato pagamento: {status.subscription_status}</Text>
+        <Text style={styles.meta}>
+          Stato pagamento: {status.subscription_status}
+        </Text>
         {error ? <Text style={styles.error}>{error}</Text> : null}
       </SectionCard>
 
       <View style={styles.actions}>
-        <PrimaryButton label="Torna indietro" onPress={onBack} variant="secondary" />
         <PrimaryButton
           disabled={!checkoutUrl}
           label="Apri checkout Stripe"
@@ -86,10 +97,15 @@ export function CenterPaymentScreen({
         />
         <PrimaryButton
           disabled={isChecking}
-          label={isChecking ? 'Verifica in corso...' : 'Ho pagato, continua'}
+          label={isChecking ? "Verifica in corso..." : "Ho pagato, continua"}
           onPress={() => {
             void handleVerify();
           }}
+          variant="secondary"
+        />
+        <PrimaryButton
+          label="Torna indietro"
+          onPress={onBack}
           variant="secondary"
         />
       </View>
@@ -119,7 +135,7 @@ const styles = StyleSheet.create({
     marginTop: spacing.md,
   },
   error: {
-    color: '#B05252',
+    color: "#B05252",
     fontSize: 14,
     marginTop: spacing.md,
   },

@@ -82,14 +82,14 @@ export function AuthScreen({
         {error ? <Text style={styles.error}>{error}</Text> : null}
         <View style={styles.actions}>
           <PrimaryButton
-            label="Torna indietro"
-            onPress={onBack}
-            variant="secondary"
-          />
-          <PrimaryButton
             disabled={isSubmitting}
             label={isSubmitting ? "Attendi..." : primaryLabel}
             onPress={onPrimaryAction}
+          />
+          <PrimaryButton
+            label="Torna indietro"
+            onPress={onBack}
+            variant="secondary"
           />
         </View>
       </View>

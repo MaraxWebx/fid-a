@@ -12,6 +12,7 @@
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",
     "expo": "~54.0.33",
+    "expo-linear-gradient": "^55.0.13",
     "expo-status-bar": "~3.0.9",
     "mongodb": "^7.2.0",
     "react": "19.1.0",
