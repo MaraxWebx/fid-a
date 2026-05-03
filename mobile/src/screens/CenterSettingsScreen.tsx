@@ -67,16 +67,22 @@ export function CenterSettingsScreen({
   useEffect(() => {
     let mounted = true;
 
-    Promise.all([getCenterServices(center.id), getCenterReviews(center.id)])
-      .then(([servicesResponse, reviewsResponse]) => {
-        if (mounted) {
-          setServices(servicesResponse);
-          setReviews(reviewsResponse);
+    Promise.allSettled([getCenterServices(center.id), getCenterReviews(center.id)])
+      .then(([servicesResult, reviewsResult]) => {
+        if (!mounted) {
+          return;
         }
-      })
-      .catch(() => {
-        if (mounted) {
+
+        if (servicesResult.status === 'fulfilled') {
+          setServices(servicesResult.value);
+        } else {
           setCatalogError('Impossibile caricare i trattamenti del centro.');
+        }
+
+        if (reviewsResult.status === 'fulfilled') {
+          setReviews(reviewsResult.value);
+        } else {
+          setReviews([]);
         }
       })
       .finally(() => {
