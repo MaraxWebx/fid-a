@@ -424,6 +424,14 @@ def build_booking_slot_list(center: dict, service: dict, target_date: date, *, e
     duration_minutes = service.get("duration") if isinstance(service.get("duration"), int) else 60
     slot_step = timedelta(minutes=15)
     start_dt, end_dt = day_window
+    now = datetime.now()
+    if target_date == now.date():
+        minimum_start = now.replace(second=0, microsecond=0)
+        remainder = minimum_start.minute % 15
+        if remainder:
+            minimum_start += timedelta(minutes=15 - remainder)
+        if minimum_start > start_dt:
+            start_dt = minimum_start
     cursor = start_dt
     slots = []
 
@@ -1210,6 +1218,21 @@ def get_center_clients(center_id: str):
         {"$sort": {"last_visit": -1}},
     ]
 
+    documents = list(db.bookings.aggregate(pipeline))
+
+    return [
+        {
+            "id": serialize_id(document["_id"]),
+            "name": document.get("name", "Cliente"),
+            "phone": document.get("phone", "n/a"),
+            "email": document.get("email"),
+            "bookings": document.get("bookings", 0),
+            "last_visit": document["last_visit"].strftime("%d/%m/%Y") if document.get("last_visit") else None,
+        }
+        for document in documents
+        if document.get("_id") is not None
+    ]
+
 
 @app.get("/api/centers/{center_id}/bookings")
 def get_center_bookings(center_id: str, date: str | None = Query(default=None)):
@@ -1236,20 +1259,6 @@ def get_center_bookings(center_id: str, date: str | None = Query(default=None)):
         }
         documents.append(serialize_booking(booking))
     return documents
-
-    documents = list(db.bookings.aggregate(pipeline))
-
-    return [
-        {
-            "id": serialize_id(document["_id"]),
-            "name": document.get("name", "Cliente"),
-            "phone": document.get("phone", "n/a"),
-            "email": document.get("email"),
-            "bookings": document.get("bookings", 0),
-            "last_visit": document["last_visit"].strftime("%d/%m/%Y") if document.get("last_visit") else None,
-        }
-        for document in documents
-    ]
 
 
 @app.post("/api/reviews")

@@ -22,7 +22,8 @@ export function CenterClientsScreen({ center }: CenterClientsScreenProps) {
 
     getCenterClients(center.id)
       .then((response) => {
-        if (mounted) setClients(response);
+        if (!mounted) return;
+        setClients(Array.isArray(response) ? response : []);
       })
       .catch(() => {
         if (mounted) setError('Impossibile caricare i clienti del centro.');
@@ -47,12 +48,15 @@ export function CenterClientsScreen({ center }: CenterClientsScreenProps) {
       <SectionCard eyebrow="Anagrafica" title={`${clients.length} clienti reali`}>
         {loading ? <ActivityIndicator color={colors.brand} /> : null}
         {error ? <Text style={styles.clientMeta}>{error}</Text> : null}
+        {!loading && !error && clients.length === 0 ? (
+          <Text style={styles.clientMeta}>Nessun cliente disponibile.</Text>
+        ) : null}
         {clients.map((client) => (
           <View key={client.id} style={styles.clientCard}>
-            <Text style={styles.clientName}>{client.name}</Text>
-            <Text style={styles.clientMeta}>{client.phone}</Text>
+            <Text style={styles.clientName}>{client.name || 'Cliente senza nome'}</Text>
+            <Text style={styles.clientMeta}>{client.phone || 'Telefono non disponibile'}</Text>
             <Text style={styles.clientMeta}>{client.email ?? 'Email non disponibile'}</Text>
-            <Text style={styles.clientBookings}>{client.bookings} prenotazioni totali</Text>
+            <Text style={styles.clientBookings}>{client.bookings ?? 0} prenotazioni totali</Text>
             <Text style={styles.clientMeta}>
               Ultima visita: {client.last_visit ?? 'non disponibile'}
             </Text>
