@@ -57,27 +57,8 @@ export function CenterDashboardScreen({ center }: CenterDashboardScreenProps) {
         subtitle="Panoramica generale dell'attivita con dati reali letti dal database."
       />
 
-      <View style={styles.heroCard}>
-        <View style={styles.heroMain}>
-          {center.branding.logo ? (
-            <Image source={{ uri: center.branding.logo }} style={styles.heroLogo} />
-          ) : (
-            <View style={styles.heroLogoFallback}>
-              <Text style={styles.heroLogoText}>
-                {center.name.slice(0, 2).toUpperCase()}
-              </Text>
-            </View>
-          )}
-          <View style={styles.heroCopy}>
-            <Text style={styles.heroTitle}>{center.name}</Text>
-            <Text style={styles.heroSubtitle}>
-              Colore brand applicato alla dashboard del centro.
-            </Text>
-          </View>
-        </View>
-      </View>
 
-      <SectionCard eyebrow="Oggi" title="KPI principali">
+      <SectionCard eyebrow="Oggi">
         {loading ? <ActivityIndicator color={colors.brand} /> : null}
         {error ? <Text style={styles.metricHint}>{error}</Text> : null}
         <View style={styles.metricsRow}>

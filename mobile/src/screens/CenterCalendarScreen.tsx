@@ -11,6 +11,7 @@ import {
 } from "react-native";
 
 import { PrimaryButton } from "../components/PrimaryButton";
+import { CenterBookingDetailModal } from "../components/CenterBookingDetailModal";
 import { ScreenHeader } from "../components/ScreenHeader";
 import { SectionCard } from "../components/SectionCard";
 import {
@@ -113,6 +114,7 @@ export function CenterCalendarScreen({
   const [bookingSlotsError, setBookingSlotsError] = useState<string | null>(null);
   const [selectedSlotId, setSelectedSlotId] = useState<string | null>(null);
   const [bookingActionLoading, setBookingActionLoading] = useState(false);
+  const [bookingDetailId, setBookingDetailId] = useState<string | null>(null);
 
   const selectedDay =
     calendarDays.find((day) => day.dateKey === selectedDateKey) ?? calendarDays[0];
@@ -458,7 +460,11 @@ export function CenterCalendarScreen({
 
                 <View style={styles.bookingList}>
                   {bookings.map((booking) => (
-                    <View key={booking.id} style={styles.bookingCard}>
+                    <Pressable
+                      key={booking.id}
+                      onPress={() => setBookingDetailId(booking.id)}
+                      style={styles.bookingCard}
+                    >
                       <View style={styles.bookingHead}>
                         <View style={styles.bookingMetaWrap}>
                           <Text style={styles.bookingTitle}>{booking.service_name}</Text>
@@ -481,12 +487,18 @@ export function CenterCalendarScreen({
 
                       {booking.status !== "canceled" ? (
                         <View style={styles.bookingActions}>
-                          <Pressable onPress={() => setBookingEditor(booking)}>
+                          <Pressable
+                            onPress={(event) => {
+                              event.stopPropagation();
+                              setBookingEditor(booking);
+                            }}
+                          >
                             <Text style={styles.linkAction}>Modifica slot</Text>
                           </Pressable>
                           <Pressable
                             disabled={bookingActionLoading}
-                            onPress={() => {
+                            onPress={(event) => {
+                              event.stopPropagation();
                               void handleCancelBooking(booking);
                             }}
                           >
@@ -496,7 +508,7 @@ export function CenterCalendarScreen({
                           </Pressable>
                         </View>
                       ) : null}
-                    </View>
+                    </Pressable>
                   ))}
                 </View>
               </View>
@@ -580,6 +592,11 @@ export function CenterCalendarScreen({
           </View>
         </View>
       </Modal>
+      <CenterBookingDetailModal
+        bookingId={bookingDetailId}
+        centerId={center.id}
+        onClose={() => setBookingDetailId(null)}
+      />
     </ScrollView>
   );
 }

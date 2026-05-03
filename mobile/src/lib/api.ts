@@ -1,6 +1,7 @@
 import type {
   AppNotification,
   Booking,
+  BookingDetail,
   BookingInput,
   BookingSlot,
   BookingUpdateInput,
@@ -19,10 +20,12 @@ import type {
   CenterServiceConfigInput,
   ClientAuthResponse,
   ClientRegistrationInput,
+  FavoriteCentersResponse,
   LoginInput,
   Review,
   ReviewInput,
   Service,
+  UserProfileInput,
   UserProfile,
 } from '../types/api';
 
@@ -100,9 +103,27 @@ export function getUserProfile(email: string) {
   return request<UserProfile>(`/api/users/profile?email=${query}`);
 }
 
+export function updateUserProfile(email: string, payload: UserProfileInput) {
+  const query = encodeURIComponent(email);
+  return patch<UserProfile, UserProfileInput>(`/api/users/profile?email=${query}`, payload);
+}
+
 export function getUserBookings(email: string) {
   const query = encodeURIComponent(email);
   return request<Booking[]>(`/api/users/bookings?email=${query}`);
+}
+
+export function getFavoriteCenters(email: string) {
+  const query = encodeURIComponent(email);
+  return request<FavoriteCentersResponse>(`/api/users/favorite-centers?email=${query}`);
+}
+
+export function toggleFavoriteCenter(email: string, centerId: string) {
+  const query = encodeURIComponent(email);
+  return patch<FavoriteCentersResponse, Record<string, never>>(
+    `/api/users/favorite-centers/${centerId}?email=${query}`,
+    {},
+  );
 }
 
 export function getCenterDashboard(centerId: string) {
@@ -116,6 +137,10 @@ export function getCenterClients(centerId: string) {
 export function getCenterBookings(centerId: string, date?: string) {
   const suffix = date ? `?date=${encodeURIComponent(date)}` : '';
   return request<Booking[]>(`/api/centers/${centerId}/bookings${suffix}`);
+}
+
+export function getCenterBookingDetail(centerId: string, bookingId: string) {
+  return request<BookingDetail>(`/api/centers/${centerId}/bookings/${bookingId}`);
 }
 
 export function registerCenter(payload: CenterRegistrationInput) {

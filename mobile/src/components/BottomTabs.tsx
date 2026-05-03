@@ -7,6 +7,7 @@ import { spacing } from "../theme/spacing";
 type TabIcon =
   | "home"
   | "calendar"
+  | "favorites"
   | "profile"
   | "appointments"
   | "clients"
@@ -69,6 +70,10 @@ const iconNameMap = {
   calendar: {
     active: "calendar",
     default: "calendar-outline",
+  },
+  favorites: {
+    active: "heart",
+    default: "heart-outline",
   },
   clients: {
     active: "people",

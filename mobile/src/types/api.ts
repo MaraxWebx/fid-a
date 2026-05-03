@@ -38,6 +38,7 @@ export type UserProfile = {
   role: string;
   phone?: string;
   center_id: string | null;
+  favorite_center_ids?: string[];
   created_at?: string;
 };
 
@@ -58,6 +59,11 @@ export type Booking = {
   time_label: string | null;
   price: number | null;
   created_at?: string;
+};
+
+export type BookingDetail = {
+  booking: Booking;
+  review: Review | null;
 };
 
 export type BookingSlot = {
@@ -114,6 +120,11 @@ export type ReviewInput = {
   user_email: string;
   rating: number;
   comment: string;
+};
+
+export type FavoriteCentersResponse = {
+  favorite_center_ids: string[];
+  centers: Center[];
 };
 
 export type DashboardMetric = {
@@ -196,6 +207,11 @@ export type CenterOnboardingResponse = {
 export type CenterProfileInput = {
   name: string;
   logo_url: string;
+};
+
+export type UserProfileInput = {
+  name: string;
+  phone: string;
 };
 
 export type CenterAvailabilityInput = {

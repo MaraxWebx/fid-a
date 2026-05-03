@@ -77,6 +77,7 @@ def serialize_user(document):
         "role": document.get("role"),
         "phone": document.get("phone"),
         "center_id": serialize_id(document.get("center_id")),
+        "favorite_center_ids": [serialize_id(center_id) for center_id in document.get("favorite_center_ids", [])],
         "created_at": document.get("created_at"),
     }
 
@@ -107,6 +108,9 @@ def serialize_booking(document):
 
 
 def serialize_review(document):
+    if not document:
+        return None
+
     return {
         "id": serialize_id(document["_id"]),
         "center_id": serialize_id(document.get("center_id")),
@@ -202,6 +206,11 @@ class CenterAvailabilityPayload(BaseModel):
 class CenterProfilePayload(BaseModel):
     name: str | None = Field(default=None, min_length=2, max_length=120)
     logo_url: str | None = None
+
+
+class UserProfilePayload(BaseModel):
+    name: str | None = Field(default=None, min_length=2, max_length=120)
+    phone: str | None = Field(default=None, max_length=32)
 
 
 class CenterServiceConfigItemPayload(BaseModel):
@@ -471,6 +480,18 @@ def validate_booking_actor(booking: dict, *, role: str, user_email: str | None =
         return db.centers.find_one({"_id": center_object_id})
 
     raise HTTPException(status_code=400, detail="Unsupported role.")
+
+
+def is_past_booking(booking: dict):
+    start_time = booking.get("start_time")
+    if not isinstance(start_time, datetime):
+        return False
+
+    now = datetime.now(UTC)
+    if start_time.tzinfo is None:
+        now = now.replace(tzinfo=None)
+
+    return start_time <= now
 
 
 def build_checkout_urls(request: Request):
@@ -754,6 +775,7 @@ def register_client(payload: ClientRegistrationPayload):
         "role": "client",
         "phone": payload.phone,
         "center_id": None,
+        "favorite_center_ids": [],
         "created_at": now,
         "updated_at": now,
     }
@@ -1047,6 +1069,26 @@ def get_profile(email: str = Query(default=DEFAULT_PROFILE_EMAIL)):
     return serialize_user(document)
 
 
+@app.patch("/api/users/profile")
+def update_user_profile(payload: UserProfilePayload, email: str = Query(default=DEFAULT_PROFILE_EMAIL)):
+    document = db.users.find_one({"email": email.strip().lower(), "role": "client"})
+
+    if not document:
+        raise HTTPException(status_code=404, detail="User not found.")
+
+    update_fields = {"updated_at": datetime.now(UTC)}
+
+    if payload.name is not None and payload.name.strip():
+        update_fields["name"] = payload.name.strip()
+
+    if payload.phone is not None:
+        update_fields["phone"] = payload.phone.strip()
+
+    db.users.update_one({"_id": document["_id"]}, {"$set": update_fields})
+    updated_user = db.users.find_one({"_id": document["_id"]})
+    return serialize_user(updated_user)
+
+
 @app.get("/api/users/bookings")
 def get_user_bookings(email: str = Query(default=DEFAULT_PROFILE_EMAIL)):
     user = db.users.find_one({"email": email})
@@ -1070,6 +1112,62 @@ def get_user_bookings(email: str = Query(default=DEFAULT_PROFILE_EMAIL)):
 
     documents = list(db.bookings.aggregate(pipeline))
     return [serialize_booking(document) for document in documents]
+
+
+@app.get("/api/users/favorite-centers")
+def get_user_favorite_centers(email: str = Query(default=DEFAULT_PROFILE_EMAIL)):
+    user = db.users.find_one({"email": email.strip().lower(), "role": "client"})
+
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found.")
+
+    favorite_ids = [
+        center_id
+        for center_id in user.get("favorite_center_ids", [])
+        if isinstance(center_id, ObjectId)
+    ]
+    centers = list(db.centers.find({"_id": {"$in": favorite_ids}}).sort("name", 1))
+
+    return {
+        "favorite_center_ids": [serialize_id(center_id) for center_id in favorite_ids],
+        "centers": [serialize_center(center) for center in centers],
+    }
+
+
+@app.patch("/api/users/favorite-centers/{center_id}")
+def toggle_user_favorite_center(center_id: str, email: str = Query(default=DEFAULT_PROFILE_EMAIL)):
+    user = db.users.find_one({"email": email.strip().lower(), "role": "client"})
+
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found.")
+
+    center_object_id = parse_object_id(center_id, "center id")
+    center = db.centers.find_one({"_id": center_object_id})
+
+    if not center:
+        raise HTTPException(status_code=404, detail="Center not found.")
+
+    favorite_ids = user.get("favorite_center_ids", [])
+    is_favorite = center_object_id in favorite_ids
+    update_operator = "$pull" if is_favorite else "$addToSet"
+
+    db.users.update_one(
+        {"_id": user["_id"]},
+        {
+            update_operator: {"favorite_center_ids": center_object_id},
+            "$set": {"updated_at": datetime.now(UTC)},
+        },
+    )
+    updated_user = db.users.find_one({"_id": user["_id"]})
+    updated_favorite_ids = [
+        item for item in updated_user.get("favorite_center_ids", []) if isinstance(item, ObjectId)
+    ]
+    centers = list(db.centers.find({"_id": {"$in": updated_favorite_ids}}).sort("name", 1))
+
+    return {
+        "favorite_center_ids": [serialize_id(item) for item in updated_favorite_ids],
+        "centers": [serialize_center(item) for item in centers],
+    }
 
 
 @app.get("/api/notifications")
@@ -1261,6 +1359,32 @@ def get_center_bookings(center_id: str, date: str | None = Query(default=None)):
     return documents
 
 
+@app.get("/api/centers/{center_id}/bookings/{booking_id}")
+def get_center_booking_detail(center_id: str, booking_id: str):
+    center_object_id = parse_object_id(center_id, "center id")
+    booking_object_id = parse_object_id(booking_id, "booking id")
+    booking = db.bookings.find_one({"_id": booking_object_id, "center_id": center_object_id})
+
+    if not booking:
+        raise HTTPException(status_code=404, detail="Booking not found.")
+
+    user = db.users.find_one({"_id": booking.get("user_id")})
+    service = db.services.find_one({"_id": booking.get("service_id")})
+    review = db.reviews.find_one({"booking_id": booking_object_id})
+
+    enriched_booking = {
+        **booking,
+        "service": service or {},
+        "client_name": (user or {}).get("name", "Cliente"),
+        "client_phone": (user or {}).get("phone", "n/a"),
+    }
+
+    return {
+        "booking": serialize_booking(enriched_booking),
+        "review": serialize_review(review),
+    }
+
+
 @app.post("/api/reviews")
 def create_review(payload: ReviewPayload):
     booking_object_id = parse_object_id(payload.booking_id, "booking id")
@@ -1383,6 +1507,9 @@ def update_booking(booking_id: str, payload: BookingUpdatePayload):
         center_id=payload.center_id,
     )
 
+    if payload.role == "client":
+        raise HTTPException(status_code=403, detail="Clients can only cancel bookings.")
+
     center_object_id = booking.get("center_id")
     center = db.centers.find_one({"_id": center_object_id})
     if not center:
@@ -1429,6 +1556,9 @@ def cancel_booking(booking_id: str, role: str = Query(...), user_email: str | No
         user_email=user_email,
         center_id=center_id,
     )
+
+    if role == "client" and is_past_booking(booking):
+        raise HTTPException(status_code=409, detail="Past bookings can no longer be managed.")
 
     db.bookings.update_one(
         {"_id": booking_object_id},

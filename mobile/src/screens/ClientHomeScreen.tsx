@@ -1,13 +1,22 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  Image,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from "react-native";
+import Ionicons from "react-native-vector-icons/Ionicons";
 
-import { getCenters, getUserBookings } from "../lib/api";
+import {
+  cancelBooking,
+  getCenters,
+  getFavoriteCenters,
+  getUserBookings,
+  toggleFavoriteCenter,
+} from "../lib/api";
 import type { Booking, Center } from "../types/api";
 import { PrimaryButton } from "../components/PrimaryButton";
 import { ScreenHeader } from "../components/ScreenHeader";
@@ -21,7 +30,6 @@ type ClientHomeScreenProps = {
   userEmail: string;
   selectedCenterId: string | null;
   onChangeCenter: (centerId: string) => void;
-  onOpenAppointments: () => void;
   onOpenBooking: (serviceId: string | null) => void;
 };
 
@@ -29,7 +37,6 @@ export function ClientHomeScreen({
   userName,
   selectedCenterId,
   onChangeCenter,
-  onOpenAppointments,
   onOpenBooking,
   userEmail,
 }: ClientHomeScreenProps) {
@@ -37,15 +44,19 @@ export function ClientHomeScreen({
   const [appointments, setAppointments] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [cancelingBookingId, setCancelingBookingId] = useState<string | null>(null);
+  const [favoriteCenterIds, setFavoriteCenterIds] = useState<string[]>([]);
+  const [favoriteLoadingId, setFavoriteLoadingId] = useState<string | null>(null);
 
   useEffect(() => {
     let mounted = true;
 
-    Promise.all([getCenters(), getUserBookings(userEmail)])
-      .then(([centersRes, bookingsRes]) => {
+    Promise.all([getCenters(), getUserBookings(userEmail), getFavoriteCenters(userEmail)])
+      .then(([centersRes, bookingsRes, favoritesRes]) => {
         if (!mounted) return;
         setCenters(centersRes);
         setAppointments(bookingsRes);
+        setFavoriteCenterIds(favoritesRes.favorite_center_ids);
       })
       .catch(() => {
         if (!mounted) return;
@@ -59,11 +70,6 @@ export function ClientHomeScreen({
       mounted = false;
     };
   }, [userEmail]);
-
-  const activeCenter = useMemo(
-    () => centers.find((c) => c.id === selectedCenterId) ?? null,
-    [centers, selectedCenterId],
-  );
 
   const sortedAppointments = useMemo(
     () =>
@@ -79,8 +85,50 @@ export function ClientHomeScreen({
 
   const nextAppointment = sortedAppointments.find((a) => {
     const time = a.start_time ? new Date(a.start_time).getTime() : Number.NaN;
-    return !isNaN(time) && time >= now;
+    return a.status !== "canceled" && !isNaN(time) && time > now;
   });
+
+  const handleCancelNextAppointment = async () => {
+    if (!nextAppointment) {
+      return;
+    }
+
+    setCancelingBookingId(nextAppointment.id);
+    setError(null);
+    try {
+      await cancelBooking({
+        bookingId: nextAppointment.id,
+        role: "client",
+        userEmail,
+      });
+      setAppointments((current) =>
+        current.map((appointment) =>
+          appointment.id === nextAppointment.id
+            ? { ...appointment, status: "canceled" }
+            : appointment,
+        ),
+      );
+    } catch {
+      setError("Annullamento prenotazione non riuscito.");
+    } finally {
+      setCancelingBookingId(null);
+    }
+  };
+
+  const handleToggleFavorite = async (centerId: string) => {
+    setFavoriteLoadingId(centerId);
+    setError(null);
+
+    try {
+      const response = await toggleFavoriteCenter(userEmail, centerId);
+      setFavoriteCenterIds(response.favorite_center_ids);
+    } catch {
+      setError("Impossibile aggiornare i preferiti.");
+    } finally {
+      setFavoriteLoadingId(null);
+    }
+  };
+
   return (
     <ScrollView contentContainerStyle={styles.content} style={styles.container}>
       <ScreenHeader
@@ -120,17 +168,75 @@ export function ClientHomeScreen({
           <Text style={styles.secondary}>Nessun appuntamento programmato</Text>
         )}
 
-        <View style={styles.actions}>
-          <PrimaryButton label="Prenota" onPress={() => onOpenBooking(null)} />
-          <PrimaryButton
-            label="Storico"
-            onPress={onOpenAppointments}
-            variant="secondary"
-          />
+        {nextAppointment ? (
+          <View style={styles.actions}>
+            <PrimaryButton
+              disabled={cancelingBookingId === nextAppointment.id}
+              label={
+                cancelingBookingId === nextAppointment.id
+                  ? "Annullamento..."
+                  : "Annulla prenotazione"
+              }
+              onPress={() => {
+                void handleCancelNextAppointment();
+              }}
+              variant="danger"
+            />
+          </View>
+        ) : null}
+      </SectionCard>
+
+      <SectionCard eyebrow="Centri estetici" title="Scegli i tuoi preferiti">
+        {centers.length === 0 && !loading ? (
+          <Text style={styles.secondary}>Nessun centro disponibile.</Text>
+        ) : null}
+        <View style={styles.centerList}>
+          {centers.map((center) => {
+            const isFavorite = favoriteCenterIds.includes(center.id);
+            const selected = center.id === selectedCenterId;
+
+            return (
+              <Pressable
+                key={center.id}
+                onPress={() => onChangeCenter(center.id)}
+                style={[styles.centerCard, selected ? styles.centerCardSelected : null]}
+              >
+                {center.branding.logo ? (
+                  <Image source={{ uri: center.branding.logo }} style={styles.centerLogo} />
+                ) : (
+                  <View style={styles.centerLogoFallback}>
+                    <Text style={styles.centerLogoText}>
+                      {center.name.slice(0, 2).toUpperCase()}
+                    </Text>
+                  </View>
+                )}
+                <View style={styles.centerMain}>
+                  <Text style={styles.centerName}>{center.name}</Text>
+                  <Text style={styles.centerMeta}>
+                    {(center.primary_services ?? []).slice(0, 2).join(" - ") ||
+                      "Centro estetico"}
+                  </Text>
+                </View>
+                <Pressable
+                  disabled={favoriteLoadingId === center.id}
+                  onPress={(event) => {
+                    event.stopPropagation();
+                    void handleToggleFavorite(center.id);
+                  }}
+                  style={styles.favoriteButton}
+                >
+                  <Ionicons
+                    color={isFavorite ? "#B42318" : colors.textMuted}
+                    name={isFavorite ? "heart" : "heart-outline"}
+                    size={22}
+                  />
+                </Pressable>
+              </Pressable>
+            );
+          })}
         </View>
       </SectionCard>
 
-      {/* 🧾 STORICO RAPIDO */}
       <SectionCard eyebrow="Ultime prenotazioni" title="Storico recente">
         {sortedAppointments.slice(0, 3).map((appointment) => (
           <View key={appointment.id} style={styles.card}>
@@ -192,6 +298,62 @@ const styles = StyleSheet.create({
   actions: {
     marginTop: spacing.lg,
     gap: spacing.sm,
+  },
+  centerList: {
+    gap: spacing.sm,
+  },
+  centerCard: {
+    alignItems: "center",
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: 14,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: spacing.md,
+    padding: spacing.md,
+  },
+  centerCardSelected: {
+    backgroundColor: colors.surfaceSky,
+    borderColor: colors.brand,
+  },
+  centerLogo: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 16,
+    height: 48,
+    width: 48,
+  },
+  centerLogoFallback: {
+    alignItems: "center",
+    backgroundColor: colors.brand,
+    borderRadius: 16,
+    height: 48,
+    justifyContent: "center",
+    width: 48,
+  },
+  centerLogoText: {
+    color: "#FFFFFF",
+    fontSize: 15,
+    fontWeight: "800",
+  },
+  centerMain: {
+    flex: 1,
+  },
+  centerName: {
+    color: colors.text,
+    fontSize: 16,
+    fontWeight: "800",
+  },
+  centerMeta: {
+    color: colors.textMuted,
+    fontSize: 13,
+    marginTop: spacing.xs,
+  },
+  favoriteButton: {
+    alignItems: "center",
+    borderRadius: 18,
+    height: 36,
+    justifyContent: "center",
+    width: 36,
   },
 
   error: {

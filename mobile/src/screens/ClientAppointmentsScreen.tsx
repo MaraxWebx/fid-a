@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
-  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -9,16 +8,8 @@ import {
   View,
 } from "react-native";
 
-import {
-  cancelBooking,
-  getCenterBookingSlots,
-  getUserBookings,
-  updateBooking,
-} from "../lib/api";
-import { buildUpcomingDateOptions } from "../lib/date";
-import type { Booking, BookingSlot } from "../types/api";
-import { MiniDateCalendar } from "../components/MiniDateCalendar";
-import { PrimaryButton } from "../components/PrimaryButton";
+import { cancelBooking, getUserBookings } from "../lib/api";
+import type { Booking } from "../types/api";
 import { ScreenHeader } from "../components/ScreenHeader";
 import { SectionCard } from "../components/SectionCard";
 import { colors } from "../theme/colors";
@@ -34,18 +25,8 @@ export function ClientAppointmentsScreen({
   const [appointments, setAppointments] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
-  const [selectedDateKey, setSelectedDateKey] = useState(
-    buildUpcomingDateOptions()[0]?.key ?? "",
-  );
-  const [slots, setSlots] = useState<BookingSlot[]>([]);
-  const [slotsLoading, setSlotsLoading] = useState(false);
-  const [slotsError, setSlotsError] = useState<string | null>(null);
-  const [selectedSlotId, setSelectedSlotId] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
-
-  const upcomingDates = useMemo(() => buildUpcomingDateOptions(), []);
 
   const loadAppointments = async () => {
     setLoading(true);
@@ -64,40 +45,6 @@ export function ClientAppointmentsScreen({
     void loadAppointments();
   }, [profileEmail]);
 
-  useEffect(() => {
-    if (!selectedBooking || !selectedDateKey) {
-      setSlots([]);
-      return;
-    }
-
-    let mounted = true;
-    setSlotsLoading(true);
-    setSlotsError(null);
-    setSelectedSlotId(null);
-
-    getCenterBookingSlots(selectedBooking.center_id, {
-      serviceId: selectedBooking.service_id,
-      date: selectedDateKey,
-      bookingId: selectedBooking.id,
-    })
-      .then((response) => {
-        if (!mounted) return;
-        setSlots(response.slots);
-      })
-      .catch(() => {
-        if (!mounted) return;
-        setSlots([]);
-        setSlotsError("Nessuno slot disponibile per la data selezionata.");
-      })
-      .finally(() => {
-        if (mounted) setSlotsLoading(false);
-      });
-
-    return () => {
-      mounted = false;
-    };
-  }, [selectedBooking, selectedDateKey]);
-
   const sortedAppointments = useMemo(
     () =>
       [...appointments].sort((left, right) => {
@@ -110,44 +57,12 @@ export function ClientAppointmentsScreen({
     [appointments],
   );
 
-  const openEditModal = (booking: Booking) => {
-    setSelectedBooking(booking);
-    setSelectedDateKey(buildUpcomingDateOptions()[0]?.key ?? "");
-    setSelectedSlotId(null);
-    setSlots([]);
-    setSlotsError(null);
-    setActionError(null);
-  };
-
-  const handleUpdateBooking = async () => {
-    if (!selectedBooking || !selectedSlotId) {
-      setActionError("Seleziona una nuova disponibilita.");
+  const handleCancelBooking = async (booking: Booking) => {
+    if (!canManageBooking(booking)) {
+      setActionError("Le prenotazioni passate non possono piu essere gestite.");
       return;
     }
 
-    setActionLoading(true);
-    setActionError(null);
-    try {
-      await updateBooking(selectedBooking.id, {
-        role: "client",
-        user_email: profileEmail,
-        service_id: selectedBooking.service_id,
-        slot_id: selectedSlotId,
-      });
-      setSelectedBooking(null);
-      await loadAppointments();
-    } catch (updateError) {
-      setActionError(
-        updateError instanceof Error
-          ? updateError.message
-          : "Modifica prenotazione non riuscita.",
-      );
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
-  const handleCancelBooking = async (booking: Booking) => {
     setActionLoading(true);
     setActionError(null);
     try {
@@ -156,9 +71,6 @@ export function ClientAppointmentsScreen({
         role: "client",
         userEmail: profileEmail,
       });
-      if (selectedBooking?.id === booking.id) {
-        setSelectedBooking(null);
-      }
       await loadAppointments();
     } catch (cancelError) {
       setActionError(
@@ -176,12 +88,13 @@ export function ClientAppointmentsScreen({
       <ScreenHeader
         eyebrow="Prenotazioni"
         title="Storico cliente"
-        subtitle="Modifica o annulla gli appuntamenti usando solo le disponibilita reali del centro."
+        subtitle="Puoi annullare solo gli appuntamenti futuri. Le prenotazioni passate restano nello storico."
       />
 
       <SectionCard eyebrow="Storico completo" title={`${appointments.length} prenotazioni`}>
         {loading ? <ActivityIndicator color={colors.brand} /> : null}
         {error ? <Text style={styles.meta}>{error}</Text> : null}
+        {actionError ? <Text style={styles.error}>{actionError}</Text> : null}
         {!loading && appointments.length === 0 ? (
           <Text style={styles.meta}>Non ci sono ancora prenotazioni.</Text>
         ) : null}
@@ -193,112 +106,32 @@ export function ClientAppointmentsScreen({
             onCancel={() => {
               void handleCancelBooking(appointment);
             }}
-            onEdit={() => openEditModal(appointment)}
           />
         ))}
       </SectionCard>
-
-      <Modal
-        animationType="slide"
-        onRequestClose={() => setSelectedBooking(null)}
-        transparent
-        visible={selectedBooking !== null}
-      >
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modalCard}>
-            <View style={styles.modalHeader}>
-              <View>
-                <Text style={styles.modalEyebrow}>Modifica prenotazione</Text>
-                <Text style={styles.modalTitle}>
-                  {selectedBooking?.service_name ?? "Appuntamento"}
-                </Text>
-              </View>
-              <Pressable onPress={() => setSelectedBooking(null)}>
-                <Text style={styles.modalClose}>Chiudi</Text>
-              </Pressable>
-            </View>
-
-            <Text style={styles.modalMeta}>
-              Prenotazione attuale: {selectedBooking?.date_label} -{" "}
-              {selectedBooking?.time_label}
-            </Text>
-
-            <Text style={styles.sectionLabel}>Nuovo giorno</Text>
-            <MiniDateCalendar
-              dates={upcomingDates}
-              onSelectDate={setSelectedDateKey}
-              selectedDateKey={selectedDateKey}
-            />
-
-            <Text style={styles.sectionLabel}>Nuovo orario</Text>
-            {slotsLoading ? <ActivityIndicator color={colors.brand} /> : null}
-            {slotsError ? <Text style={styles.meta}>{slotsError}</Text> : null}
-            {!slotsLoading && slots.length === 0 && !slotsError ? (
-              <Text style={styles.meta}>Nessuno slot disponibile.</Text>
-            ) : null}
-            <View style={styles.slotList}>
-              {slots.map((slot) => (
-                <Pressable
-                  key={slot.id}
-                  onPress={() => setSelectedSlotId(slot.id)}
-                  style={[
-                    styles.slotRow,
-                    selectedSlotId === slot.id && styles.slotRowActive,
-                  ]}
-                >
-                  <View>
-                    <Text style={styles.slotTitle}>{slot.time_label}</Text>
-                    <Text style={styles.slotMeta}>{slot.availability_label}</Text>
-                  </View>
-                  <View
-                    style={[
-                      styles.radio,
-                      selectedSlotId === slot.id && styles.radioActive,
-                    ]}
-                  />
-                </Pressable>
-              ))}
-            </View>
-
-            {actionError ? <Text style={styles.error}>{actionError}</Text> : null}
-
-            <View style={styles.modalActions}>
-              <PrimaryButton
-                label="Annulla prenotazione"
-                onPress={() => {
-                  if (selectedBooking) {
-                    void handleCancelBooking(selectedBooking);
-                  }
-                }}
-                variant="secondary"
-              />
-              <PrimaryButton
-                disabled={actionLoading || !selectedSlotId}
-                label={actionLoading ? "Salvataggio..." : "Salva modifica"}
-                onPress={() => {
-                  void handleUpdateBooking();
-                }}
-              />
-            </View>
-          </View>
-        </View>
-      </Modal>
     </ScrollView>
   );
+}
+
+function canManageBooking(booking: Booking) {
+  if (booking.status === "canceled" || !booking.start_time) {
+    return false;
+  }
+
+  const startTime = new Date(booking.start_time).getTime();
+  return !Number.isNaN(startTime) && startTime > Date.now();
 }
 
 function AppointmentRow({
   actionLoading,
   appointment,
   onCancel,
-  onEdit,
 }: {
   actionLoading: boolean;
   appointment: Booking;
   onCancel: () => void;
-  onEdit: () => void;
 }) {
-  const isCanceled = appointment.status === "canceled";
+  const isManageable = canManageBooking(appointment);
 
   return (
     <View style={styles.row}>
@@ -315,16 +148,15 @@ function AppointmentRow({
         <Text style={styles.price}>
           {appointment.price !== null ? `EUR ${appointment.price}` : "n/a"}
         </Text>
-        {!isCanceled ? (
+        {isManageable ? (
           <View style={styles.inlineActions}>
-            <Pressable onPress={onEdit}>
-              <Text style={styles.linkAction}>Modifica</Text>
-            </Pressable>
             <Pressable disabled={actionLoading} onPress={onCancel}>
               <Text style={[styles.linkAction, styles.linkDanger]}>Annulla</Text>
             </Pressable>
           </View>
-        ) : null}
+        ) : (
+          <Text style={styles.lockedAction}>Non gestibile</Text>
+        )}
       </View>
     </View>
   );
@@ -382,101 +214,14 @@ const styles = StyleSheet.create({
   linkDanger: {
     color: "#B42318",
   },
-  modalBackdrop: {
-    alignItems: "center",
-    backgroundColor: "rgba(17,24,39,0.35)",
-    flex: 1,
-    justifyContent: "flex-end",
-    padding: spacing.lg,
-  },
-  modalCard: {
-    backgroundColor: colors.surface,
-    borderRadius: 24,
-    maxWidth: 560,
-    padding: spacing.lg,
-    width: "100%",
-  },
-  modalHeader: {
-    alignItems: "center",
-    flexDirection: "row",
-    justifyContent: "space-between",
-  },
-  modalEyebrow: {
-    color: colors.textMuted,
-    fontSize: 12,
-    fontWeight: "700",
-    letterSpacing: 1,
-    textTransform: "uppercase",
-  },
-  modalTitle: {
-    color: colors.brandInk,
-    fontSize: 22,
-    fontWeight: "800",
-    marginTop: spacing.xs,
-  },
-  modalClose: {
-    color: colors.brandDark,
-    fontSize: 14,
-    fontWeight: "700",
-  },
-  modalMeta: {
+  lockedAction: {
     color: colors.textMuted,
     fontSize: 14,
-    marginTop: spacing.md,
-  },
-  sectionLabel: {
-    color: colors.text,
-    fontSize: 15,
-    fontWeight: "700",
-    marginTop: spacing.lg,
-    marginBottom: spacing.sm,
-  },
-  slotList: {
-    gap: spacing.sm,
-    marginTop: spacing.sm,
-  },
-  slotRow: {
-    alignItems: "center",
-    backgroundColor: colors.surfaceSoft,
-    borderColor: colors.border,
-    borderRadius: 14,
-    borderWidth: 1,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    padding: spacing.md,
-  },
-  slotRowActive: {
-    backgroundColor: colors.surfaceSky,
-    borderColor: colors.brand,
-  },
-  slotTitle: {
-    color: colors.text,
-    fontSize: 15,
-    fontWeight: "700",
-  },
-  slotMeta: {
-    color: colors.textMuted,
-    fontSize: 13,
-    marginTop: spacing.xs,
-  },
-  radio: {
-    borderColor: colors.border,
-    borderRadius: 12,
-    borderWidth: 2,
-    height: 20,
-    width: 20,
-  },
-  radioActive: {
-    backgroundColor: colors.brand,
-    borderColor: colors.brand,
+    fontWeight: "600",
   },
   error: {
     color: "#B42318",
     fontSize: 14,
     marginTop: spacing.md,
-  },
-  modalActions: {
-    gap: spacing.md,
-    marginTop: spacing.lg,
   },
 });

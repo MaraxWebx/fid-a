@@ -7,7 +7,7 @@ import { textStyles } from "../theme/typography";
 
 type SectionCardProps = PropsWithChildren<{
   eyebrow?: string;
-  title: string;
+  title?: string;
   tone?: "default" | "sky" | "sand";
 }>;
 
@@ -26,7 +26,7 @@ export function SectionCard({
       ]}
     >
       {eyebrow ? <Text style={styles.eyebrow}>{eyebrow}</Text> : null}
-      <Text style={styles.title}>{title}</Text>
+      {title ? <Text style={styles.title}>{title}</Text> : null}
       <View style={styles.content}>{children}</View>
     </View>
   );

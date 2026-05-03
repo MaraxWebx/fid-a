@@ -13,6 +13,7 @@ import {
 import Ionicons from "react-native-vector-icons/Ionicons";
 
 import { BottomTabs } from "./src/components/BottomTabs";
+import { CenterBookingDetailModal } from "./src/components/CenterBookingDetailModal";
 import { PrimaryButton } from "./src/components/PrimaryButton";
 import { AuthScreen } from "./src/screens/AuthScreen";
 import { CenterOnboardingScreen } from "./src/screens/CenterOnboardingScreen";
@@ -20,6 +21,7 @@ import { CenterPaymentScreen } from "./src/screens/CenterPaymentScreen";
 import { CenterRegistrationScreen } from "./src/screens/CenterRegistrationScreen";
 import { ClientAppointmentsScreen } from "./src/screens/ClientAppointmentsScreen";
 import { ClientBookingScreen } from "./src/screens/ClientBookingScreen";
+import { ClientFavoritesScreen } from "./src/screens/ClientFavoritesScreen";
 import { ClientHomeScreen } from "./src/screens/ClientHomeScreen";
 import { ClientProfileScreen } from "./src/screens/ClientProfileScreen";
 import { ClientRegistrationScreen } from "./src/screens/ClientRegistrationScreen";
@@ -43,7 +45,7 @@ import type {
   UserProfile,
 } from "./src/types/api";
 
-type ClientTab = "home" | "appointments" | "profile" | "booking";
+type ClientTab = "home" | "appointments" | "favorites" | "profile" | "booking";
 type CenterTab = "home" | "calendar" | "clients" | "settings";
 type PublicRoute =
   | "landing"
@@ -90,6 +92,7 @@ export default function App() {
   const [reviewModalOpen, setReviewModalOpen] = useState(false);
   const [selectedReviewNotification, setSelectedReviewNotification] =
     useState<AppNotification | null>(null);
+  const [selectedCenterBookingId, setSelectedCenterBookingId] = useState<string | null>(null);
   const [reviewRating, setReviewRating] = useState(5);
   const [reviewComment, setReviewComment] = useState("");
   const [reviewSubmitting, setReviewSubmitting] = useState(false);
@@ -109,6 +112,12 @@ export default function App() {
   const handleCenterSessionUpdated = (center: Center, activation: ActivationStatus) => {
     setSession((current) =>
       current?.role === "center" ? { role: "center", center, activation } : current,
+    );
+  };
+
+  const handleClientProfileUpdated = (user: UserProfile) => {
+    setSession((current) =>
+      current?.role === "client" ? { role: "client", user } : current,
     );
   };
 
@@ -153,6 +162,21 @@ export default function App() {
     setReviewRating(5);
     setReviewComment("");
     setReviewModalOpen(true);
+  };
+
+  const handleOpenCenterBookingNotification = (notification: AppNotification) => {
+    if (!session || session.role !== "center" || notification.type !== "new_booking") {
+      return;
+    }
+
+    const bookingId = String(notification.metadata?.booking_id ?? "");
+    if (!bookingId) {
+      return;
+    }
+
+    setNotificationsOpen(false);
+    setCenterTab("calendar");
+    setSelectedCenterBookingId(bookingId);
   };
 
   const handleSubmitReview = async () => {
@@ -410,7 +434,6 @@ export default function App() {
               userEmail={session.user.email}
               selectedCenterId={selectedCenterId}
               onChangeCenter={setSelectedCenterId}
-              onOpenAppointments={() => setClientTab("appointments")}
               onOpenBooking={(serviceId) => {
                 setSelectedServiceId(serviceId);
                 setClientTab("booking");
@@ -428,9 +451,17 @@ export default function App() {
           {clientTab === "appointments" ? (
             <ClientAppointmentsScreen profileEmail={session.user.email} />
           ) : null}
+          {clientTab === "favorites" ? (
+            <ClientFavoritesScreen
+              profileEmail={session.user.email}
+              selectedCenterId={selectedCenterId}
+              onSelectCenter={setSelectedCenterId}
+            />
+          ) : null}
           {clientTab === "profile" ? (
             <ClientProfileScreen
               onLogout={handleLogout}
+              onProfileUpdated={handleClientProfileUpdated}
               profileEmail={session.user.email}
             />
           ) : null}
@@ -438,6 +469,7 @@ export default function App() {
             items={[
               { key: "home", label: "Home", icon: "home" },
               { key: "appointments", label: "Prenot.", icon: "appointments" },
+              { key: "favorites", label: "Preferiti", icon: "favorites" },
               { key: "profile", label: "Profilo", icon: "profile" },
             ]}
             activeKey={clientTab === "booking" ? "home" : clientTab}
@@ -509,9 +541,16 @@ export default function App() {
                 <Text style={styles.modalMeta}>Nessuna notifica disponibile.</Text>
               ) : null}
               {notifications.map((item) => (
-                <View key={item.id} style={styles.notificationRow}>
+                <Pressable
+                  key={item.id}
+                  onPress={() => handleOpenCenterBookingNotification(item)}
+                  style={styles.notificationRow}
+                >
                   <Text style={styles.notificationTitle}>{item.title}</Text>
                   <Text style={styles.notificationMessage}>{item.message}</Text>
+                  {session.role === "center" && item.type === "new_booking" ? (
+                    <Text style={styles.notificationHint}>Apri scheda prenotazione</Text>
+                  ) : null}
                   {session.role === "client" && item.type === "review_prompt" ? (
                     <View style={styles.notificationActionWrap}>
                       <PrimaryButton
@@ -520,7 +559,7 @@ export default function App() {
                       />
                     </View>
                   ) : null}
-                </View>
+                </Pressable>
               ))}
             </ScrollView>
           </View>
@@ -578,6 +617,13 @@ export default function App() {
           </View>
         </View>
       </Modal>
+      {session.role === "center" ? (
+        <CenterBookingDetailModal
+          bookingId={selectedCenterBookingId}
+          centerId={session.center.id}
+          onClose={() => setSelectedCenterBookingId(null)}
+        />
+      ) : null}
     </SafeAreaView>
   );
 }
@@ -666,6 +712,12 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontSize: 14,
     marginTop: 6,
+  },
+  notificationHint: {
+    color: colors.brandDark,
+    fontSize: 13,
+    fontWeight: "700",
+    marginTop: 10,
   },
   notificationActionWrap: {
     marginTop: 12,
