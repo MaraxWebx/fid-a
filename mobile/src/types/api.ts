@@ -127,6 +127,24 @@ export type FavoriteCentersResponse = {
   centers: Center[];
 };
 
+export type BeautyStatItem = {
+  count: number;
+  label: string;
+  percent: number;
+};
+
+export type UserBeautyStats = {
+  summary: {
+    total_treatments: number;
+    top_treatment: string;
+    top_category: string;
+    top_time_slot: string;
+  };
+  treatments: BeautyStatItem[];
+  categories: BeautyStatItem[];
+  time_slots: BeautyStatItem[];
+};
+
 export type DashboardMetric = {
   id: string;
   label: string;

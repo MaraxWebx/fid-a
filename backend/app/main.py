@@ -124,6 +124,83 @@ def serialize_review(document):
     }
 
 
+def build_client_booking_stats(user_id: ObjectId, center_id: ObjectId | None = None):
+    now = datetime.now(UTC).replace(tzinfo=None)
+    match_query = {
+        "user_id": user_id,
+        "status": {"$ne": "canceled"},
+        "start_time": {"$lte": now},
+    }
+    if center_id is not None:
+        match_query["center_id"] = center_id
+
+    pipeline = [
+        {"$match": match_query},
+        {
+            "$lookup": {
+                "from": "services",
+                "localField": "service_id",
+                "foreignField": "_id",
+                "as": "service",
+            }
+        },
+        {"$unwind": {"path": "$service", "preserveNullAndEmptyArrays": True}},
+    ]
+    bookings = list(db.bookings.aggregate(pipeline))
+
+    treatment_counts: dict[str, int] = {}
+    category_counts: dict[str, int] = {}
+    time_counts: dict[str, int] = {}
+
+    for booking in bookings:
+        service = booking.get("service") or {}
+        treatment_label = booking.get("service_name") or service.get("name") or "Trattamento"
+        category_label = service.get("category") or "Senza categoria"
+        start_time = booking.get("start_time")
+
+        if isinstance(start_time, datetime):
+            hour = start_time.hour
+            if hour < 12:
+                time_label = "Mattina"
+            elif hour < 18:
+                time_label = "Pomeriggio"
+            else:
+                time_label = "Sera"
+        else:
+            time_label = "Orario non disponibile"
+
+        treatment_counts[treatment_label] = treatment_counts.get(treatment_label, 0) + 1
+        category_counts[category_label] = category_counts.get(category_label, 0) + 1
+        time_counts[time_label] = time_counts.get(time_label, 0) + 1
+
+    def as_stats(counts: dict[str, int]):
+        max_count = max(counts.values(), default=1)
+        return [
+            {
+                "label": label,
+                "count": count,
+                "percent": max(8, round((count / max_count) * 100)),
+            }
+            for label, count in sorted(counts.items(), key=lambda item: item[1], reverse=True)
+        ]
+
+    treatments = as_stats(treatment_counts)
+    categories = as_stats(category_counts)
+    time_slots = as_stats(time_counts)
+
+    return {
+        "summary": {
+            "total_treatments": len(bookings),
+            "top_treatment": treatments[0]["label"] if treatments else "n/a",
+            "top_category": categories[0]["label"] if categories else "n/a",
+            "top_time_slot": time_slots[0]["label"] if time_slots else "n/a",
+        },
+        "treatments": treatments,
+        "categories": categories,
+        "time_slots": time_slots,
+    }
+
+
 def serialize_notification(document):
     return {
         "id": serialize_id(document["_id"]),
@@ -1114,6 +1191,16 @@ def get_user_bookings(email: str = Query(default=DEFAULT_PROFILE_EMAIL)):
     return [serialize_booking(document) for document in documents]
 
 
+@app.get("/api/users/stats")
+def get_user_stats(email: str = Query(default=DEFAULT_PROFILE_EMAIL)):
+    user = db.users.find_one({"email": email.strip().lower(), "role": "client"})
+
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found.")
+
+    return build_client_booking_stats(user["_id"])
+
+
 @app.get("/api/users/favorite-centers")
 def get_user_favorite_centers(email: str = Query(default=DEFAULT_PROFILE_EMAIL)):
     user = db.users.find_one({"email": email.strip().lower(), "role": "client"})
@@ -1357,6 +1444,20 @@ def get_center_bookings(center_id: str, date: str | None = Query(default=None)):
         }
         documents.append(serialize_booking(booking))
     return documents
+
+
+@app.get("/api/centers/{center_id}/user-stats")
+def get_center_user_stats(center_id: str, email: str = Query(default=DEFAULT_PROFILE_EMAIL)):
+    center_object_id = parse_object_id(center_id, "center id")
+    center = db.centers.find_one({"_id": center_object_id})
+    if not center:
+        raise HTTPException(status_code=404, detail="Center not found.")
+
+    user = db.users.find_one({"email": email.strip().lower(), "role": "client"})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found.")
+
+    return build_client_booking_stats(user["_id"], center_object_id)
 
 
 @app.get("/api/centers/{center_id}/bookings/{booking_id}")

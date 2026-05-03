@@ -1,5 +1,6 @@
 import type {
   AppNotification,
+  UserBeautyStats,
   Booking,
   BookingDetail,
   BookingInput,
@@ -113,6 +114,11 @@ export function getUserBookings(email: string) {
   return request<Booking[]>(`/api/users/bookings?email=${query}`);
 }
 
+export function getUserStats(email: string) {
+  const query = encodeURIComponent(email);
+  return request<UserBeautyStats>(`/api/users/stats?email=${query}`);
+}
+
 export function getFavoriteCenters(email: string) {
   const query = encodeURIComponent(email);
   return request<FavoriteCentersResponse>(`/api/users/favorite-centers?email=${query}`);
@@ -141,6 +147,11 @@ export function getCenterBookings(centerId: string, date?: string) {
 
 export function getCenterBookingDetail(centerId: string, bookingId: string) {
   return request<BookingDetail>(`/api/centers/${centerId}/bookings/${bookingId}`);
+}
+
+export function getCenterUserStats(centerId: string, email: string) {
+  const query = encodeURIComponent(email);
+  return request<UserBeautyStats>(`/api/centers/${centerId}/user-stats?email=${query}`);
 }
 
 export function registerCenter(payload: CenterRegistrationInput) {

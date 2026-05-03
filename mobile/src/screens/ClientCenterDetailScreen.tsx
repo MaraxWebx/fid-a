@@ -13,6 +13,7 @@ import Ionicons from "react-native-vector-icons/Ionicons";
 import {
   getCenterReviews,
   getCenterServices,
+  getCenterUserStats,
   getFavoriteCenters,
   getUserBookings,
   toggleFavoriteCenter,
@@ -20,7 +21,14 @@ import {
 import { PrimaryButton } from "../components/PrimaryButton";
 import { colors } from "../theme/colors";
 import { spacing } from "../theme/spacing";
-import type { Booking, Center, Review, Service } from "../types/api";
+import type {
+  BeautyStatItem,
+  Booking,
+  Center,
+  Review,
+  Service,
+  UserBeautyStats,
+} from "../types/api";
 
 type ClientCenterDetailScreenProps = {
   center: Center | null;
@@ -44,6 +52,7 @@ export function ClientCenterDetailScreen({
   const [services, setServices] = useState<Service[]>([]);
   const [reviews, setReviews] = useState<Review[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
+  const [stats, setStats] = useState<UserBeautyStats | null>(null);
   const [favoriteCenterIds, setFavoriteCenterIds] = useState<string[]>([]);
   const [favoriteLoading, setFavoriteLoading] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -63,16 +72,26 @@ export function ClientCenterDetailScreen({
       getCenterReviews(center.id),
       getUserBookings(userEmail),
       getFavoriteCenters(userEmail),
+      getCenterUserStats(center.id, userEmail),
     ])
-      .then(([servicesResponse, reviewsResponse, bookingsResponse, favoritesResponse]) => {
-        if (!mounted) return;
-        setServices(servicesResponse);
-        setReviews(reviewsResponse);
-        setBookings(
-          bookingsResponse.filter((booking) => booking.center_id === center.id),
-        );
-        setFavoriteCenterIds(favoritesResponse.favorite_center_ids);
-      })
+      .then(
+        ([
+          servicesResponse,
+          reviewsResponse,
+          bookingsResponse,
+          favoritesResponse,
+          statsResponse,
+        ]) => {
+          if (!mounted) return;
+          setServices(servicesResponse);
+          setReviews(reviewsResponse);
+          setBookings(
+            bookingsResponse.filter((booking) => booking.center_id === center.id),
+          );
+          setFavoriteCenterIds(favoritesResponse.favorite_center_ids);
+          setStats(statsResponse);
+        },
+      )
       .catch(() => {
         if (mounted) setError("Impossibile caricare le informazioni del centro.");
       })
@@ -223,6 +242,46 @@ export function ClientCenterDetailScreen({
       </View>
 
       <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Statistiche in questo centro</Text>
+        {!stats || stats.summary.total_treatments === 0 ? (
+          <Text style={styles.empty}>
+            Le statistiche compariranno dopo i primi trattamenti effettuati.
+          </Text>
+        ) : (
+          <>
+            <View style={styles.statsGrid}>
+              <View style={styles.statTile}>
+                <Text style={styles.statValue}>{stats.summary.total_treatments}</Text>
+                <Text style={styles.statLabel}>Trattamenti effettuati</Text>
+              </View>
+              <View style={styles.statTile}>
+                <Text style={styles.statValue}>{stats.summary.top_treatment}</Text>
+                <Text style={styles.statLabel}>Piu prenotato</Text>
+              </View>
+              <View style={styles.statTile}>
+                <Text style={styles.statValue}>{stats.summary.top_time_slot}</Text>
+                <Text style={styles.statLabel}>Orario preferito</Text>
+              </View>
+            </View>
+
+            <Text style={styles.chartTitle}>Per trattamento</Text>
+            <View style={styles.chartList}>
+              {stats.treatments.map((item) => (
+                <StatBar key={item.label} item={item} />
+              ))}
+            </View>
+
+            <Text style={styles.chartTitle}>Per fascia oraria</Text>
+            <View style={styles.chartList}>
+              {stats.time_slots.map((item) => (
+                <StatBar key={item.label} item={item} />
+              ))}
+            </View>
+          </>
+        )}
+      </View>
+
+      <View style={styles.section}>
         <Text style={styles.sectionTitle}>Storico prenotazioni</Text>
         {bookings.length === 0 ? (
           <Text style={styles.empty}>Non hai ancora prenotazioni in questo centro.</Text>
@@ -255,6 +314,20 @@ export function ClientCenterDetailScreen({
         </View>
       </View>
     </ScrollView>
+  );
+}
+
+function StatBar({ item }: { item: BeautyStatItem }) {
+  return (
+    <View style={styles.statBarRow}>
+      <View style={styles.statBarHeader}>
+        <Text style={styles.statBarLabel}>{item.label}</Text>
+        <Text style={styles.statBarCount}>{item.count}</Text>
+      </View>
+      <View style={styles.statBarTrack}>
+        <View style={[styles.statBarFill, { width: `${item.percent}%` }]} />
+      </View>
+    </View>
   );
 }
 
@@ -385,6 +458,66 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "800",
     marginBottom: spacing.sm,
+  },
+  statsGrid: {
+    gap: spacing.sm,
+  },
+  statTile: {
+    backgroundColor: colors.surfaceSoft,
+    borderColor: colors.border,
+    borderRadius: 14,
+    borderWidth: 1,
+    padding: spacing.md,
+  },
+  statValue: {
+    color: colors.brandInk,
+    fontSize: 18,
+    fontWeight: "800",
+  },
+  statLabel: {
+    color: colors.textMuted,
+    fontSize: 13,
+    marginTop: spacing.xs,
+  },
+  chartTitle: {
+    color: colors.text,
+    fontSize: 14,
+    fontWeight: "800",
+    marginTop: spacing.lg,
+    marginBottom: spacing.sm,
+  },
+  chartList: {
+    gap: spacing.sm,
+  },
+  statBarRow: {
+    gap: spacing.xs,
+  },
+  statBarHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+  },
+  statBarLabel: {
+    color: colors.text,
+    flex: 1,
+    fontSize: 13,
+    fontWeight: "700",
+    paddingRight: spacing.sm,
+  },
+  statBarCount: {
+    color: colors.brandDark,
+    fontSize: 13,
+    fontWeight: "800",
+  },
+  statBarTrack: {
+    backgroundColor: colors.surfaceSky,
+    borderRadius: 999,
+    height: 10,
+    overflow: "hidden",
+  },
+  statBarFill: {
+    backgroundColor: colors.brand,
+    borderRadius: 999,
+    height: "100%",
   },
   hoursGrid: {
     gap: spacing.xs,
