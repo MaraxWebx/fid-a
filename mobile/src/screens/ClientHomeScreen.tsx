@@ -30,6 +30,7 @@ type ClientHomeScreenProps = {
   userEmail: string;
   selectedCenterId: string | null;
   onChangeCenter: (centerId: string) => void;
+  onOpenCenter: (center: Center) => void;
   onOpenBooking: (serviceId: string | null) => void;
 };
 
@@ -37,6 +38,7 @@ export function ClientHomeScreen({
   userName,
   selectedCenterId,
   onChangeCenter,
+  onOpenCenter,
   onOpenBooking,
   userEmail,
 }: ClientHomeScreenProps) {
@@ -87,6 +89,11 @@ export function ClientHomeScreen({
     const time = a.start_time ? new Date(a.start_time).getTime() : Number.NaN;
     return a.status !== "canceled" && !isNaN(time) && time > now;
   });
+
+  const discoverCenters = useMemo(
+    () => centers.filter((center) => !favoriteCenterIds.includes(center.id)),
+    [centers, favoriteCenterIds],
+  );
 
   const handleCancelNextAppointment = async () => {
     if (!nextAppointment) {
@@ -187,18 +194,20 @@ export function ClientHomeScreen({
       </SectionCard>
 
       <SectionCard eyebrow="Centri estetici" title="Scegli i tuoi preferiti">
-        {centers.length === 0 && !loading ? (
-          <Text style={styles.secondary}>Nessun centro disponibile.</Text>
+        {discoverCenters.length === 0 && !loading ? (
+          <Text style={styles.secondary}>
+            Hai gia salvato tutti i centri disponibili nei preferiti.
+          </Text>
         ) : null}
         <View style={styles.centerList}>
-          {centers.map((center) => {
+          {discoverCenters.map((center) => {
             const isFavorite = favoriteCenterIds.includes(center.id);
             const selected = center.id === selectedCenterId;
 
             return (
               <Pressable
                 key={center.id}
-                onPress={() => onChangeCenter(center.id)}
+                onPress={() => onOpenCenter(center)}
                 style={[styles.centerCard, selected ? styles.centerCardSelected : null]}
               >
                 {center.branding.logo ? (

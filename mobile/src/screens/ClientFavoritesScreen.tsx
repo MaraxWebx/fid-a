@@ -20,13 +20,13 @@ import { spacing } from "../theme/spacing";
 type ClientFavoritesScreenProps = {
   profileEmail: string;
   selectedCenterId: string | null;
-  onSelectCenter: (centerId: string) => void;
+  onOpenCenter: (center: Center) => void;
 };
 
 export function ClientFavoritesScreen({
   profileEmail,
   selectedCenterId,
-  onSelectCenter,
+  onOpenCenter,
 }: ClientFavoritesScreenProps) {
   const [centers, setCenters] = useState<Center[]>([]);
   const [favoriteCenterIds, setFavoriteCenterIds] = useState<string[]>([]);
@@ -90,7 +90,7 @@ export function ClientFavoritesScreen({
             return (
               <Pressable
                 key={center.id}
-                onPress={() => onSelectCenter(center.id)}
+                onPress={() => onOpenCenter(center)}
                 style={[styles.centerCard, selected ? styles.centerCardSelected : null]}
               >
                 {center.branding.logo ? (

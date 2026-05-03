@@ -21,6 +21,7 @@ import { CenterPaymentScreen } from "./src/screens/CenterPaymentScreen";
 import { CenterRegistrationScreen } from "./src/screens/CenterRegistrationScreen";
 import { ClientAppointmentsScreen } from "./src/screens/ClientAppointmentsScreen";
 import { ClientBookingScreen } from "./src/screens/ClientBookingScreen";
+import { ClientCenterDetailScreen } from "./src/screens/ClientCenterDetailScreen";
 import { ClientFavoritesScreen } from "./src/screens/ClientFavoritesScreen";
 import { ClientHomeScreen } from "./src/screens/ClientHomeScreen";
 import { ClientProfileScreen } from "./src/screens/ClientProfileScreen";
@@ -45,7 +46,13 @@ import type {
   UserProfile,
 } from "./src/types/api";
 
-type ClientTab = "home" | "appointments" | "favorites" | "profile" | "booking";
+type ClientTab =
+  | "home"
+  | "appointments"
+  | "favorites"
+  | "profile"
+  | "booking"
+  | "center-detail";
 type CenterTab = "home" | "calendar" | "clients" | "settings";
 type PublicRoute =
   | "landing"
@@ -69,6 +76,8 @@ export default function App() {
     null,
   );
   const [selectedCenterId, setSelectedCenterId] = useState<string | null>(null);
+  const [selectedClientCenter, setSelectedClientCenter] = useState<Center | null>(null);
+  const [centerDetailBackTab, setCenterDetailBackTab] = useState<ClientTab>("home");
   const [registeredCenter, setRegisteredCenter] = useState<Center | null>(null);
   const [registeredCenterActivation, setRegisteredCenterActivation] =
     useState<ActivationStatus | null>(null);
@@ -104,6 +113,8 @@ export default function App() {
     setCenterTab("home");
     setSelectedServiceId(null);
     setSelectedCenterId(null);
+    setSelectedClientCenter(null);
+    setCenterDetailBackTab("home");
     setRegisteredCenter(null);
     setRegisteredCenterActivation(null);
     setRegisteredCenterCheckoutUrl(null);
@@ -119,6 +130,12 @@ export default function App() {
     setSession((current) =>
       current?.role === "client" ? { role: "client", user } : current,
     );
+  };
+
+  const handleOpenClientCenter = (center: Center, backTab: ClientTab) => {
+    setSelectedClientCenter(center);
+    setCenterDetailBackTab(backTab);
+    setClientTab("center-detail");
   };
 
   const loadNotifications = async () => {
@@ -434,6 +451,7 @@ export default function App() {
               userEmail={session.user.email}
               selectedCenterId={selectedCenterId}
               onChangeCenter={setSelectedCenterId}
+              onOpenCenter={(center) => handleOpenClientCenter(center, "home")}
               onOpenBooking={(serviceId) => {
                 setSelectedServiceId(serviceId);
                 setClientTab("booking");
@@ -455,6 +473,20 @@ export default function App() {
             <ClientFavoritesScreen
               profileEmail={session.user.email}
               selectedCenterId={selectedCenterId}
+              onOpenCenter={(center) => handleOpenClientCenter(center, "favorites")}
+            />
+          ) : null}
+          {clientTab === "center-detail" ? (
+            <ClientCenterDetailScreen
+              center={selectedClientCenter}
+              selectedCenterId={selectedCenterId}
+              userEmail={session.user.email}
+              onBack={() => setClientTab(centerDetailBackTab)}
+              onBookCenter={(centerId) => {
+                setSelectedCenterId(centerId);
+                setSelectedServiceId(null);
+                setClientTab("booking");
+              }}
               onSelectCenter={setSelectedCenterId}
             />
           ) : null}
@@ -472,7 +504,15 @@ export default function App() {
               { key: "favorites", label: "Preferiti", icon: "favorites" },
               { key: "profile", label: "Profilo", icon: "profile" },
             ]}
-            activeKey={clientTab === "booking" ? "home" : clientTab}
+            activeKey={
+              clientTab === "booking"
+                ? "home"
+                : clientTab === "center-detail"
+                  ? centerDetailBackTab === "favorites"
+                    ? "favorites"
+                    : "home"
+                  : clientTab
+            }
             onChange={(key) => setClientTab(key as ClientTab)}
           />
         </>
