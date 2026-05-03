@@ -67,17 +67,18 @@ export function ClientHomeScreen({
 
   const sortedAppointments = useMemo(
     () =>
-      [...appointments].sort(
-        (a, b) =>
-          new Date(a.start_time).getTime() - new Date(b.start_time).getTime(),
-      ),
+      [...appointments].sort((a, b) => {
+        const left = a.start_time ? new Date(a.start_time).getTime() : 0;
+        const right = b.start_time ? new Date(b.start_time).getTime() : 0;
+        return left - right;
+      }),
     [appointments],
   );
 
   const now = Date.now();
 
   const nextAppointment = sortedAppointments.find((a) => {
-    const time = new Date(a.start_time).getTime();
+    const time = a.start_time ? new Date(a.start_time).getTime() : Number.NaN;
     return !isNaN(time) && time >= now;
   });
   return (

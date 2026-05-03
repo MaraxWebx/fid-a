@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  Image,
   ScrollView,
   StyleSheet,
   Text,
@@ -47,17 +48,38 @@ export function CenterDashboardScreen({ center }: CenterDashboardScreenProps) {
   return (
     <ScrollView contentContainerStyle={styles.content} style={styles.container}>
       <ScreenHeader
-        eyebrow={`Beauty Center ${center.name}`}
-        title="Dashboard"
+        eyebrow="Dashboard centro"
+        logoUrl={center.branding.logo}
+        title={center.name}
         subtitle="Panoramica generale dell'attivita con dati reali letti dal database."
       />
+
+      <View style={styles.heroCard}>
+        <View style={styles.heroMain}>
+          {center.branding.logo ? (
+            <Image source={{ uri: center.branding.logo }} style={styles.heroLogo} />
+          ) : (
+            <View style={styles.heroLogoFallback}>
+              <Text style={styles.heroLogoText}>
+                {center.name.slice(0, 2).toUpperCase()}
+              </Text>
+            </View>
+          )}
+          <View style={styles.heroCopy}>
+            <Text style={styles.heroTitle}>{center.name}</Text>
+            <Text style={styles.heroSubtitle}>
+              Colore brand applicato alla dashboard del centro.
+            </Text>
+          </View>
+        </View>
+      </View>
 
       <SectionCard eyebrow="Oggi" title="KPI principali">
         {loading ? <ActivityIndicator color={colors.brand} /> : null}
         {error ? <Text style={styles.metricHint}>{error}</Text> : null}
         <View style={styles.metricsRow}>
           {dashboard?.metrics.map((item) => (
-            <View key={item.id} style={styles.metricWrap}>
+            <View key={item.id} style={[styles.metricWrap, styles.metricCard]}>
               <StatTile label={item.label} value={item.value} />
             </View>
           ))}
@@ -116,6 +138,51 @@ const styles = StyleSheet.create({
     paddingTop: spacing.xl,
     paddingBottom: spacing.xxl,
   },
+  heroCard: {
+    backgroundColor: colors.surface,
+    borderColor: colors.overlayBorder,
+    borderRadius: 18,
+    borderWidth: 1,
+    marginBottom: spacing.lg,
+    padding: spacing.lg,
+  },
+  heroMain: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: spacing.md,
+  },
+  heroLogo: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 20,
+    height: 56,
+    width: 56,
+  },
+  heroLogoFallback: {
+    alignItems: "center",
+    backgroundColor: colors.brand,
+    borderRadius: 20,
+    height: 56,
+    justifyContent: "center",
+    width: 56,
+  },
+  heroLogoText: {
+    color: "#FFFFFF",
+    fontSize: 18,
+    fontWeight: "800",
+  },
+  heroCopy: {
+    flex: 1,
+  },
+  heroTitle: {
+    color: colors.brandInk,
+    fontSize: 20,
+    fontWeight: "800",
+  },
+  heroSubtitle: {
+    color: colors.textMuted,
+    fontSize: 14,
+    marginTop: spacing.xs,
+  },
   metricsRow: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -123,6 +190,12 @@ const styles = StyleSheet.create({
   },
   metricWrap: {
     flexBasis: "48%",
+  },
+  metricCard: {
+    backgroundColor: colors.surface,
+    borderColor: colors.overlayBorder,
+    borderRadius: 12,
+    borderWidth: 1,
   },
   metricHint: {
     color: colors.textMuted,

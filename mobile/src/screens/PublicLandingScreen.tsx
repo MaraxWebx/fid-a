@@ -211,8 +211,8 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
   },
   tabLabelActive: {
-    color: colors.brand,
     fontWeight: "600",
+    color: colors.brand,
   },
   formContainer: {
     padding: spacing.xl,
@@ -239,14 +239,14 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   registerText: {
-    color: colors.brand,
     ...textStyles.titleBase,
+    color: colors.brand,
     textDecorationLine: "underline",
   },
   errorText: {
+    ...textStyles.titleBase,
     color: "#B05252",
     marginBottom: spacing.md,
-    ...textStyles.titleBase,
   },
   logoImage: {
     height: 120,

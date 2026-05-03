@@ -45,6 +45,7 @@ def serialize_center(document):
         "branding": document.get("branding", {}),
         "opening_hours": document.get("opening_hours", {}),
         "opening_days": document.get("opening_days", []),
+        "availability_overrides": document.get("availability_overrides", {}),
         "primary_services": document.get("primary_services", []),
         "registration_status": document.get("registration_status"),
         "subscription_status": document.get("subscription_status"),
@@ -127,6 +128,30 @@ class CenterOnboardingPayload(BaseModel):
     opening_days: list[str] = Field(default_factory=list)
     opening_hours: dict[str, dict[str, str | None]] = Field(default_factory=dict)
     primary_services: list[str] = Field(default_factory=list)
+
+
+class CenterAvailabilityDayPayload(BaseModel):
+    enabled: bool = True
+    start: str | None = None
+    end: str | None = None
+    note: str | None = None
+
+
+class CenterAvailabilityPayload(BaseModel):
+    availability_overrides: dict[str, CenterAvailabilityDayPayload] = Field(default_factory=dict)
+
+
+class CenterServiceConfigItemPayload(BaseModel):
+    name: str = Field(min_length=2, max_length=160)
+    category: str = Field(min_length=2, max_length=80)
+    duration: int | None = Field(default=None, ge=1, le=600)
+    price: float | None = Field(default=None, ge=0)
+    description: str | None = None
+    visibility: str = Field(default="active", min_length=2, max_length=32)
+
+
+class CenterServicesCatalogPayload(BaseModel):
+    services: list[CenterServiceConfigItemPayload] = Field(default_factory=list)
 
 
 class ClientRegistrationPayload(BaseModel):
@@ -331,6 +356,7 @@ def register_center(payload: CenterRegistrationPayload, request: Request):
         "branding": {},
         "opening_hours": {},
         "opening_days": [],
+        "availability_overrides": {},
         "primary_services": [],
         "registration_status": "draft",
         "subscription_status": "pending",
@@ -599,6 +625,44 @@ def update_center_onboarding(center_id: str, payload: CenterOnboardingPayload):
     }
 
 
+@app.patch("/api/centers/{center_id}/availability")
+def update_center_availability(center_id: str, payload: CenterAvailabilityPayload):
+    object_id = parse_object_id(center_id, "center id")
+    center = db.centers.find_one({"_id": object_id})
+
+    if not center:
+        raise HTTPException(status_code=404, detail="Center not found.")
+
+    sanitized_overrides = {}
+    for raw_date, override in payload.availability_overrides.items():
+        date_key = raw_date.strip()
+        if not date_key:
+            continue
+
+        sanitized_overrides[date_key] = {
+            "enabled": bool(override.enabled),
+            "start": override.start.strip() if isinstance(override.start, str) and override.start.strip() else None,
+            "end": override.end.strip() if isinstance(override.end, str) and override.end.strip() else None,
+            "note": override.note.strip() if isinstance(override.note, str) and override.note.strip() else None,
+        }
+
+    db.centers.update_one(
+        {"_id": object_id},
+        {
+            "$set": {
+                "availability_overrides": sanitized_overrides,
+                "updated_at": datetime.now(UTC),
+            }
+        },
+    )
+    updated_center = db.centers.find_one({"_id": object_id})
+
+    return {
+        "center": serialize_center(updated_center),
+        "activation": build_activation_status(updated_center),
+    }
+
+
 @app.get("/api/centers")
 def list_centers():
     documents = list(db.centers.find().sort("name", 1))
@@ -612,6 +676,56 @@ def list_center_services(center_id: str):
     documents = list(
         db.services.find({"center_id": object_id, "visibility": "active"}).sort(
             [("category", 1), ("subcategory", 1), ("name", 1)]
+        )
+    )
+    return [serialize_service(document) for document in documents]
+
+
+@app.patch("/api/centers/{center_id}/services")
+def update_center_services(center_id: str, payload: CenterServicesCatalogPayload):
+    object_id = parse_object_id(center_id, "center id")
+    center = db.centers.find_one({"_id": object_id})
+
+    if not center:
+        raise HTTPException(status_code=404, detail="Center not found.")
+
+    now = datetime.now(UTC)
+    configured_services = []
+
+    for item in payload.services:
+        normalized_name = item.name.strip()
+        normalized_category = item.category.strip()
+        normalized_visibility = item.visibility.strip() or "active"
+        normalized_description = item.description.strip() if item.description else None
+
+        db.services.update_one(
+            {"center_id": object_id, "name": normalized_name},
+            {
+                "$set": {
+                    "center_id": object_id,
+                    "name": normalized_name,
+                    "category": normalized_category,
+                    "subcategory": normalized_category.lower(),
+                    "duration": item.duration,
+                    "price": item.price,
+                    "description": normalized_description,
+                    "visibility": normalized_visibility,
+                    "updated_at": now,
+                },
+                "$setOnInsert": {
+                    "created_at": now,
+                },
+            },
+            upsert=True,
+        )
+        configured_services.append(normalized_name)
+
+    if configured_services:
+        center = db.centers.find_one({"_id": object_id})
+
+    documents = list(
+        db.services.find({"center_id": object_id, "visibility": "active"}).sort(
+            [("category", 1), ("name", 1)]
         )
     )
     return [serialize_service(document) for document in documents]

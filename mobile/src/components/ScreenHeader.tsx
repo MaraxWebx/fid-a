@@ -1,4 +1,4 @@
-import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { Image, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 
 import { spacing } from "../theme/spacing";
 import { textStyles } from "../theme/typography";
@@ -9,6 +9,8 @@ type ScreenHeaderProps = {
   subtitle: string;
   onBack?: any;
   eyebrow?: string;
+  logoUrl?: string;
+  accentColor?: string;
 };
 
 export function ScreenHeader({
@@ -16,6 +18,8 @@ export function ScreenHeader({
   subtitle,
   eyebrow,
   onBack,
+  logoUrl,
+  accentColor,
 }: ScreenHeaderProps) {
   return (
     <View style={styles.wrap}>
@@ -25,8 +29,15 @@ export function ScreenHeader({
         </TouchableOpacity>
       )}
 
-      {eyebrow ? <Text style={styles.eyebrow}>{eyebrow}</Text> : null}
-      <Text style={styles.title}>{title}</Text>
+      {eyebrow ? (
+        <Text style={[styles.eyebrow, accentColor ? { color: accentColor } : null]}>
+          {eyebrow}
+        </Text>
+      ) : null}
+      <View style={styles.titleRow}>
+        {logoUrl ? <Image source={{ uri: logoUrl }} style={styles.logo} /> : null}
+        <Text style={styles.title}>{title}</Text>
+      </View>
       <Text style={styles.subtitle}>{subtitle}</Text>
     </View>
   );
@@ -40,8 +51,20 @@ const styles = StyleSheet.create({
     ...textStyles.eyebrow,
     marginBottom: spacing.sm,
   },
+  titleRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: spacing.sm,
+  },
+  logo: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 16,
+    height: 32,
+    width: 32,
+  },
   title: {
     ...textStyles.screenTitle,
+    flexShrink: 1,
   },
   subtitle: {
     ...textStyles.bodyMuted,

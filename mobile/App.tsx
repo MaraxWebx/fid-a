@@ -75,6 +75,12 @@ export default function App() {
     setRegisteredCenterCheckoutUrl(null);
   };
 
+  const handleCenterSessionUpdated = (center: Center, activation: ActivationStatus) => {
+    setSession((current) =>
+      current?.role === "center" ? { role: "center", center, activation } : current,
+    );
+  };
+
   const handleClientLogin = async () => {
     if (!clientAuth.email.trim() || !clientAuth.password.trim()) {
       setClientAuth((current) => ({
@@ -344,7 +350,12 @@ export default function App() {
           {centerTab === "home" ? (
             <CenterDashboardScreen center={session.center} />
           ) : null}
-          {centerTab === "calendar" ? <CenterCalendarScreen /> : null}
+          {centerTab === "calendar" ? (
+            <CenterCalendarScreen
+              center={session.center}
+              onCenterUpdated={handleCenterSessionUpdated}
+            />
+          ) : null}
           {centerTab === "clients" ? (
             <CenterClientsScreen center={session.center} />
           ) : null}

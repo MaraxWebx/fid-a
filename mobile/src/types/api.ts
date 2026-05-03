@@ -8,6 +8,10 @@ export type Center = {
   };
   opening_hours: Record<string, { start: string | null; end: string | null }>;
   opening_days?: string[];
+  availability_overrides?: Record<
+    string,
+    { enabled: boolean; start: string | null; end: string | null; note?: string | null }
+  >;
   primary_services?: string[];
   registration_status?: string;
   subscription_status?: string;
@@ -137,6 +141,29 @@ export type CenterOnboardingInput = {
 export type CenterOnboardingResponse = {
   center: Center;
   activation: ActivationStatus;
+};
+
+export type CenterAvailabilityInput = {
+  availability_overrides: Record<
+    string,
+    { enabled: boolean; start: string | null; end: string | null; note?: string | null }
+  >;
+};
+
+export type CenterAvailabilityResponse = {
+  center: Center;
+  activation: ActivationStatus;
+};
+
+export type CenterServiceConfigInput = {
+  services: Array<{
+    name: string;
+    category: string;
+    duration: number | null;
+    price: number | null;
+    description?: string;
+    visibility?: string;
+  }>;
 };
 
 export type LoginInput = {

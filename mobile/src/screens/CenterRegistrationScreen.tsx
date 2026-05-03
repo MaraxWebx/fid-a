@@ -4,6 +4,7 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  TextInputProps,
   View,
 } from "react-native";
 import { useState } from "react";
@@ -222,6 +223,12 @@ function Feature({ text }: { text: string }) {
   );
 }
 
+type FieldProps = TextInputProps & {
+  compact?: boolean;
+  label: string;
+  value: string;
+};
+
 function Field({
   label,
   value,
@@ -229,7 +236,7 @@ function Field({
   placeholder,
   compact,
   ...props
-}: any) {
+}: FieldProps) {
   return (
     <View style={[styles.field, compact && { flex: 1 }]}>
       <Text style={styles.label}>{label}</Text>

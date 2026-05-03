@@ -1,13 +1,29 @@
-import { useState } from "react";
-import { StyleSheet, Text, TextInput, View } from "react-native";
+import { useEffect, useMemo, useState } from "react";
+import {
+  ActivityIndicator,
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
 
 import { PrimaryButton } from "../components/PrimaryButton";
 import { ScreenHeader } from "../components/ScreenHeader";
-import { updateCenterOnboarding } from "../lib/api";
+import { ServiceCatalogPicker } from "../components/ServiceCatalogPicker";
+import { treatmentCatalog } from "../data/treatmentCatalog";
+import {
+  getCenterServices,
+  updateCenterOnboarding,
+  updateCenterServices,
+} from "../lib/api";
 import type {
   ActivationStatus,
   Center,
   CenterOnboardingInput,
+  Service,
 } from "../types/api";
 import { colors } from "../theme/colors";
 import { spacing } from "../theme/spacing";
@@ -21,6 +37,12 @@ type CenterOnboardingScreenProps = {
 };
 
 type OnboardingStep = "welcome" | "brand" | "schedule" | "services" | "summary";
+type WeekdayKey = "Lun" | "Mar" | "Mer" | "Gio" | "Ven" | "Sab" | "Dom";
+type DaySchedule = {
+  enabled: boolean;
+  start: string;
+  end: string;
+};
 
 const stepOrder: OnboardingStep[] = [
   "welcome",
@@ -29,6 +51,35 @@ const stepOrder: OnboardingStep[] = [
   "services",
   "summary",
 ];
+
+const weekdayOptions: { key: WeekdayKey; fullLabel: string }[] = [
+  { key: "Lun", fullLabel: "Lunedi" },
+  { key: "Mar", fullLabel: "Martedi" },
+  { key: "Mer", fullLabel: "Mercoledi" },
+  { key: "Gio", fullLabel: "Giovedi" },
+  { key: "Ven", fullLabel: "Venerdi" },
+  { key: "Sab", fullLabel: "Sabato" },
+  { key: "Dom", fullLabel: "Domenica" },
+];
+
+function buildInitialSchedule(center: Center): Record<WeekdayKey, DaySchedule> {
+  return weekdayOptions.reduce(
+    (accumulator, day) => {
+      const currentHours = center.opening_hours?.[day.key];
+      const isEnabled =
+        center.opening_days?.includes(day.key) ??
+        ["Lun", "Mar", "Mer", "Gio", "Ven", "Sab"].includes(day.key);
+
+      accumulator[day.key] = {
+        enabled: isEnabled,
+        start: currentHours?.start ?? "09:00",
+        end: currentHours?.end ?? "19:00",
+      };
+      return accumulator;
+    },
+    {} as Record<WeekdayKey, DaySchedule>,
+  );
+}
 
 export function CenterOnboardingScreen({
   center,
@@ -41,20 +92,137 @@ export function CenterOnboardingScreen({
   const [brandColor, setBrandColor] = useState(
     center.branding.primary_color ?? "#2F4F6F",
   );
-  const [openingDaysInput, setOpeningDaysInput] = useState(
-    (center.opening_days ?? []).join(", "),
+  const [schedule, setSchedule] = useState(() => buildInitialSchedule(center));
+  const [selectedDayKey, setSelectedDayKey] = useState<WeekdayKey>("Lun");
+  const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
+  const [configuredServices, setConfiguredServices] = useState<Service[]>([]);
+  const [servicesLoading, setServicesLoading] = useState(true);
+  const [selectedServiceCategory, setSelectedServiceCategory] = useState<string | null>(
+    treatmentCatalog[0]?.category ?? null,
   );
-  const [primaryServicesInput, setPrimaryServicesInput] = useState(
-    (center.primary_services ?? []).join(", "),
-  );
-  const [startHour, setStartHour] = useState("09:00");
-  const [endHour, setEndHour] = useState("19:00");
+  const [selectedServiceName, setSelectedServiceName] = useState<string | null>(null);
+  const [servicePriceInput, setServicePriceInput] = useState("");
+  const [serviceDurationInput, setServiceDurationInput] = useState("");
+  const [isServiceModalOpen, setIsServiceModalOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activation, setActivation] = useState(initialActivation);
 
   const step = stepOrder[stepIndex];
   const canGoBack = stepIndex > 0;
+
+  const selectedDays = useMemo(
+    () =>
+      weekdayOptions
+        .filter(({ key }) => schedule[key].enabled)
+        .map(({ key }) => key),
+    [schedule],
+  );
+  const selectedDaySchedule = schedule[selectedDayKey];
+  const selectedPrimaryServices = useMemo(
+    () => configuredServices.map((service) => service.name),
+    [configuredServices],
+  );
+  const configuredServicesSummary = useMemo(
+    () =>
+      configuredServices.map((service) => ({
+        category: service.category,
+        duration: service.duration,
+        name: service.name,
+        price: service.price,
+      })),
+    [configuredServices],
+  );
+
+  useEffect(() => {
+    let mounted = true;
+
+    getCenterServices(center.id)
+      .then((response) => {
+        if (mounted) {
+          setConfiguredServices(response);
+        }
+      })
+      .catch(() => {
+        if (mounted) {
+          setError("Impossibile caricare i trattamenti configurati.");
+        }
+      })
+      .finally(() => {
+        if (mounted) {
+          setServicesLoading(false);
+        }
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [center.id]);
+
+  const openServiceModal = (category: string, treatment: string) => {
+    const existing = configuredServices.find((service) => service.name === treatment);
+    setSelectedServiceCategory(category);
+    setSelectedServiceName(treatment);
+    setServicePriceInput(
+      existing?.price !== null && existing?.price !== undefined
+        ? String(existing.price)
+        : "",
+    );
+    setServiceDurationInput(
+      existing?.duration !== null && existing?.duration !== undefined
+        ? String(existing.duration)
+        : "",
+    );
+    setError(null);
+    setIsServiceModalOpen(true);
+  };
+
+  const handleLocalServiceSave = () => {
+    if (!selectedServiceCategory || !selectedServiceName) {
+      return;
+    }
+
+    const parsedPrice =
+      servicePriceInput.trim().length > 0
+        ? Number(servicePriceInput.replace(",", "."))
+        : null;
+    const parsedDuration =
+      serviceDurationInput.trim().length > 0 ? Number(serviceDurationInput) : null;
+
+    if (
+      (parsedPrice !== null && Number.isNaN(parsedPrice)) ||
+      (parsedDuration !== null && Number.isNaN(parsedDuration))
+    ) {
+      setError("Inserisci prezzo e durata validi.");
+      return;
+    }
+
+    setConfiguredServices((current) => {
+      const previous = current.find((service) => service.name === selectedServiceName);
+      const nextItem: Service = {
+        id: previous?.id ?? `draft-${selectedServiceName}`,
+        center_id: center.id,
+        category: selectedServiceCategory,
+        created_at: previous?.created_at,
+        description: previous?.description,
+        duration: parsedDuration,
+        name: selectedServiceName,
+        price: parsedPrice,
+        subcategory: previous?.subcategory ?? selectedServiceCategory.toLowerCase(),
+        visibility: "active",
+      };
+      const filtered = current.filter(
+        (service) => service.name !== selectedServiceName,
+      );
+      return [...filtered, nextItem].sort(
+        (left, right) =>
+          left.category.localeCompare(right.category) ||
+          left.name.localeCompare(right.name),
+      );
+    });
+    setError(null);
+    setIsServiceModalOpen(false);
+  };
 
   const renderStep = () => {
     if (step === "welcome") {
@@ -63,8 +231,9 @@ export function CenterOnboardingScreen({
           <Text style={styles.stepKicker}>Step 1 di 5</Text>
           <Text style={styles.stepTitle}>Benvenuto in Fidea</Text>
           <Text style={styles.stepBody}>
-            Il pagamento e confermato. Ora completiamo il profilo del centro in
-            pochi step full screen, come nel flusso reference.
+            Il pagamento e confermato. Completiamo il profilo operativo del
+            centro, incluso il planning base settimanale che poi potrai
+            modificare dalla tua area privata.
           </Text>
         </>
       );
@@ -76,7 +245,7 @@ export function CenterOnboardingScreen({
           <Text style={styles.stepKicker}>Step 2 di 5</Text>
           <Text style={styles.stepTitle}>Definisci il brand</Text>
           <Text style={styles.stepBody}>
-            Logo e colore primario danno identita al centro.
+            Imposta identita visiva e riferimenti base del centro.
           </Text>
           <Field
             label="Logo URL"
@@ -99,29 +268,37 @@ export function CenterOnboardingScreen({
       return (
         <>
           <Text style={styles.stepKicker}>Step 3 di 5</Text>
-          <Text style={styles.stepTitle}>Imposta giorni e orari</Text>
+          <Text style={styles.stepTitle}>Giorni e orari di apertura</Text>
           <Text style={styles.stepBody}>
-            Se mancano i giorni di apertura, il centro non puo essere pubblicato
-            ai clienti.
+            Qui imposti il calendario settimanale base. Nell&apos;area privata
+            potrai poi chiudere singole date, cambiare orari e gestire
+            eccezioni.
           </Text>
-          <Field
-            label="Giorni di apertura"
-            placeholder="Lun, Mar, Mer, Gio, Ven, Sab"
-            value={openingDaysInput}
-            onChangeText={setOpeningDaysInput}
-          />
-          <Field
-            label="Apre alle"
-            placeholder="09:00"
-            value={startHour}
-            onChangeText={setStartHour}
-          />
-          <Field
-            label="Chiude alle"
-            placeholder="19:00"
-            value={endHour}
-            onChangeText={setEndHour}
-          />
+          <View style={styles.dayList}>
+            {weekdayOptions.map((day) => {
+              const entry = schedule[day.key];
+
+              return (
+                <View key={day.key} style={styles.dayCard}>
+                  <Pressable
+                    onPress={() => {
+                      setSelectedDayKey(day.key);
+                      setIsScheduleModalOpen(true);
+                    }}
+                    style={styles.dayToggle}
+                  >
+                    <View>
+                      <Text style={styles.dayTitle}>{day.fullLabel}</Text>
+                      <Text style={styles.dayMeta}>
+                        {entry.enabled ? `${entry.start} - ${entry.end}` : "Chiuso"}
+                      </Text>
+                    </View>
+                    <Text style={styles.dayToggleLabel}>Modifica</Text>
+                  </Pressable>
+                </View>
+              );
+            })}
+          </View>
         </>
       );
     }
@@ -130,17 +307,25 @@ export function CenterOnboardingScreen({
       return (
         <>
           <Text style={styles.stepKicker}>Step 4 di 5</Text>
-          <Text style={styles.stepTitle}>Scegli i servizi principali</Text>
+          <Text style={styles.stepTitle}>Servizi principali</Text>
           <Text style={styles.stepBody}>
-            Inserisci i trattamenti chiave separati da virgola. Senza questi il
-            centro resta non pubblicabile.
+            Seleziona una categoria dalla griglia, poi tocca il trattamento.
+            Nella modale imposti prezzo e durata, poi passi subito al prossimo.
           </Text>
-          <Field
-            label="Servizi principali"
-            placeholder="Hydra Glow Facial, Manicure Premium, Brow Design"
-            value={primaryServicesInput}
-            onChangeText={setPrimaryServicesInput}
+          {servicesLoading ? (
+            <ActivityIndicator color={colors.brand} style={styles.loader} />
+          ) : null}
+          <ServiceCatalogPicker
+            catalog={treatmentCatalog}
+            configuredServices={configuredServicesSummary}
+            onSelectCategory={setSelectedServiceCategory}
+            onSelectTreatment={openServiceModal}
+            selectedCategory={selectedServiceCategory}
           />
+          <Text style={styles.meta}>
+            Configurati:{" "}
+            {selectedPrimaryServices.join(", ") || "nessun trattamento"}
+          </Text>
         </>
       );
     }
@@ -150,6 +335,12 @@ export function CenterOnboardingScreen({
         <Text style={styles.stepKicker}>Step 5 di 5</Text>
         <Text style={styles.stepTitle}>Riepilogo attivazione</Text>
         <Text style={styles.stepBody}>{activation.message}</Text>
+        <Text style={styles.meta}>
+          Giorni attivi: {selectedDays.join(", ") || "nessuno"}
+        </Text>
+        <Text style={styles.meta}>
+          Servizi: {selectedPrimaryServices.join(", ") || "non ancora inseriti"}
+        </Text>
         <Text style={styles.meta}>Stato: {activation.state}</Text>
         <Text style={styles.meta}>
           Mancano: {activation.missing_fields.join(", ") || "nessun campo"}
@@ -168,23 +359,30 @@ export function CenterOnboardingScreen({
 
     setIsSaving(true);
 
-    const openingDays = openingDaysInput
-      .split(",")
-      .map((day) => day.trim())
-      .filter(Boolean);
-    const primaryServices = primaryServicesInput
-      .split(",")
-      .map((service) => service.trim())
-      .filter(Boolean);
-    const openingHours: CenterOnboardingInput["opening_hours"] =
-      Object.fromEntries(
-        openingDays.map((day) => [
-          day,
-          { start: startHour || null, end: endHour || null },
-        ]),
-      );
+    const openingDays = weekdayOptions
+      .filter(({ key }) => schedule[key].enabled)
+      .map(({ key }) => key);
+    const primaryServices = configuredServices.map((service) => service.name);
+    const openingHours: CenterOnboardingInput["opening_hours"] = Object.fromEntries(
+      openingDays.map((day) => [
+        day,
+        {
+          start: schedule[day as WeekdayKey].start || null,
+          end: schedule[day as WeekdayKey].end || null,
+        },
+      ]),
+    );
 
     try {
+      await updateCenterServices(center.id, {
+        services: configuredServices.map((service) => ({
+          category: service.category,
+          duration: service.duration,
+          name: service.name,
+          price: service.price,
+          visibility: service.visibility ?? "active",
+        })),
+      });
       const response = await updateCenterOnboarding(center.id, {
         logo_url: logoUrl,
         brand_color: brandColor,
@@ -196,9 +394,7 @@ export function CenterOnboardingScreen({
       onComplete(response.center, response.activation);
     } catch (saveError) {
       setError(
-        saveError instanceof Error
-          ? saveError.message
-          : "Salvataggio non riuscito.",
+        saveError instanceof Error ? saveError.message : "Salvataggio non riuscito.",
       );
     } finally {
       setIsSaving(false);
@@ -215,11 +411,11 @@ export function CenterOnboardingScreen({
           ]}
         />
       </View>
-      <View style={styles.content}>
+      <ScrollView contentContainerStyle={styles.content}>
         <ScreenHeader
           eyebrow="Onboarding centro"
           title={`Completa ${center.name}`}
-          subtitle="Step-by-step fullscreen, senza formone unico."
+          subtitle="Brand, orari e servizi base prima di entrare in dashboard."
         />
         <View style={styles.stepCard}>{renderStep()}</View>
         {error ? <Text style={styles.error}>{error}</Text> : null}
@@ -249,7 +445,158 @@ export function CenterOnboardingScreen({
             }}
           />
         </View>
-      </View>
+
+        <Modal
+          animationType="slide"
+          onRequestClose={() => setIsScheduleModalOpen(false)}
+          transparent
+          visible={isScheduleModalOpen}
+        >
+          <View style={styles.modalBackdrop}>
+            <View style={styles.modalCard}>
+              <View style={styles.modalHeader}>
+                <View>
+                  <Text style={styles.modalEyebrow}>Orario di default</Text>
+                  <Text style={styles.modalTitle}>
+                    {weekdayOptions.find(({ key }) => key === selectedDayKey)?.fullLabel}
+                  </Text>
+                </View>
+                <Pressable onPress={() => setIsScheduleModalOpen(false)}>
+                  <Text style={styles.modalClose}>Chiudi</Text>
+                </Pressable>
+              </View>
+
+              <Pressable
+                onPress={() => {
+                  setSchedule((current) => ({
+                    ...current,
+                    [selectedDayKey]: {
+                      ...current[selectedDayKey],
+                      enabled: !current[selectedDayKey].enabled,
+                    },
+                  }));
+                }}
+                style={[
+                  styles.dayModalToggle,
+                  selectedDaySchedule.enabled && styles.dayModalToggleActive,
+                ]}
+              >
+                <View>
+                  <Text style={styles.dayTitle}>Disponibilita del giorno</Text>
+                  <Text style={styles.dayMeta}>
+                    {selectedDaySchedule.enabled ? "Aperto" : "Chiuso"}
+                  </Text>
+                </View>
+                <Text style={styles.dayToggleLabel}>
+                  {selectedDaySchedule.enabled ? "APERTO" : "CHIUSO"}
+                </Text>
+              </Pressable>
+
+              {selectedDaySchedule.enabled ? (
+                <View style={styles.hoursRow}>
+                  <View style={styles.hoursField}>
+                    <Text style={styles.label}>Dalle</Text>
+                    <TextInput
+                      keyboardType="numbers-and-punctuation"
+                      onChangeText={(value) => {
+                        setSchedule((current) => ({
+                          ...current,
+                          [selectedDayKey]: {
+                            ...current[selectedDayKey],
+                            start: value,
+                          },
+                        }));
+                      }}
+                      placeholder="09:00"
+                      placeholderTextColor={colors.textSoft}
+                      style={styles.input}
+                      value={selectedDaySchedule.start}
+                    />
+                  </View>
+                  <View style={styles.hoursField}>
+                    <Text style={styles.label}>Alle</Text>
+                    <TextInput
+                      keyboardType="numbers-and-punctuation"
+                      onChangeText={(value) => {
+                        setSchedule((current) => ({
+                          ...current,
+                          [selectedDayKey]: {
+                            ...current[selectedDayKey],
+                            end: value,
+                          },
+                        }));
+                      }}
+                      placeholder="19:00"
+                      placeholderTextColor={colors.textSoft}
+                      style={styles.input}
+                      value={selectedDaySchedule.end}
+                    />
+                  </View>
+                </View>
+              ) : null}
+            </View>
+          </View>
+        </Modal>
+
+        <Modal
+          animationType="slide"
+          onRequestClose={() => setIsServiceModalOpen(false)}
+          transparent
+          visible={isServiceModalOpen}
+        >
+          <View style={styles.modalBackdrop}>
+            <View style={styles.modalCard}>
+              <View style={styles.modalHeader}>
+                <View>
+                  <Text style={styles.modalEyebrow}>
+                    {selectedServiceCategory ?? "Trattamento"}
+                  </Text>
+                  <Text style={styles.modalTitle}>{selectedServiceName ?? ""}</Text>
+                </View>
+                <Pressable onPress={() => setIsServiceModalOpen(false)}>
+                  <Text style={styles.modalClose}>Chiudi</Text>
+                </Pressable>
+              </View>
+
+              <View style={styles.fieldWrap}>
+                <Text style={styles.label}>Prezzo EUR</Text>
+                <TextInput
+                  keyboardType="decimal-pad"
+                  onChangeText={setServicePriceInput}
+                  placeholder="Es. 45"
+                  placeholderTextColor={colors.textSoft}
+                  style={styles.input}
+                  value={servicePriceInput}
+                />
+              </View>
+
+              <View style={styles.fieldWrap}>
+                <Text style={styles.label}>Durata minuti</Text>
+                <TextInput
+                  keyboardType="number-pad"
+                  onChangeText={setServiceDurationInput}
+                  placeholder="Es. 60"
+                  placeholderTextColor={colors.textSoft}
+                  style={styles.input}
+                  value={serviceDurationInput}
+                />
+              </View>
+
+              <View style={styles.actions}>
+                <PrimaryButton
+                  label="Annulla"
+                  onPress={() => setIsServiceModalOpen(false)}
+                  variant="secondary"
+                />
+                <PrimaryButton
+                  label="Salva trattamento"
+                  onPress={handleLocalServiceSave}
+                />
+              </View>
+            </View>
+          </View>
+        </Modal>
+      </ScrollView>
     </View>
   );
 }
@@ -299,13 +646,11 @@ const styles = StyleSheet.create({
     height: 6,
   },
   content: {
-    flex: 1,
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.xl,
     paddingBottom: spacing.xxl,
   },
   stepCard: {
-    flex: 1,
     backgroundColor: colors.surface,
     borderRadius: 32,
     padding: spacing.xl,
@@ -338,9 +683,93 @@ const styles = StyleSheet.create({
     minHeight: 54,
     paddingHorizontal: spacing.md,
   },
+  dayList: {
+    gap: spacing.md,
+    marginTop: spacing.lg,
+  },
+  dayCard: {
+    backgroundColor: colors.surfaceSoft,
+    borderRadius: 18,
+    padding: spacing.md,
+  },
+  dayToggle: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
+  },
+  dayTitle: {
+    ...textStyles.titleXs,
+    color: colors.text,
+  },
+  dayMeta: {
+    ...textStyles.bodyMuted,
+    marginTop: spacing.xs,
+  },
+  dayToggleLabel: {
+    color: colors.brandDark,
+    fontSize: 13,
+    fontWeight: "800",
+  },
+  hoursRow: {
+    flexDirection: "row",
+    gap: spacing.sm,
+    marginTop: spacing.sm,
+  },
+  hoursField: {
+    flex: 1,
+  },
+  loader: {
+    marginTop: spacing.lg,
+  },
+  modalBackdrop: {
+    alignItems: "center",
+    backgroundColor: "rgba(17, 24, 39, 0.4)",
+    flex: 1,
+    justifyContent: "flex-end",
+    padding: spacing.lg,
+  },
+  modalCard: {
+    backgroundColor: colors.surface,
+    borderRadius: 24,
+    maxWidth: 560,
+    padding: spacing.lg,
+    width: "100%",
+  },
+  modalHeader: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: spacing.lg,
+  },
+  modalEyebrow: {
+    ...textStyles.caption,
+    color: colors.textMuted,
+  },
+  modalTitle: {
+    ...textStyles.titleBase,
+    color: colors.text,
+    marginTop: spacing.xs,
+  },
+  modalClose: {
+    color: colors.brandDark,
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  dayModalToggle: {
+    alignItems: "center",
+    backgroundColor: colors.surfaceSoft,
+    borderRadius: 16,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    padding: spacing.md,
+  },
+  dayModalToggleActive: {
+    borderColor: colors.brandDark,
+    borderWidth: 1,
+  },
   meta: {
     ...textStyles.bodyMuted,
-    marginTop: spacing.sm,
+    marginTop: spacing.md,
   },
   error: {
     color: "#FDE2E2",

@@ -147,3 +147,58 @@ Il listino dovrebbe poter essere ordinato:
 # Stato Progetto
 
 Questo file e la fonte attuale usata dallo script seed reale per popolare la collection `services` del centro demo.
+
+
+
+
+
+MANICURE
+Manicure dry con smalto
+Manicure dry con trattamento SPA
+Semipermanente
+Copertura in gel
+Ricostruzione
+
+PEDICURE
+Pedicure estetico
+Pedicure curativo
+Trattamento SPA Pedicure
+
+EPILAZIONE
+Ceretta completa
+Ceretta zona piccola
+Ceretta zona grande
+Filo arabo
+Cera brasiliana
+
+LAMINAZIONE
+Laminazione ciglia
+Laminazione sopracciglia
+Combo
+
+SOPRACCIGLIA
+Tinta
+Henné
+Microblading
+
+
+TRATTAMENTI VISO
+Massaggio
+Tratt. Viso base
+Pulizia viso base
+Tratt. avanzati
+
+
+TRATTAMENTI CORPO
+Tratt. Corpo base
+Massaggio (Rilassante, Decontratturante, Linfodrenante, Anticellulite)
+Scrub corpo total
+Peeling corpo acidi
+
+MACCHINARI
+Laser
+Radiofrequenza viso/corpo
+Pressoterapia
+Ultrasuoni 
+Microdermoabrasione
+Ossigenoterapia

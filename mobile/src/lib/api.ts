@@ -3,6 +3,8 @@ import type {
   BookingInput,
   Center,
   CenterActivationStatusResponse,
+  CenterAvailabilityInput,
+  CenterAvailabilityResponse,
   CenterAuthResponse,
   CenterClient,
   CenterDashboard,
@@ -10,6 +12,7 @@ import type {
   CenterOnboardingResponse,
   CenterRegistrationInput,
   CenterRegistrationResponse,
+  CenterServiceConfigInput,
   ClientAuthResponse,
   ClientRegistrationInput,
   LoginInput,
@@ -96,6 +99,20 @@ export function registerCenter(payload: CenterRegistrationInput) {
 export function updateCenterOnboarding(centerId: string, payload: CenterOnboardingInput) {
   return patch<CenterOnboardingResponse, CenterOnboardingInput>(
     `/api/centers/${centerId}/onboarding`,
+    payload,
+  );
+}
+
+export function updateCenterAvailability(centerId: string, payload: CenterAvailabilityInput) {
+  return patch<CenterAvailabilityResponse, CenterAvailabilityInput>(
+    `/api/centers/${centerId}/availability`,
+    payload,
+  );
+}
+
+export function updateCenterServices(centerId: string, payload: CenterServiceConfigInput) {
+  return patch<Service[], CenterServiceConfigInput>(
+    `/api/centers/${centerId}/services`,
     payload,
   );
 }
