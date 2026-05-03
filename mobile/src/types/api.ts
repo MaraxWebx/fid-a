@@ -4,7 +4,6 @@ export type Center = {
   name: string;
   branding: {
     logo?: string;
-    primary_color?: string;
   };
   opening_hours: Record<string, { start: string | null; end: string | null }>;
   opening_days?: string[];
@@ -49,13 +48,25 @@ export type Booking = {
   service_id: string;
   service_name: string;
   operator_name: string;
+  client_name?: string;
+  client_phone?: string;
   status: string;
+  slot_id?: string;
   start_time?: string;
   end_time?: string;
   date_label: string | null;
   time_label: string | null;
   price: number | null;
   created_at?: string;
+};
+
+export type BookingSlot = {
+  id: string;
+  start_time: string;
+  end_time: string;
+  date_label: string;
+  time_label: string;
+  availability_label: string;
 };
 
 export type Review = {
@@ -86,6 +97,14 @@ export type AppNotification = {
 export type BookingInput = {
   center_id: string;
   user_email: string;
+  service_id: string;
+  slot_id: string;
+};
+
+export type BookingUpdateInput = {
+  role: 'client' | 'center';
+  user_email?: string;
+  center_id?: string;
   service_id: string;
   slot_id: string;
 };
@@ -164,7 +183,6 @@ export type CenterRegistrationResponse = {
 
 export type CenterOnboardingInput = {
   logo_url: string;
-  brand_color: string;
   opening_days: string[];
   opening_hours: Record<string, { start: string | null; end: string | null }>;
   primary_services: string[];
@@ -178,7 +196,6 @@ export type CenterOnboardingResponse = {
 export type CenterProfileInput = {
   name: string;
   logo_url: string;
-  brand_color: string;
 };
 
 export type CenterAvailabilityInput = {

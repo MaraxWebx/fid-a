@@ -40,8 +40,14 @@ Il lato cliente mostra gia:
 
 * elenco centri
 * elenco servizi per centro
-* profilo utente demo
-* storico prenotazioni demo
+* profilo utente
+* storico prenotazioni reale da backend
+* creazione prenotazione da app
+* centro notifiche in-app con campanella fissa
+* prompt recensione post trattamento con notifica `Valuta il tuo trattamento!`
+* invio recensione con:
+* stelle da 1 a 5
+* commento massimo 128 caratteri
 
 ## Funzionalita attuali centro
 
@@ -49,12 +55,35 @@ Il lato centro mostra gia:
 
 * dashboard con KPI del giorno
 * agenda della giornata
+* calendario operativo con eccezioni giornaliere
+* chiusura giorno
+* modifica orari singola data
+* nota interna per data
 * lista clienti aggregata dalle prenotazioni
-* area impostazioni ancora parziale
+* area impostazioni con profilo centro editabile in modale
+* configurazione catalogo trattamenti per categorie
+* griglia categorie con icona
+* apertura categoria in modale
+* step interno lista trattamenti
+* step interno configurazione prezzo e durata
+* salvataggio trattamenti attivi
+* lista trattamenti configurati
+* ultima recensione in home centro
+* lista completa recensioni in area config
+* centro notifiche in-app con campanella fissa
+* notifica nuova prenotazione
+* notifica nuova recensione ricevuta
 
-## Prossima simulazione prioritaria: registrazione centro
+## Flusso centro gia implementato
 
-Il prossimo flusso da implementare e simulare e la registrazione del centro estetico.
+Il flusso di acquisizione centro oggi copre gia:
+
+1. registrazione anagrafica centro
+2. checkout Stripe
+3. login centro
+4. onboarding post pagamento
+5. accesso alla dashboard privata
+6. configurazione operativa di orari, servizi, recensioni e notifiche
 
 ### Step 1 - Registrazione anagrafica centro
 
@@ -94,10 +123,22 @@ Dopo la registrazione e il pagamento, il centro deve completare un onboarding pr
 Campi richiesti:
 
 * logo
-* colore brand
-* orari di apertura
-* giorni di apertura
-* servizi principali
+* giorni di apertura settimanali
+* orari di apertura settimanali
+* servizi principali configurati dal catalogo
+
+Micro-funzionalita onboarding oggi presenti:
+
+* progress bar step-by-step
+* step brand
+* step schedule con lista giorni tappabile
+* modale per impostare orario di default del singolo giorno
+* step servizi con widget categorie condiviso con area privata
+* griglia categorie 3 colonne
+* modale categoria
+* step lista trattamenti
+* step configurazione trattamento con ritorno alla lista
+* riepilogo finale attivazione
 
 ### Regola di disponibilita
 
@@ -116,11 +157,54 @@ Stato logico suggerito:
 
 ### Notifica in-app
 
-Se il pagamento e completato ma onboarding minimo non e ancora completo, il centro deve ricevere una notifica pop in app che segnala:
+Se il pagamento e completato ma onboarding minimo non e ancora completo, il centro riceve un messaggio applicativo che segnala:
 
 * profilo incompleto
 * impossibilita di essere pubblicato
 * call to action per completare giorni di apertura e servizi principali
+
+## Catalogo trattamenti centro
+
+Il centro configura i trattamenti da un catalogo strutturato per categorie.
+
+Categorie oggi previste:
+
+* MANICURE
+* PEDICURE
+* EPILAZIONE
+* LAMINAZIONE
+* SOPRACCIGLIA
+* TRATTAMENTI VISO
+* TRATTAMENTI CORPO
+* MACCHINARI
+
+Per ogni trattamento il centro puo:
+
+* selezionarlo
+* aprire la configurazione in modale
+* inserire prezzo
+* inserire durata
+* salvare e tornare alla lista trattamenti della stessa categoria
+
+## Recensioni e notifiche
+
+Flusso recensioni oggi previsto:
+
+* dopo un trattamento passato il cliente riceve una notifica in-app
+* la notifica invita a valutare il trattamento
+* il cliente apre una modale di recensione
+* inserisce stelle da 1 a 5
+* inserisce commento massimo 128 caratteri
+* il centro vede l'ultima recensione in home
+* il centro vede tutte le recensioni in config
+
+Flusso notifiche oggi previsto:
+
+* campanella fissa in app
+* badge notifiche non lette
+* notifica nuova prenotazione per il centro
+* notifica richiesta recensione per il cliente
+* notifica nuova recensione ricevuta per il centro
 
 ## Requisiti UX per il flusso centro
 
@@ -141,11 +225,10 @@ Flusso consigliato:
 
 ## Scope prossimo sviluppo
 
-Per partire con la simulazione del flusso centro servono:
+Prossimi step consigliati:
 
-* schermata registrazione centro
-* integrazione Stripe Checkout test
-* persistenza stato centro
-* schermata onboarding centro
-* controllo `is_listable` o equivalente
-* pop notifica in app per onboarding incompleto
+* notifiche push native reali
+* disattivazione o modifica rapida dei trattamenti gia attivi
+* moderazione recensioni
+* media voto centro e KPI recensioni in dashboard
+* disponibilita cliente agganciata alle eccezioni calendario reali

@@ -89,21 +89,11 @@ export function CenterOnboardingScreen({
 }: CenterOnboardingScreenProps) {
   const [stepIndex, setStepIndex] = useState(0);
   const [logoUrl, setLogoUrl] = useState(center.branding.logo ?? "");
-  const [brandColor, setBrandColor] = useState(
-    center.branding.primary_color ?? "#2F4F6F",
-  );
   const [schedule, setSchedule] = useState(() => buildInitialSchedule(center));
   const [selectedDayKey, setSelectedDayKey] = useState<WeekdayKey>("Lun");
   const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
   const [configuredServices, setConfiguredServices] = useState<Service[]>([]);
   const [servicesLoading, setServicesLoading] = useState(true);
-  const [selectedServiceCategory, setSelectedServiceCategory] = useState<string | null>(
-    treatmentCatalog[0]?.category ?? null,
-  );
-  const [selectedServiceName, setSelectedServiceName] = useState<string | null>(null);
-  const [servicePriceInput, setServicePriceInput] = useState("");
-  const [serviceDurationInput, setServiceDurationInput] = useState("");
-  const [isServiceModalOpen, setIsServiceModalOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activation, setActivation] = useState(initialActivation);
@@ -159,44 +149,12 @@ export function CenterOnboardingScreen({
     };
   }, [center.id]);
 
-  const openServiceModal = (category: string, treatment: string) => {
-    const existing = configuredServices.find((service) => service.name === treatment);
-    setSelectedServiceCategory(category);
-    setSelectedServiceName(treatment);
-    setServicePriceInput(
-      existing?.price !== null && existing?.price !== undefined
-        ? String(existing.price)
-        : "",
-    );
-    setServiceDurationInput(
-      existing?.duration !== null && existing?.duration !== undefined
-        ? String(existing.duration)
-        : "",
-    );
-    setError(null);
-    setIsServiceModalOpen(true);
-  };
-
-  const handleLocalServiceSave = () => {
-    if (!selectedServiceCategory || !selectedServiceName) {
-      return;
-    }
-
-    const parsedPrice =
-      servicePriceInput.trim().length > 0
-        ? Number(servicePriceInput.replace(",", "."))
-        : null;
-    const parsedDuration =
-      serviceDurationInput.trim().length > 0 ? Number(serviceDurationInput) : null;
-
-    if (
-      (parsedPrice !== null && Number.isNaN(parsedPrice)) ||
-      (parsedDuration !== null && Number.isNaN(parsedDuration))
-    ) {
-      setError("Inserisci prezzo e durata validi.");
-      return;
-    }
-
+  const handleLocalServiceSave = async (
+    selectedServiceCategory: string,
+    selectedServiceName: string,
+    parsedPrice: number | null,
+    parsedDuration: number | null,
+  ) => {
     setConfiguredServices((current) => {
       const previous = current.find((service) => service.name === selectedServiceName);
       const nextItem: Service = {
@@ -221,7 +179,6 @@ export function CenterOnboardingScreen({
       );
     });
     setError(null);
-    setIsServiceModalOpen(false);
   };
 
   const renderStep = () => {
@@ -252,13 +209,6 @@ export function CenterOnboardingScreen({
             placeholder="https://..."
             value={logoUrl}
             onChangeText={setLogoUrl}
-          />
-          <Field
-            label="Colore brand"
-            placeholder="#2F4F6F"
-            value={brandColor}
-            onChangeText={setBrandColor}
-            autoCapitalize="characters"
           />
         </>
       );
@@ -318,9 +268,7 @@ export function CenterOnboardingScreen({
           <ServiceCatalogPicker
             catalog={treatmentCatalog}
             configuredServices={configuredServicesSummary}
-            onSelectCategory={setSelectedServiceCategory}
-            onSelectTreatment={openServiceModal}
-            selectedCategory={selectedServiceCategory}
+            onSaveTreatment={handleLocalServiceSave}
           />
           <Text style={styles.meta}>
             Configurati:{" "}
@@ -385,7 +333,6 @@ export function CenterOnboardingScreen({
       });
       const response = await updateCenterOnboarding(center.id, {
         logo_url: logoUrl,
-        brand_color: brandColor,
         opening_days: openingDays,
         opening_hours: openingHours,
         primary_services: primaryServices,
@@ -538,64 +485,6 @@ export function CenterOnboardingScreen({
           </View>
         </Modal>
 
-        <Modal
-          animationType="slide"
-          onRequestClose={() => setIsServiceModalOpen(false)}
-          transparent
-          visible={isServiceModalOpen}
-        >
-          <View style={styles.modalBackdrop}>
-            <View style={styles.modalCard}>
-              <View style={styles.modalHeader}>
-                <View>
-                  <Text style={styles.modalEyebrow}>
-                    {selectedServiceCategory ?? "Trattamento"}
-                  </Text>
-                  <Text style={styles.modalTitle}>{selectedServiceName ?? ""}</Text>
-                </View>
-                <Pressable onPress={() => setIsServiceModalOpen(false)}>
-                  <Text style={styles.modalClose}>Chiudi</Text>
-                </Pressable>
-              </View>
-
-              <View style={styles.fieldWrap}>
-                <Text style={styles.label}>Prezzo EUR</Text>
-                <TextInput
-                  keyboardType="decimal-pad"
-                  onChangeText={setServicePriceInput}
-                  placeholder="Es. 45"
-                  placeholderTextColor={colors.textSoft}
-                  style={styles.input}
-                  value={servicePriceInput}
-                />
-              </View>
-
-              <View style={styles.fieldWrap}>
-                <Text style={styles.label}>Durata minuti</Text>
-                <TextInput
-                  keyboardType="number-pad"
-                  onChangeText={setServiceDurationInput}
-                  placeholder="Es. 60"
-                  placeholderTextColor={colors.textSoft}
-                  style={styles.input}
-                  value={serviceDurationInput}
-                />
-              </View>
-
-              <View style={styles.actions}>
-                <PrimaryButton
-                  label="Annulla"
-                  onPress={() => setIsServiceModalOpen(false)}
-                  variant="secondary"
-                />
-                <PrimaryButton
-                  label="Salva trattamento"
-                  onPress={handleLocalServiceSave}
-                />
-              </View>
-            </View>
-          </View>
-        </Modal>
       </ScrollView>
     </View>
   );

@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, time, timedelta
 import hashlib
 import hmac
 import secrets
@@ -93,7 +93,10 @@ def serialize_booking(document):
         "service_id": serialize_id(document.get("service_id")),
         "service_name": document.get("service_name") or document.get("service", {}).get("name"),
         "operator_name": document.get("operator_name"),
+        "client_name": document.get("client_name"),
+        "client_phone": document.get("client_phone"),
         "status": document.get("status"),
+        "slot_id": document.get("slot_id"),
         "start_time": start_time,
         "end_time": end_time,
         "date_label": start_time.strftime("%d/%m/%Y") if start_time else None,
@@ -180,7 +183,6 @@ class CenterRegistrationPayload(BaseModel):
 
 class CenterOnboardingPayload(BaseModel):
     logo_url: str | None = None
-    brand_color: str | None = None
     opening_days: list[str] = Field(default_factory=list)
     opening_hours: dict[str, dict[str, str | None]] = Field(default_factory=dict)
     primary_services: list[str] = Field(default_factory=list)
@@ -200,7 +202,6 @@ class CenterAvailabilityPayload(BaseModel):
 class CenterProfilePayload(BaseModel):
     name: str | None = Field(default=None, min_length=2, max_length=120)
     logo_url: str | None = None
-    brand_color: str | None = None
 
 
 class CenterServiceConfigItemPayload(BaseModel):
@@ -244,6 +245,17 @@ class BookingPayload(BaseModel):
     user_email: str = Field(min_length=5, max_length=160)
     service_id: str = Field(min_length=24, max_length=24)
     slot_id: str = Field(min_length=1, max_length=64)
+
+
+class BookingUpdatePayload(BaseModel):
+    role: str = Field(min_length=5, max_length=16)
+    user_email: str | None = None
+    center_id: str | None = None
+    service_id: str = Field(min_length=24, max_length=24)
+    slot_id: str = Field(min_length=1, max_length=64)
+
+
+ITALIAN_WEEKDAY_KEYS = ["Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom"]
 
 
 def build_activation_status(document):
@@ -335,6 +347,122 @@ def ensure_review_prompt_notifications(user_id: ObjectId):
                 "service_name": booking.get("service_name"),
             },
         )
+
+
+def parse_slot_datetime(slot_id: str):
+    try:
+        normalized = slot_id.strip().replace("Z", "")
+        return datetime.fromisoformat(normalized)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=400, detail="Invalid slot id.") from exc
+
+
+def parse_time_value(value: str | None):
+    if not value:
+        return None
+
+    try:
+        parsed = time.fromisoformat(value)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=400, detail="Invalid opening time.") from exc
+    return parsed
+
+
+def build_center_day_window(center: dict, target_date: date):
+    date_key = target_date.isoformat()
+    overrides = center.get("availability_overrides") or {}
+    override = overrides.get(date_key)
+
+    if override is not None:
+        if not override.get("enabled"):
+            return None
+        start_value = parse_time_value(override.get("start"))
+        end_value = parse_time_value(override.get("end"))
+    else:
+        weekday_key = ITALIAN_WEEKDAY_KEYS[target_date.weekday()]
+        if weekday_key not in (center.get("opening_days") or []):
+            return None
+        hours = (center.get("opening_hours") or {}).get(weekday_key) or {}
+        start_value = parse_time_value(hours.get("start"))
+        end_value = parse_time_value(hours.get("end"))
+
+    if not start_value or not end_value:
+        return None
+
+    start_dt = datetime.combine(target_date, start_value)
+    end_dt = datetime.combine(target_date, end_value)
+    if end_dt <= start_dt:
+        return None
+    return start_dt, end_dt
+
+
+def load_service_for_center(center_object_id: ObjectId, service_id: str):
+    service_object_id = parse_object_id(service_id, "service id")
+    service = db.services.find_one({"_id": service_object_id, "center_id": center_object_id})
+    if not service:
+        raise HTTPException(status_code=404, detail="Service not found or does not belong to center.")
+    return service_object_id, service
+
+
+def has_booking_overlap(center_object_id: ObjectId, start_dt: datetime, end_dt: datetime, *, exclude_booking_id: ObjectId | None = None):
+    query: dict = {
+        "center_id": center_object_id,
+        "status": {"$ne": "canceled"},
+        "start_time": {"$lt": end_dt},
+        "end_time": {"$gt": start_dt},
+    }
+    if exclude_booking_id is not None:
+        query["_id"] = {"$ne": exclude_booking_id}
+    return db.bookings.find_one(query) is not None
+
+
+def build_booking_slot_list(center: dict, service: dict, target_date: date, *, exclude_booking_id: ObjectId | None = None):
+    day_window = build_center_day_window(center, target_date)
+    if not day_window:
+        return []
+
+    duration_minutes = service.get("duration") if isinstance(service.get("duration"), int) else 60
+    slot_step = timedelta(minutes=15)
+    start_dt, end_dt = day_window
+    cursor = start_dt
+    slots = []
+
+    while cursor + timedelta(minutes=duration_minutes) <= end_dt:
+        slot_end = cursor + timedelta(minutes=duration_minutes)
+        if not has_booking_overlap(center["_id"], cursor, slot_end, exclude_booking_id=exclude_booking_id):
+            slots.append(
+                {
+                    "id": cursor.isoformat(timespec="minutes"),
+                    "start_time": cursor.isoformat(),
+                    "end_time": slot_end.isoformat(),
+                    "date_label": cursor.strftime("%d/%m/%Y"),
+                    "time_label": cursor.strftime("%H:%M"),
+                    "availability_label": "Disponibile",
+                }
+            )
+        cursor += slot_step
+
+    return slots
+
+
+def validate_booking_actor(booking: dict, *, role: str, user_email: str | None = None, center_id: str | None = None):
+    if role == "client":
+        if not user_email:
+            raise HTTPException(status_code=400, detail="User email is required.")
+        user = db.users.find_one({"email": user_email.strip().lower(), "role": "client"})
+        if not user or booking.get("user_id") != user["_id"]:
+            raise HTTPException(status_code=403, detail="Booking does not belong to this client.")
+        return user
+
+    if role == "center":
+        if not center_id:
+            raise HTTPException(status_code=400, detail="Center id is required.")
+        center_object_id = parse_object_id(center_id, "center id")
+        if booking.get("center_id") != center_object_id:
+            raise HTTPException(status_code=403, detail="Booking does not belong to this center.")
+        return db.centers.find_one({"_id": center_object_id})
+
+    raise HTTPException(status_code=400, detail="Unsupported role.")
 
 
 def build_checkout_urls(request: Request):
@@ -708,9 +836,6 @@ def update_center_onboarding(center_id: str, payload: CenterOnboardingPayload):
     if payload.logo_url is not None:
         branding["logo"] = payload.logo_url.strip()
 
-    if payload.brand_color is not None:
-        branding["primary_color"] = payload.brand_color.strip()
-
     update_fields = {
         "branding": branding,
         "opening_days": opening_days,
@@ -756,9 +881,6 @@ def update_center_profile(center_id: str, payload: CenterProfilePayload):
 
     if payload.logo_url is not None:
         branding["logo"] = payload.logo_url.strip()
-
-    if payload.brand_color is not None:
-        branding["primary_color"] = payload.brand_color.strip()
 
     update_fields["branding"] = branding
 
@@ -825,6 +947,29 @@ def list_center_services(center_id: str):
         )
     )
     return [serialize_service(document) for document in documents]
+
+
+@app.get("/api/centers/{center_id}/booking-slots")
+def get_center_booking_slots(center_id: str, service_id: str = Query(...), date: str = Query(...), booking_id: str | None = Query(default=None)):
+    center_object_id = parse_object_id(center_id, "center id")
+    center = db.centers.find_one({"_id": center_object_id})
+    if not center:
+        raise HTTPException(status_code=404, detail="Center not found.")
+
+    service_object_id, service = load_service_for_center(center_object_id, service_id)
+    try:
+        target_date = datetime.fromisoformat(date).date()
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=400, detail="Invalid date.") from exc
+
+    excluded_booking_id = parse_object_id(booking_id, "booking id") if booking_id else None
+    slots = build_booking_slot_list(center, service, target_date, exclude_booking_id=excluded_booking_id)
+    return {
+        "center_id": center_id,
+        "service_id": str(service_object_id),
+        "date": target_date.isoformat(),
+        "slots": slots,
+    }
 
 
 @app.get("/api/centers/{center_id}/reviews")
@@ -1065,6 +1210,33 @@ def get_center_clients(center_id: str):
         {"$sort": {"last_visit": -1}},
     ]
 
+
+@app.get("/api/centers/{center_id}/bookings")
+def get_center_bookings(center_id: str, date: str | None = Query(default=None)):
+    center_object_id = parse_object_id(center_id, "center id")
+    query: dict = {"center_id": center_object_id}
+
+    if date:
+        try:
+            target_date = datetime.fromisoformat(date).date()
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(status_code=400, detail="Invalid date.") from exc
+        day_start = datetime.combine(target_date, time(0, 0))
+        day_end = day_start + timedelta(days=1)
+        query["start_time"] = {"$gte": day_start, "$lt": day_end}
+
+    bookings = list(db.bookings.find(query).sort("start_time", 1))
+    documents = []
+    for booking in bookings:
+        user = db.users.find_one({"_id": booking.get("user_id")})
+        booking = {
+            **booking,
+            "client_name": (user or {}).get("name", "Cliente"),
+            "client_phone": (user or {}).get("phone", "n/a"),
+        }
+        documents.append(serialize_booking(booking))
+    return documents
+
     documents = list(db.bookings.aggregate(pipeline))
 
     return [
@@ -1135,36 +1307,36 @@ def create_review(payload: ReviewPayload):
 
 @app.post("/api/bookings")
 def create_booking(payload: BookingPayload):
-    # Validate center exists
     center_object_id = parse_object_id(payload.center_id, "center id")
     center = db.centers.find_one({"_id": center_object_id})
     if not center:
         raise HTTPException(status_code=404, detail="Center not found.")
 
-    # Validate user exists
     user = db.users.find_one({"email": payload.user_email.strip().lower(), "role": "client"})
     if not user:
         raise HTTPException(status_code=404, detail="User not found.")
 
-    # Validate service exists and belongs to center
-    service_object_id = parse_object_id(payload.service_id, "service id")
-    service = db.services.find_one({"_id": service_object_id, "center_id": center_object_id})
-    if not service:
-        raise HTTPException(status_code=404, detail="Service not found or does not belong to center.")
+    service_object_id, service = load_service_for_center(center_object_id, payload.service_id)
+    start_time = parse_slot_datetime(payload.slot_id)
+    duration = service.get("duration") if isinstance(service.get("duration"), int) else 60
+    end_time = start_time + timedelta(minutes=duration)
+    day_window = build_center_day_window(center, start_time.date())
+    if not day_window or start_time < day_window[0] or end_time > day_window[1]:
+        raise HTTPException(status_code=409, detail="Selected slot is outside center availability.")
+    if has_booking_overlap(center_object_id, start_time, end_time):
+        raise HTTPException(status_code=409, detail="Selected slot is no longer available.")
 
-    # For now, we'll create a simple booking with the slot_id as a reference
-    # In a real implementation, you'd validate the slot availability and calculate start/end times
     now = datetime.now(UTC)
     booking_document = {
         "center_id": center_object_id,
         "user_id": user["_id"],
         "service_id": service_object_id,
         "service_name": service.get("name"),
-        "operator_name": "Staff",  # Default operator, could be made configurable
+        "operator_name": "Staff",
         "status": "confirmed",
         "slot_id": payload.slot_id,
-        "start_time": now,  # Placeholder - would be calculated from slot
-        "end_time": now,    # Placeholder - would be calculated from service duration
+        "start_time": start_time,
+        "end_time": end_time,
         "created_at": now,
         "updated_at": now,
     }
@@ -1186,3 +1358,72 @@ def create_booking(payload: BookingPayload):
     )
 
     return serialize_booking(created_booking)
+
+
+@app.patch("/api/bookings/{booking_id}")
+def update_booking(booking_id: str, payload: BookingUpdatePayload):
+    booking_object_id = parse_object_id(booking_id, "booking id")
+    booking = db.bookings.find_one({"_id": booking_object_id})
+    if not booking:
+        raise HTTPException(status_code=404, detail="Booking not found.")
+
+    validate_booking_actor(
+        booking,
+        role=payload.role,
+        user_email=payload.user_email,
+        center_id=payload.center_id,
+    )
+
+    center_object_id = booking.get("center_id")
+    center = db.centers.find_one({"_id": center_object_id})
+    if not center:
+        raise HTTPException(status_code=404, detail="Center not found.")
+
+    service_object_id, service = load_service_for_center(center_object_id, payload.service_id)
+    start_time = parse_slot_datetime(payload.slot_id)
+    duration = service.get("duration") if isinstance(service.get("duration"), int) else 60
+    end_time = start_time + timedelta(minutes=duration)
+    day_window = build_center_day_window(center, start_time.date())
+    if not day_window or start_time < day_window[0] or end_time > day_window[1]:
+        raise HTTPException(status_code=409, detail="Selected slot is outside center availability.")
+    if has_booking_overlap(center_object_id, start_time, end_time, exclude_booking_id=booking_object_id):
+        raise HTTPException(status_code=409, detail="Selected slot is no longer available.")
+
+    db.bookings.update_one(
+        {"_id": booking_object_id},
+        {
+            "$set": {
+                "service_id": service_object_id,
+                "service_name": service.get("name"),
+                "slot_id": payload.slot_id,
+                "start_time": start_time,
+                "end_time": end_time,
+                "status": "confirmed",
+                "updated_at": datetime.now(UTC),
+            }
+        },
+    )
+    updated_booking = db.bookings.find_one({"_id": booking_object_id})
+    return serialize_booking(updated_booking)
+
+
+@app.patch("/api/bookings/{booking_id}/cancel")
+def cancel_booking(booking_id: str, role: str = Query(...), user_email: str | None = Query(default=None), center_id: str | None = Query(default=None)):
+    booking_object_id = parse_object_id(booking_id, "booking id")
+    booking = db.bookings.find_one({"_id": booking_object_id})
+    if not booking:
+        raise HTTPException(status_code=404, detail="Booking not found.")
+
+    validate_booking_actor(
+        booking,
+        role=role,
+        user_email=user_email,
+        center_id=center_id,
+    )
+
+    db.bookings.update_one(
+        {"_id": booking_object_id},
+        {"$set": {"status": "canceled", "updated_at": datetime.now(UTC)}},
+    )
+    updated_booking = db.bookings.find_one({"_id": booking_object_id})
+    return serialize_booking(updated_booking)

@@ -46,22 +46,13 @@ export function CenterSettingsScreen({
   const [savingService, setSavingService] = useState(false);
   const [savingProfile, setSavingProfile] = useState(false);
   const [catalogError, setCatalogError] = useState<string | null>(null);
-  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
-  const [selectedTreatment, setSelectedTreatment] = useState<string | null>(null);
-  const [priceInput, setPriceInput] = useState('');
-  const [durationInput, setDurationInput] = useState('');
-  const [isServiceModalOpen, setIsServiceModalOpen] = useState(false);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [profileName, setProfileName] = useState(center.name);
   const [profileLogoUrl, setProfileLogoUrl] = useState(center.branding.logo ?? '');
-  const [profileBrandColor, setProfileBrandColor] = useState(
-    center.branding.primary_color ?? '',
-  );
 
   useEffect(() => {
     setProfileName(center.name);
     setProfileLogoUrl(center.branding.logo ?? '');
-    setProfileBrandColor(center.branding.primary_color ?? '');
   }, [center]);
 
   useEffect(() => {
@@ -106,45 +97,14 @@ export function CenterSettingsScreen({
     [services],
   );
 
-  const openServiceModal = (category: string, treatment: string) => {
-    const existing = servicesByName.get(treatment);
-    setSelectedCategory(category);
-    setSelectedTreatment(treatment);
-    setPriceInput(
-      existing?.price !== null && existing?.price !== undefined
-        ? String(existing.price)
-        : '',
-    );
-    setDurationInput(
-      existing?.duration !== null && existing?.duration !== undefined
-        ? String(existing.duration)
-        : '',
-    );
-    setCatalogError(null);
-    setIsServiceModalOpen(true);
-  };
-
-  const handleSaveTreatment = async () => {
-    if (!selectedCategory || !selectedTreatment) {
-      return;
-    }
-
+  const handleSaveTreatment = async (
+    selectedCategory: string,
+    selectedTreatment: string,
+    parsedPrice: number | null,
+    parsedDuration: number | null,
+  ) => {
     setSavingService(true);
     setCatalogError(null);
-
-    const parsedPrice =
-      priceInput.trim().length > 0 ? Number(priceInput.replace(',', '.')) : null;
-    const parsedDuration =
-      durationInput.trim().length > 0 ? Number(durationInput) : null;
-
-    if (
-      (parsedPrice !== null && Number.isNaN(parsedPrice)) ||
-      (parsedDuration !== null && Number.isNaN(parsedDuration))
-    ) {
-      setCatalogError('Inserisci prezzo e durata validi.');
-      setSavingService(false);
-      return;
-    }
 
     try {
       const response = await updateCenterServices(center.id, {
@@ -159,13 +119,13 @@ export function CenterSettingsScreen({
         ],
       });
       setServices(response);
-      setIsServiceModalOpen(false);
     } catch (error) {
       setCatalogError(
         error instanceof Error
           ? error.message
           : 'Salvataggio trattamento non riuscito.',
       );
+      throw error;
     } finally {
       setSavingService(false);
     }
@@ -179,7 +139,6 @@ export function CenterSettingsScreen({
       const response = await updateCenterProfile(center.id, {
         name: profileName,
         logo_url: profileLogoUrl,
-        brand_color: profileBrandColor,
       });
       onCenterUpdated(response.center, response.activation);
       setIsProfileModalOpen(false);
@@ -221,7 +180,7 @@ export function CenterSettingsScreen({
               Logo: {center.branding.logo ? 'configurato' : 'non configurato'}
             </Text>
             <Text style={styles.profileMeta}>
-              Colore: {center.branding.primary_color ?? 'non impostato'}
+              Logo: {center.branding.logo ? 'configurato' : 'non configurato'}
             </Text>
           </View>
           <Pressable
@@ -258,9 +217,8 @@ export function CenterSettingsScreen({
             name: service.name,
             price: service.price,
           }))}
-          onSelectCategory={setSelectedCategory}
-          onSelectTreatment={openServiceModal}
-          selectedCategory={selectedCategory}
+          isBusy={savingService}
+          onSaveTreatment={handleSaveTreatment}
         />
       </SectionCard>
 
@@ -351,19 +309,6 @@ export function CenterSettingsScreen({
                 value={profileLogoUrl}
               />
             </View>
-
-            <View style={styles.fieldWrap}>
-              <Text style={styles.fieldLabel}>Colore principale</Text>
-              <TextInput
-                autoCapitalize="characters"
-                onChangeText={setProfileBrandColor}
-                placeholder="#2F4F6F"
-                placeholderTextColor={colors.textSoft}
-                style={styles.input}
-                value={profileBrandColor}
-              />
-            </View>
-
             <View style={styles.modalActions}>
               <PrimaryButton
                 label="Annulla"
@@ -382,65 +327,6 @@ export function CenterSettingsScreen({
         </View>
       </Modal>
 
-      <Modal
-        animationType="slide"
-        onRequestClose={() => setIsServiceModalOpen(false)}
-        transparent
-        visible={isServiceModalOpen}
-      >
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modalCard}>
-            <View style={styles.modalHeader}>
-              <View style={styles.modalCopy}>
-                <Text style={styles.modalEyebrow}>{selectedCategory ?? 'Trattamento'}</Text>
-                <Text style={styles.modalTitle}>{selectedTreatment ?? ''}</Text>
-              </View>
-              <Pressable onPress={() => setIsServiceModalOpen(false)}>
-                <Text style={styles.modalClose}>Chiudi</Text>
-              </Pressable>
-            </View>
-
-            <View style={styles.fieldWrap}>
-              <Text style={styles.fieldLabel}>Prezzo EUR</Text>
-              <TextInput
-                keyboardType="decimal-pad"
-                onChangeText={setPriceInput}
-                placeholder="Es. 45"
-                placeholderTextColor={colors.textSoft}
-                style={styles.input}
-                value={priceInput}
-              />
-            </View>
-
-            <View style={styles.fieldWrap}>
-              <Text style={styles.fieldLabel}>Durata minuti</Text>
-              <TextInput
-                keyboardType="number-pad"
-                onChangeText={setDurationInput}
-                placeholder="Es. 60"
-                placeholderTextColor={colors.textSoft}
-                style={styles.input}
-                value={durationInput}
-              />
-            </View>
-
-            <View style={styles.modalActions}>
-              <PrimaryButton
-                label="Annulla"
-                onPress={() => setIsServiceModalOpen(false)}
-                variant="secondary"
-              />
-              <PrimaryButton
-                disabled={savingService}
-                label={savingService ? 'Salvataggio...' : 'Salva trattamento'}
-                onPress={() => {
-                  void handleSaveTreatment();
-                }}
-              />
-            </View>
-          </View>
-        </View>
-      </Modal>
     </ScrollView>
   );
 }

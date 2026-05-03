@@ -13,7 +13,6 @@ const centerSeed = {
   name: 'Fidea Beauty Studio',
   branding: {
     logo: 'https://placehold.co/512x512/png?text=Fidea',
-    primary_color: '#2F4F6F',
   },
   opening_hours: {
     mon: { start: '09:00', end: '18:00' },

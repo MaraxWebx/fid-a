@@ -2,6 +2,8 @@ import type {
   AppNotification,
   Booking,
   BookingInput,
+  BookingSlot,
+  BookingUpdateInput,
   Center,
   CenterActivationStatusResponse,
   CenterAvailabilityInput,
@@ -78,6 +80,17 @@ export function getCenterServices(centerId: string) {
   return request<Service[]>(`/api/centers/${centerId}/services`);
 }
 
+export function getCenterBookingSlots(centerId: string, params: { serviceId: string; date: string; bookingId?: string }) {
+  const search = new URLSearchParams({
+    service_id: params.serviceId,
+    date: params.date,
+  });
+  if (params.bookingId) search.set('booking_id', params.bookingId);
+  return request<{ center_id: string; service_id: string; date: string; slots: BookingSlot[] }>(
+    `/api/centers/${centerId}/booking-slots?${search.toString()}`,
+  );
+}
+
 export function getCenterReviews(centerId: string) {
   return request<Review[]>(`/api/centers/${centerId}/reviews`);
 }
@@ -98,6 +111,11 @@ export function getCenterDashboard(centerId: string) {
 
 export function getCenterClients(centerId: string) {
   return request<CenterClient[]>(`/api/centers/${centerId}/clients`);
+}
+
+export function getCenterBookings(centerId: string, date?: string) {
+  const suffix = date ? `?date=${encodeURIComponent(date)}` : '';
+  return request<Booking[]>(`/api/centers/${centerId}/bookings${suffix}`);
 }
 
 export function registerCenter(payload: CenterRegistrationInput) {
@@ -172,4 +190,18 @@ export function createReview(payload: ReviewInput) {
 
 export function createBooking(payload: BookingInput) {
   return post<Booking, BookingInput>('/api/bookings', payload);
+}
+
+export function updateBooking(bookingId: string, payload: BookingUpdateInput) {
+  return patch<Booking, BookingUpdateInput>(`/api/bookings/${bookingId}`, payload);
+}
+
+export function cancelBooking(params: { bookingId: string; role: 'client' | 'center'; userEmail?: string; centerId?: string }) {
+  const search = new URLSearchParams({ role: params.role });
+  if (params.userEmail) search.set('user_email', params.userEmail);
+  if (params.centerId) search.set('center_id', params.centerId);
+  return patch<Booking, Record<string, never>>(
+    `/api/bookings/${params.bookingId}/cancel?${search.toString()}`,
+    {},
+  );
 }

@@ -8,9 +8,13 @@ import {
   View,
 } from "react-native";
 
-import { bookingSlots } from "../data/mockData";
-import { createBooking, getCenterServices, getCenters } from "../lib/api";
-import type { Center, Service } from "../types/api";
+import {
+  createBooking,
+  getCenterBookingSlots,
+  getCenterServices,
+  getCenters,
+} from "../lib/api";
+import type { BookingSlot, Center, Service } from "../types/api";
 import { PrimaryButton } from "../components/PrimaryButton";
 import { ScreenHeader } from "../components/ScreenHeader";
 import { SectionCard } from "../components/SectionCard";
@@ -24,6 +28,22 @@ type ClientBookingScreenProps = {
   onBookingConfirmed: () => void;
 };
 
+function buildUpcomingDates(totalDays = 14) {
+  const today = new Date();
+  return Array.from({ length: totalDays }, (_, offset) => {
+    const date = new Date(today);
+    date.setDate(today.getDate() + offset);
+    return {
+      key: date.toISOString().slice(0, 10),
+      label: new Intl.DateTimeFormat("it-IT", {
+        weekday: "short",
+        day: "2-digit",
+        month: "short",
+      }).format(date),
+    };
+  });
+}
+
 export function ClientBookingScreen({
   userEmail,
   selectedCenterId,
@@ -34,16 +54,22 @@ export function ClientBookingScreen({
   const [services, setServices] = useState<Service[]>([]);
   const [servicesLoading, setServicesLoading] = useState(true);
   const [servicesError, setServicesError] = useState<string | null>(null);
+  const [slots, setSlots] = useState<BookingSlot[]>([]);
+  const [slotsLoading, setSlotsLoading] = useState(false);
+  const [slotsError, setSlotsError] = useState<string | null>(null);
   const [localCenterId, setLocalCenterId] = useState<string | null>(
     selectedCenterId,
   );
   const [serviceId, setServiceId] = useState<string | null>(selectedServiceId);
+  const [selectedDateKey, setSelectedDateKey] = useState(
+    buildUpcomingDates()[0]?.key ?? "",
+  );
   const [slotId, setSlotId] = useState<string | null>(null);
   const [bookingLoading, setBookingLoading] = useState(false);
   const [bookingError, setBookingError] = useState<string | null>(null);
 
-  // Use local center selection if provided, otherwise use passed prop
   const activeCenterId = localCenterId ?? selectedCenterId;
+  const upcomingDates = useMemo(() => buildUpcomingDates(), []);
 
   useEffect(() => {
     let mounted = true;
@@ -89,6 +115,43 @@ export function ClientBookingScreen({
     };
   }, [activeCenterId, selectedServiceId]);
 
+  useEffect(() => {
+    if (!activeCenterId || !serviceId || !selectedDateKey) {
+      setSlots([]);
+      return;
+    }
+
+    let mounted = true;
+    setSlotsLoading(true);
+    setSlotsError(null);
+    setSlotId(null);
+
+    getCenterBookingSlots(activeCenterId, {
+      serviceId,
+      date: selectedDateKey,
+    })
+      .then((response) => {
+        if (mounted) {
+          setSlots(response.slots);
+        }
+      })
+      .catch(() => {
+        if (mounted) {
+          setSlots([]);
+          setSlotsError(
+            "Nessuna disponibilita trovata per questo giorno o centro chiuso.",
+          );
+        }
+      })
+      .finally(() => {
+        if (mounted) setSlotsLoading(false);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [activeCenterId, serviceId, selectedDateKey]);
+
   const selectedService = useMemo(
     () => services.find((item) => item.id === serviceId) ?? null,
     [serviceId, services],
@@ -96,6 +159,10 @@ export function ClientBookingScreen({
   const selectedCenter = useMemo(
     () => centers.find((center) => center.id === activeCenterId) ?? null,
     [centers, activeCenterId],
+  );
+  const selectedSlot = useMemo(
+    () => slots.find((slot) => slot.id === slotId) ?? null,
+    [slotId, slots],
   );
 
   const handleConfirmBooking = async () => {
@@ -135,7 +202,7 @@ export function ClientBookingScreen({
         }
         subtitle={
           activeCenterId
-            ? "Selezione servizio, data e ora."
+            ? "Disponibilita reale basata su calendario centro e prenotazioni esistenti."
             : "Scegli il centro per iniziare la prenotazione."
         }
       />
@@ -164,16 +231,14 @@ export function ClientBookingScreen({
       >
         <Text style={styles.notice}>
           {selectedCenter
-            ? `${selectedCenter.email} - ${selectedCenter.branding?.primary_color ?? "palette non impostata"}`
+            ? `${selectedCenter.email} - logo ${selectedCenter.branding?.logo ? "configurato" : "non configurato"}`
             : "Seleziona un centro per continuare."}
         </Text>
       </SectionCard>
 
       <SectionCard eyebrow="Step 1" title="Scegli il servizio">
         {servicesLoading ? <ActivityIndicator color={colors.brand} /> : null}
-        {servicesError ? (
-          <Text style={styles.notice}>{servicesError}</Text>
-        ) : null}
+        {servicesError ? <Text style={styles.notice}>{servicesError}</Text> : null}
         {services.map((service) => (
           <SelectableRow
             key={service.id}
@@ -185,19 +250,38 @@ export function ClientBookingScreen({
         ))}
       </SectionCard>
 
-      <SectionCard eyebrow="Step 2" title="Scegli data e ora">
-        {bookingSlots.map((slot) => (
+      <SectionCard eyebrow="Step 2" title="Scegli il giorno">
+        {upcomingDates.map((day) => (
+          <SelectableRow
+            key={day.key}
+            active={day.key === selectedDateKey}
+            title={day.label}
+            subtitle={day.key}
+            onPress={() => setSelectedDateKey(day.key)}
+          />
+        ))}
+      </SectionCard>
+
+      <SectionCard eyebrow="Step 3" title="Scegli l'orario">
+        {slotsLoading ? <ActivityIndicator color={colors.brand} /> : null}
+        {slotsError ? <Text style={styles.notice}>{slotsError}</Text> : null}
+        {!slotsLoading && slots.length === 0 && !slotsError ? (
+          <Text style={styles.notice}>
+            Nessuno slot disponibile per questo giorno.
+          </Text>
+        ) : null}
+        {slots.map((slot) => (
           <SelectableRow
             key={slot.id}
             active={slot.id === slotId}
-            title={slot.dateLabel}
-            subtitle={`${slot.timeLabel} - ${slot.availabilityLabel}`}
+            title={slot.time_label}
+            subtitle={`${slot.date_label} - ${slot.availability_label}`}
             onPress={() => setSlotId(slot.id)}
           />
         ))}
       </SectionCard>
 
-      <SectionCard eyebrow="Step 3" title="Conferma prenotazione">
+      <SectionCard eyebrow="Step 4" title="Conferma prenotazione">
         <Text style={styles.summaryLine}>
           Centro: {selectedCenter?.name ?? "Da selezionare"}
         </Text>
@@ -205,13 +289,7 @@ export function ClientBookingScreen({
           Servizio: {selectedService?.name ?? "Da selezionare"}
         </Text>
         <Text style={styles.summaryLine}>
-          Slot:{" "}
-          {bookingSlots.find((slot) => slot.id === slotId)?.timeLabel ??
-            "Seleziona uno slot"}
-        </Text>
-        <Text style={styles.notice}>
-          Demo locale: availability e lock slot verranno collegati al backend
-          reale.
+          Slot: {selectedSlot ? `${selectedSlot.date_label} - ${selectedSlot.time_label}` : "Seleziona uno slot"}
         </Text>
         {bookingError ? (
           <Text style={styles.errorText}>{bookingError}</Text>

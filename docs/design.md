@@ -33,8 +33,11 @@ Uso consigliato:
 * stato chiaro
 * lessico semplice
 * frizione minima sui task principali
+* una sola modale per task quando possibile
+* evitare modali annidate
+* pattern coerenti tra onboarding e area privata centro
 
-## Flusso prioritario da disegnare: registrazione centro
+## Flusso centro oggi in uso
 
 La registrazione centro e un funnel commerciale, non un semplice form amministrativo.
 
@@ -71,12 +74,24 @@ Messaggi chiave:
 L'onboarding deve raccogliere:
 
 * logo
-* colore brand
 * giorni apertura
 * orari apertura
 * servizi principali
 
 Va progettato come checklist di attivazione.
+
+Pattern oggi adottati:
+
+* step fullscreen
+* progress bar
+* giorni apertura come lista tappabile
+* modale dedicata per configurare il singolo giorno
+* catalogo trattamenti con widget condiviso
+* griglia categorie 3 colonne
+* categoria aperta in modale
+* step lista trattamenti
+* step configurazione trattamento nella stessa modale
+* back interno alla modale per tornare alla lista
 
 ## Regola di pubblicazione
 
@@ -104,3 +119,60 @@ Messaggio:
 CTA:
 
 * `Completa ora`
+
+## Pattern area privata centro
+
+### Dashboard
+
+La home centro oggi contiene:
+
+* KPI del giorno
+* agenda appuntamenti
+* clienti recenti
+* ultima recensione ricevuta
+
+### Agenda centro
+
+La gestione disponibilita usa:
+
+* calendario con prossimi giorni
+* tap sul giorno
+* modale di dettaglio
+* chiusura giorno
+* modifica orario singola data
+* nota interna
+
+### Config centro
+
+La sezione config oggi contiene:
+
+* widget unico profilo centro
+* pulsante edit con icona
+* modale modifica dati centro
+* widget catalogo trattamenti
+* lista trattamenti attivi
+* lista completa recensioni
+
+## Pattern notifiche e recensioni
+
+Elementi oggi previsti:
+
+* campanella fixed con badge
+* centro notifiche in-app
+* notifica nuova prenotazione per il centro
+* notifica richiesta recensione per il cliente
+* notifica nuova recensione ricevuta per il centro
+
+Flusso recensione cliente:
+
+* apertura dal centro notifiche
+* modale dedicata
+* stelle 1-5
+* commento breve
+* limite 128 caratteri
+
+## Vincoli UX attuali
+
+* non usare doppia modale per selezione categoria e configurazione trattamento
+* il passaggio categoria > trattamento > configurazione deve stare in un solo contenitore modale
+* la lista dei trattamenti non deve allungare la pagina principale

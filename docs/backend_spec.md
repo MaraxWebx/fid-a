@@ -8,8 +8,17 @@ Responsabilita attuali:
 
 * lettura dati centro
 * lettura servizi
-* lettura profilo cliente demo
-* lettura prenotazioni cliente demo
+* aggiornamento profilo centro
+* aggiornamento onboarding centro
+* aggiornamento disponibilita centro
+* configurazione servizi centro
+* lettura profilo cliente
+* lettura prenotazioni cliente
+* scrittura prenotazioni
+* lettura recensioni centro
+* scrittura recensioni cliente
+* lettura notifiche in-app
+* mark as read notifiche
 * dashboard centro
 * clienti centro
 * health check API e database
@@ -64,10 +73,20 @@ Risposta attuale:
 
 * `GET /api/centers`
 * `GET /api/centers/{center_id}/services`
+* `PATCH /api/centers/{center_id}/services`
+* `PATCH /api/centers/{center_id}/profile`
+* `PATCH /api/centers/{center_id}/onboarding`
+* `PATCH /api/centers/{center_id}/availability`
+* `GET /api/centers/{center_id}/reviews`
 * `GET /api/users/profile?email=...`
 * `GET /api/users/bookings?email=...`
 * `GET /api/centers/{center_id}/dashboard`
 * `GET /api/centers/{center_id}/clients`
+* `POST /api/bookings`
+* `POST /api/reviews`
+* `GET /api/notifications`
+* `PATCH /api/notifications/read`
+* `GET /api/centers/{center_id}/activation-status`
 
 ## Collection oggi usate
 
@@ -80,6 +99,12 @@ Campi letti oggi:
 * `name`
 * `branding`
 * `opening_hours`
+* `opening_days`
+* `availability_overrides`
+* `primary_services`
+* `registration_status`
+* `subscription_status`
+* `is_listable`
 * `created_at`
 
 ### `services`
@@ -124,6 +149,35 @@ Campi letti oggi:
 * `status`
 * `created_at`
 
+### `reviews`
+
+Campi usati oggi:
+
+* `_id`
+* `booking_id`
+* `center_id`
+* `user_id`
+* `user_name`
+* `service_name`
+* `rating`
+* `comment`
+* `created_at`
+
+### `notifications`
+
+Campi usati oggi:
+
+* `_id`
+* `role`
+* `center_id`
+* `user_id`
+* `type`
+* `title`
+* `message`
+* `is_read`
+* `metadata`
+* `created_at`
+
 ## Seed attuale
 
 Lo script `mobile/scripts/seed-demo-data.mjs` crea o aggiorna:
@@ -133,9 +187,19 @@ Lo script `mobile/scripts/seed-demo-data.mjs` crea o aggiorna:
 * 1 cliente demo
 * 3 prenotazioni demo
 
-## Prossimo scope backend: registrazione centro
+## Flussi backend oggi attivi
 
-Il backend dovra supportare il flusso di acquisizione centro con persistenza stato e checkout Stripe.
+Il backend oggi supporta:
+
+* registrazione centro con checkout Stripe
+* login centro e login cliente
+* onboarding centro persistente
+* gating attivazione centro
+* calendario centro con override giornalieri
+* configurazione catalogo servizi
+* creazione prenotazione
+* creazione recensione
+* notifiche applicative per centro e cliente
 
 ### Campi centro richiesti in registrazione
 
@@ -150,10 +214,16 @@ Il backend dovra supportare il flusso di acquisizione centro con persistenza sta
 ### Campi onboarding centro richiesti
 
 * `logo_url` o asset equivalente
-* `brand_color`
 * `opening_days`
 * `opening_hours`
 * `primary_services`
+
+Campi extra oggi supportati:
+
+* `availability_overrides`
+* configurazione servizi per categoria
+* prezzo servizio
+* durata servizio
 
 ### Stati centro suggeriti
 
@@ -172,24 +242,35 @@ Il backend dovra supportare il flusso di acquisizione centro con persistenza sta
 * `has_primary_services`
 * `is_listable`
 
-## Endpoint da introdurre nel prossimo step
+## Endpoint attivi oggi
 
 ### Registrazione e checkout
 
 * `POST /api/centers/register`
-* `POST /api/centers/{center_id}/checkout-session`
 * `POST /api/stripe/webhooks`
+* `POST /api/auth/centers/login`
+* `POST /api/auth/clients/register`
+* `POST /api/auth/clients/login`
 
 ### Onboarding centro
 
-* `GET /api/centers/{center_id}/onboarding-status`
 * `PATCH /api/centers/{center_id}/profile`
+* `PATCH /api/centers/{center_id}/onboarding`
 * `PATCH /api/centers/{center_id}/availability`
-* `PATCH /api/centers/{center_id}/primary-services`
+* `PATCH /api/centers/{center_id}/services`
 
 ### Notifiche e gating
 
 * `GET /api/centers/{center_id}/activation-status`
+* `GET /api/notifications`
+* `PATCH /api/notifications/read`
+
+### Servizi, prenotazioni, recensioni
+
+* `GET /api/centers/{center_id}/services`
+* `GET /api/centers/{center_id}/reviews`
+* `POST /api/bookings`
+* `POST /api/reviews`
 
 Risposta attesa:
 
@@ -198,3 +279,26 @@ Risposta attesa:
 * campi mancanti
 * `is_listable`
 * eventuale messaggio da mostrare come pop notifica in app
+
+## Automazioni applicative oggi implementate
+
+Alla creazione di una prenotazione:
+
+* viene creato il booking
+* viene creata una notifica per il centro di tipo `new_booking`
+
+Quando un booking risulta nel passato e non ha recensione:
+
+* viene generata una notifica cliente di tipo `review_prompt`
+
+Alla creazione di una recensione:
+
+* viene salvata la review
+* viene marcata come letta la notifica di review prompt legata al booking
+* viene creata una notifica centro di tipo `review_received`
+
+## Limiti attuali
+
+* le notifiche sono in-app, non ancora push native
+* non esiste ancora un vero stato `completed` del trattamento distinto dalla sola data passata
+* le recensioni non hanno ancora moderazione o media aggregata per centro
