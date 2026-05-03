@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import Ionicons from 'react-native-vector-icons/Ionicons';
 
 import { getCenterClients } from '../lib/api';
 import type { Center, CenterClient } from '../types/api';
@@ -10,9 +11,10 @@ import { spacing } from '../theme/spacing';
 
 type CenterClientsScreenProps = {
   center: Center;
+  onOpenClient: (clientId: string) => void;
 };
 
-export function CenterClientsScreen({ center }: CenterClientsScreenProps) {
+export function CenterClientsScreen({ center, onOpenClient }: CenterClientsScreenProps) {
   const [clients, setClients] = useState<CenterClient[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -52,15 +54,22 @@ export function CenterClientsScreen({ center }: CenterClientsScreenProps) {
           <Text style={styles.clientMeta}>Nessun cliente disponibile.</Text>
         ) : null}
         {clients.map((client) => (
-          <View key={client.id} style={styles.clientCard}>
-            <Text style={styles.clientName}>{client.name || 'Cliente senza nome'}</Text>
-            <Text style={styles.clientMeta}>{client.phone || 'Telefono non disponibile'}</Text>
-            <Text style={styles.clientMeta}>{client.email ?? 'Email non disponibile'}</Text>
-            <Text style={styles.clientBookings}>{client.bookings ?? 0} prenotazioni totali</Text>
-            <Text style={styles.clientMeta}>
-              Ultima visita: {client.last_visit ?? 'non disponibile'}
-            </Text>
-          </View>
+          <Pressable
+            key={client.id}
+            onPress={() => onOpenClient(client.id)}
+            style={styles.clientCard}
+          >
+            <View style={styles.clientMain}>
+              <Text style={styles.clientName}>{client.name || 'Cliente senza nome'}</Text>
+              <Text style={styles.clientMeta}>{client.phone || 'Telefono non disponibile'}</Text>
+              <Text style={styles.clientMeta}>{client.email ?? 'Email non disponibile'}</Text>
+              <Text style={styles.clientBookings}>{client.bookings ?? 0} prenotazioni totali</Text>
+              <Text style={styles.clientMeta}>
+                Ultima visita: {client.last_visit ?? 'non disponibile'}
+              </Text>
+            </View>
+            <Ionicons color={colors.textMuted} name="chevron-forward" size={18} />
+          </Pressable>
         ))}
       </SectionCard>
     </ScrollView>
@@ -78,10 +87,16 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.xxl,
   },
   clientCard: {
+    alignItems: 'center',
     backgroundColor: colors.surfaceMuted,
     borderRadius: 20,
+    flexDirection: 'row',
+    gap: spacing.sm,
     marginBottom: spacing.md,
     padding: spacing.md,
+  },
+  clientMain: {
+    flex: 1,
   },
   clientName: {
     color: colors.text,

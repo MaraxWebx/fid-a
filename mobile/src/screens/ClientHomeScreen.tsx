@@ -258,14 +258,9 @@ export function ClientHomeScreen({
 
               <Text style={styles.meta}>{appointment.operator_name}</Text>
 
-              <Text
-                style={[
-                  styles.status,
-                  appointment.status === "confirmed" && styles.statusConfirmed,
-                ]}
-              >
-                {appointment.status}
-              </Text>
+              {appointment.status !== "confirmed" ? (
+                <Text style={styles.status}>{appointment.status}</Text>
+              ) : null}
             </View>
 
             <Text style={styles.price}>

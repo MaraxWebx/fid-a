@@ -27,6 +27,7 @@ import { ClientHomeScreen } from "./src/screens/ClientHomeScreen";
 import { ClientProfileScreen } from "./src/screens/ClientProfileScreen";
 import { ClientRegistrationScreen } from "./src/screens/ClientRegistrationScreen";
 import { CenterCalendarScreen } from "./src/screens/CenterCalendarScreen";
+import { CenterClientDetailScreen } from "./src/screens/CenterClientDetailScreen";
 import { CenterClientsScreen } from "./src/screens/CenterClientsScreen";
 import { CenterDashboardScreen } from "./src/screens/CenterDashboardScreen";
 import { CenterSettingsScreen } from "./src/screens/CenterSettingsScreen";
@@ -53,7 +54,13 @@ type ClientTab =
   | "profile"
   | "booking"
   | "center-detail";
-type CenterTab = "home" | "calendar" | "clients" | "settings";
+type CenterTab =
+  | "home"
+  | "calendar"
+  | "clients"
+  | "settings"
+  | "onboarding"
+  | "client-detail";
 type PublicRoute =
   | "landing"
   | "client-auth"
@@ -78,6 +85,8 @@ export default function App() {
   const [selectedCenterId, setSelectedCenterId] = useState<string | null>(null);
   const [selectedClientCenter, setSelectedClientCenter] = useState<Center | null>(null);
   const [centerDetailBackTab, setCenterDetailBackTab] = useState<ClientTab>("home");
+  const [selectedCenterClientId, setSelectedCenterClientId] = useState<string | null>(null);
+  const [centerClientBackTab, setCenterClientBackTab] = useState<CenterTab>("home");
   const [registeredCenter, setRegisteredCenter] = useState<Center | null>(null);
   const [registeredCenterActivation, setRegisteredCenterActivation] =
     useState<ActivationStatus | null>(null);
@@ -115,6 +124,8 @@ export default function App() {
     setSelectedCenterId(null);
     setSelectedClientCenter(null);
     setCenterDetailBackTab("home");
+    setSelectedCenterClientId(null);
+    setCenterClientBackTab("home");
     setRegisteredCenter(null);
     setRegisteredCenterActivation(null);
     setRegisteredCenterCheckoutUrl(null);
@@ -136,6 +147,12 @@ export default function App() {
     setSelectedClientCenter(center);
     setCenterDetailBackTab(backTab);
     setClientTab("center-detail");
+  };
+
+  const handleOpenCenterClient = (clientId: string, backTab: CenterTab) => {
+    setSelectedCenterClientId(clientId);
+    setCenterClientBackTab(backTab);
+    setCenterTab("client-detail");
   };
 
   const loadNotifications = async () => {
@@ -165,7 +182,9 @@ export default function App() {
   const openNotifications = async () => {
     setNotificationsOpen(true);
     await loadNotifications();
-    const unreadIds = notifications.filter((item) => !item.is_read).map((item) => item.id);
+    const unreadIds = notifications
+      .filter((item) => !item.is_read && item.type !== "review_prompt")
+      .map((item) => item.id);
     if (unreadIds.length > 0) {
       try {
         await markNotificationsRead(unreadIds);
@@ -215,6 +234,10 @@ export default function App() {
         comment: reviewComment.trim(),
       });
       setReviewModalOpen(false);
+      setNotifications((current) =>
+        current.filter((item) => item.id !== selectedReviewNotification.id),
+      );
+      setSelectedReviewNotification(null);
       await loadNotifications();
     } finally {
       setReviewSubmitting(false);
@@ -519,7 +542,23 @@ export default function App() {
       ) : (
         <>
           {centerTab === "home" ? (
-            <CenterDashboardScreen center={session.center} />
+            <CenterDashboardScreen
+              activation={session.activation}
+              center={session.center}
+              onOpenClient={(clientId) => handleOpenCenterClient(clientId, "home")}
+              onOpenOnboarding={() => setCenterTab("onboarding")}
+            />
+          ) : null}
+          {centerTab === "onboarding" ? (
+            <CenterOnboardingScreen
+              center={session.center}
+              initialActivation={session.activation}
+              onBack={() => setCenterTab("home")}
+              onComplete={(center, activation) => {
+                handleCenterSessionUpdated(center, activation);
+                setCenterTab("home");
+              }}
+            />
           ) : null}
           {centerTab === "calendar" ? (
             <CenterCalendarScreen
@@ -528,7 +567,17 @@ export default function App() {
             />
           ) : null}
           {centerTab === "clients" ? (
-            <CenterClientsScreen center={session.center} />
+            <CenterClientsScreen
+              center={session.center}
+              onOpenClient={(clientId) => handleOpenCenterClient(clientId, "clients")}
+            />
+          ) : null}
+          {centerTab === "client-detail" ? (
+            <CenterClientDetailScreen
+              center={session.center}
+              clientId={selectedCenterClientId}
+              onBack={() => setCenterTab(centerClientBackTab)}
+            />
           ) : null}
           {centerTab === "settings" ? (
             <CenterSettingsScreen
@@ -545,7 +594,15 @@ export default function App() {
               { key: "clients", label: "Clienti", icon: "clients" },
               { key: "settings", label: "Config", icon: "settings" },
             ]}
-            activeKey={centerTab}
+            activeKey={
+              centerTab === "onboarding"
+                ? "home"
+                : centerTab === "client-detail"
+                  ? centerClientBackTab === "clients"
+                    ? "clients"
+                    : "home"
+                  : centerTab
+            }
             onChange={(key) => setCenterTab(key as CenterTab)}
           />
         </>
@@ -588,6 +645,18 @@ export default function App() {
                 >
                   <Text style={styles.notificationTitle}>{item.title}</Text>
                   <Text style={styles.notificationMessage}>{item.message}</Text>
+                  {session.role === "client" && item.type === "review_prompt" ? (
+                    <View style={styles.reviewPromptBox}>
+                      <Text style={styles.reviewPromptTitle}>
+                        {String(item.metadata?.service_name ?? "Trattamento")}
+                      </Text>
+                      <Text style={styles.reviewPromptMeta}>
+                        {String(item.metadata?.date_label ?? "Data non disponibile")}
+                        {" - "}
+                        {String(item.metadata?.time_label ?? "Orario non disponibile")}
+                      </Text>
+                    </View>
+                  ) : null}
                   {session.role === "center" && item.type === "new_booking" ? (
                     <Text style={styles.notificationHint}>Apri scheda prenotazione</Text>
                   ) : null}
@@ -758,6 +827,24 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "700",
     marginTop: 10,
+  },
+  reviewPromptBox: {
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginTop: 10,
+    padding: 12,
+  },
+  reviewPromptTitle: {
+    color: colors.brandInk,
+    fontSize: 14,
+    fontWeight: "800",
+  },
+  reviewPromptMeta: {
+    color: colors.textMuted,
+    fontSize: 13,
+    marginTop: 4,
   },
   notificationActionWrap: {
     marginTop: 12,

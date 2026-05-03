@@ -9,6 +9,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import Ionicons from "react-native-vector-icons/Ionicons";
 
 import { PrimaryButton } from "../components/PrimaryButton";
 import { CenterBookingDetailModal } from "../components/CenterBookingDetailModal";
@@ -39,11 +40,14 @@ type CenterCalendarScreenProps = {
 
 type CalendarDay = {
   dateKey: string;
+  dateNumber: string;
   label: string;
   weekdayKey: string;
+  isCurrentMonth: boolean;
   defaultEnabled: boolean;
   defaultStart: string;
   defaultEnd: string;
+  bookingsCount: number;
   override?: {
     enabled: boolean;
     start: string | null;
@@ -52,7 +56,10 @@ type CalendarDay = {
   };
 };
 
+type CalendarViewMode = "calendar" | "list";
+
 const weekdayMap = ["Dom", "Lun", "Mar", "Mer", "Gio", "Ven", "Sab"];
+const weekdayHeaders = ["Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom"];
 
 function formatDateKey(date: Date) {
   return toLocalDateKey(date);
@@ -65,38 +72,79 @@ function formatDateLabel(date: Date) {
   }).format(date);
 }
 
-function buildCalendarDays(center: Center, totalDays = 14): CalendarDay[] {
-  const today = new Date();
-  const overrides = center.availability_overrides ?? {};
+function buildBookingCountMap(bookings: Booking[]) {
+  const counts = new Map<string, number>();
 
-  return Array.from({ length: totalDays }, (_, offset) => {
-    const date = new Date(today);
-    date.setDate(today.getDate() + offset);
-
-    const weekdayKey = weekdayMap[date.getDay()];
-    const dateKey = formatDateKey(date);
-    const defaultEnabled = center.opening_days?.includes(weekdayKey) ?? false;
-    const baseHours = center.opening_hours?.[weekdayKey];
-
-    return {
-      dateKey,
-      label: formatDateLabel(date),
-      weekdayKey,
-      defaultEnabled,
-      defaultStart: baseHours?.start ?? "09:00",
-      defaultEnd: baseHours?.end ?? "19:00",
-      override: overrides[dateKey],
-    };
+  bookings.forEach((booking) => {
+    if (!booking.start_time || booking.status === "canceled") {
+      return;
+    }
+    const dateKey = formatDateKey(new Date(booking.start_time));
+    counts.set(dateKey, (counts.get(dateKey) ?? 0) + 1);
   });
+
+  return counts;
+}
+
+function buildCalendarDay(
+  center: Center,
+  date: Date,
+  visibleMonth: Date,
+  bookingCounts: Map<string, number>,
+): CalendarDay {
+  const overrides = center.availability_overrides ?? {};
+  const weekdayKey = weekdayMap[date.getDay()];
+  const dateKey = formatDateKey(date);
+  const defaultEnabled = center.opening_days?.includes(weekdayKey) ?? false;
+  const baseHours = center.opening_hours?.[weekdayKey];
+
+  return {
+    dateKey,
+    dateNumber: String(date.getDate()),
+    label: formatDateLabel(date),
+    weekdayKey,
+    isCurrentMonth: date.getMonth() === visibleMonth.getMonth(),
+    defaultEnabled,
+    defaultStart: baseHours?.start ?? "09:00",
+    defaultEnd: baseHours?.end ?? "19:00",
+    bookingsCount: bookingCounts.get(dateKey) ?? 0,
+    override: overrides[dateKey],
+  };
+}
+
+function buildMonthCalendarDays(
+  center: Center,
+  visibleMonth: Date,
+  bookings: Booking[],
+): CalendarDay[] {
+  const bookingCounts = buildBookingCountMap(bookings);
+  const monthStart = new Date(visibleMonth.getFullYear(), visibleMonth.getMonth(), 1);
+  const startOffset = (monthStart.getDay() + 6) % 7;
+  const gridStart = new Date(monthStart);
+  gridStart.setDate(monthStart.getDate() - startOffset);
+
+  return Array.from({ length: 42 }, (_, offset) => {
+    const date = new Date(gridStart);
+    date.setDate(gridStart.getDate() + offset);
+    return buildCalendarDay(center, date, visibleMonth, bookingCounts);
+  });
+}
+
+function formatMonthLabel(date: Date) {
+  return new Intl.DateTimeFormat("it-IT", {
+    month: "long",
+    year: "numeric",
+  }).format(date);
 }
 
 export function CenterCalendarScreen({
   center,
   onCenterUpdated,
 }: CenterCalendarScreenProps) {
-  const calendarDays = useMemo(() => buildCalendarDays(center), [center]);
-  const [selectedDateKey, setSelectedDateKey] = useState(
-    calendarDays[0]?.dateKey ?? "",
+  const [viewMode, setViewMode] = useState<CalendarViewMode>("calendar");
+  const [visibleMonth, setVisibleMonth] = useState(() => new Date());
+  const [selectedDateKey, setSelectedDateKey] = useState(() =>
+    formatDateKey(new Date()),
   );
   const [isEditorOpen, setIsEditorOpen] = useState(false);
   const [draftEnabled, setDraftEnabled] = useState(true);
@@ -115,9 +163,36 @@ export function CenterCalendarScreen({
   const [selectedSlotId, setSelectedSlotId] = useState<string | null>(null);
   const [bookingActionLoading, setBookingActionLoading] = useState(false);
   const [bookingDetailId, setBookingDetailId] = useState<string | null>(null);
+  const [agendaBookings, setAgendaBookings] = useState<Booking[]>([]);
+  const [agendaLoading, setAgendaLoading] = useState(false);
+  const [agendaError, setAgendaError] = useState<string | null>(null);
+
+  const calendarDays = useMemo(
+    () => buildMonthCalendarDays(center, visibleMonth, agendaBookings),
+    [agendaBookings, center, visibleMonth],
+  );
 
   const selectedDay =
-    calendarDays.find((day) => day.dateKey === selectedDateKey) ?? calendarDays[0];
+    calendarDays.find((day) => day.dateKey === selectedDateKey) ??
+    buildCalendarDay(center, new Date(), visibleMonth, buildBookingCountMap(agendaBookings));
+
+  const agendaBookingsSorted = useMemo(
+    () => {
+      const now = Date.now();
+      return [...agendaBookings].sort((left, right) => {
+        const leftTime = left.start_time ? new Date(left.start_time).getTime() : 0;
+        const rightTime = right.start_time ? new Date(right.start_time).getTime() : 0;
+        const leftFuture = leftTime >= now;
+        const rightFuture = rightTime >= now;
+
+        if (leftFuture && !rightFuture) return -1;
+        if (!leftFuture && rightFuture) return 1;
+
+        return leftFuture ? leftTime - rightTime : rightTime - leftTime;
+      });
+    },
+    [agendaBookings],
+  );
 
   const loadDayBookings = async (dateKey: string) => {
     setBookingsLoading(true);
@@ -131,6 +206,23 @@ export function CenterCalendarScreen({
       setBookingsLoading(false);
     }
   };
+
+  const loadAgendaBookings = async () => {
+    setAgendaLoading(true);
+    setAgendaError(null);
+    try {
+      const response = await getCenterBookings(center.id);
+      setAgendaBookings(response);
+    } catch {
+      setAgendaError("Impossibile caricare la lista appuntamenti.");
+    } finally {
+      setAgendaLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadAgendaBookings();
+  }, [center.id]);
 
   useEffect(() => {
     if (!selectedDay) {
@@ -224,6 +316,7 @@ export function CenterCalendarScreen({
       });
       onCenterUpdated(response.center, response.activation);
       await loadDayBookings(selectedDay.dateKey);
+      await loadAgendaBookings();
     } catch (saveError) {
       setError(
         saveError instanceof Error
@@ -252,6 +345,7 @@ export function CenterCalendarScreen({
       setDraftEnd(selectedDay.defaultEnd);
       setDraftNote("");
       await loadDayBookings(selectedDay.dateKey);
+      await loadAgendaBookings();
     } catch (saveError) {
       setError(
         saveError instanceof Error
@@ -281,6 +375,7 @@ export function CenterCalendarScreen({
       });
       setBookingEditor(null);
       await loadDayBookings(selectedDay.dateKey);
+      await loadAgendaBookings();
     } catch (updateError) {
       setBookingSlotsError(
         updateError instanceof Error
@@ -305,6 +400,7 @@ export function CenterCalendarScreen({
         setBookingEditor(null);
       }
       await loadDayBookings(selectedDay.dateKey);
+      await loadAgendaBookings();
     } catch (cancelError) {
       setBookingSlotsError(
         cancelError instanceof Error
@@ -320,35 +416,172 @@ export function CenterCalendarScreen({
     <ScrollView contentContainerStyle={styles.content} style={styles.container}>
       <ScreenHeader
         eyebrow="Agenda centro"
-        title="Calendario disponibilita"
-        subtitle="Ogni giorno gestisce eccezioni reali, slot prenotabili e appuntamenti senza sovrapposizioni."
+        title="Agenda"
+        subtitle="Gestisci disponibilita e appuntamenti con vista calendario o lista."
       />
 
-      <SectionCard eyebrow="Calendario" title="Prossimi 14 giorni">
-        <View style={styles.calendarGrid}>
-          {calendarDays.map((day) => {
-            const effectiveEnabled = day.override?.enabled ?? day.defaultEnabled;
+      <View style={styles.viewToggle}>
+        <Pressable
+          onPress={() => setViewMode("calendar")}
+          style={[styles.viewToggleItem, viewMode === "calendar" && styles.viewToggleActive]}
+        >
+          <Ionicons
+            color={viewMode === "calendar" ? colors.brandDark : colors.textMuted}
+            name="calendar-outline"
+            size={18}
+          />
+          <Text
+            style={[
+              styles.viewToggleLabel,
+              viewMode === "calendar" && styles.viewToggleLabelActive,
+            ]}
+          >
+            Calendario
+          </Text>
+        </Pressable>
+        <Pressable
+          onPress={() => setViewMode("list")}
+          style={[styles.viewToggleItem, viewMode === "list" && styles.viewToggleActive]}
+        >
+          <Ionicons
+            color={viewMode === "list" ? colors.brandDark : colors.textMuted}
+            name="list-outline"
+            size={18}
+          />
+          <Text
+            style={[
+              styles.viewToggleLabel,
+              viewMode === "list" && styles.viewToggleLabelActive,
+            ]}
+          >
+            Lista
+          </Text>
+        </Pressable>
+      </View>
 
-            return (
+      {viewMode === "calendar" ? (
+        <SectionCard eyebrow="Calendario" title={formatMonthLabel(visibleMonth)}>
+          <View style={styles.monthHeader}>
+            <Pressable
+              onPress={() =>
+                setVisibleMonth(
+                  (current) => new Date(current.getFullYear(), current.getMonth() - 1, 1),
+                )
+              }
+              style={styles.monthButton}
+            >
+              <Ionicons color={colors.brandDark} name="chevron-back" size={18} />
+            </Pressable>
+            <Pressable
+              onPress={() => {
+                const today = new Date();
+                setVisibleMonth(today);
+                setSelectedDateKey(formatDateKey(today));
+              }}
+              style={styles.todayButton}
+            >
+              <Text style={styles.todayButtonText}>Oggi</Text>
+            </Pressable>
+            <Pressable
+              onPress={() =>
+                setVisibleMonth(
+                  (current) => new Date(current.getFullYear(), current.getMonth() + 1, 1),
+                )
+              }
+              style={styles.monthButton}
+            >
+              <Ionicons color={colors.brandDark} name="chevron-forward" size={18} />
+            </Pressable>
+          </View>
+
+          <View style={styles.weekHeader}>
+            {weekdayHeaders.map((weekday) => (
+              <Text key={weekday} style={styles.weekHeaderText}>
+                {weekday}
+              </Text>
+            ))}
+          </View>
+
+          <View style={styles.calendarGrid}>
+            {calendarDays.map((day) => {
+              const effectiveEnabled = day.override?.enabled ?? day.defaultEnabled;
+
+              return (
+                <Pressable
+                  key={day.dateKey}
+                  onPress={() => handleSelectDay(day)}
+                  style={[
+                    styles.dateCard,
+                    day.dateKey === selectedDateKey && styles.dateCardSelected,
+                    !day.isCurrentMonth && styles.dateCardMuted,
+                    !effectiveEnabled && styles.dateCardClosed,
+                  ]}
+                >
+                  <Text style={styles.dateWeekday}>{day.weekdayKey}</Text>
+                  <Text style={styles.dateLabel}>{day.dateNumber}</Text>
+                  {day.bookingsCount > 0 ? (
+                    <View style={styles.bookingBadge}>
+                      <Text style={styles.bookingBadgeText}>{day.bookingsCount}</Text>
+                    </View>
+                  ) : (
+                    <Text style={styles.dateState}>
+                      {effectiveEnabled ? "Aperto" : "Chiuso"}
+                    </Text>
+                  )}
+                </Pressable>
+              );
+            })}
+          </View>
+        </SectionCard>
+      ) : (
+        <SectionCard eyebrow="Lista appuntamenti" title={`${agendaBookings.length} prenotazioni`}>
+          {agendaLoading ? <ActivityIndicator color={colors.brand} /> : null}
+          {agendaError ? <Text style={styles.error}>{agendaError}</Text> : null}
+          {!agendaLoading && agendaBookings.length === 0 ? (
+            <Text style={styles.toggleMeta}>Nessuna prenotazione registrata.</Text>
+          ) : null}
+          <View style={styles.agendaList}>
+            {agendaBookingsSorted.map((booking) => (
               <Pressable
-                key={day.dateKey}
-                onPress={() => handleSelectDay(day)}
-                style={[
-                  styles.dateCard,
-                  day.dateKey === selectedDateKey && styles.dateCardSelected,
-                  !effectiveEnabled && styles.dateCardClosed,
-                ]}
+                key={booking.id}
+                onPress={() => setBookingDetailId(booking.id)}
+                style={styles.agendaRow}
               >
-                <Text style={styles.dateWeekday}>{day.weekdayKey}</Text>
-                <Text style={styles.dateLabel}>{day.label}</Text>
-                <Text style={styles.dateState}>
-                  {effectiveEnabled ? "Aperto" : "Chiuso"}
-                </Text>
+                <View style={styles.agendaDate}>
+                  <Text style={styles.agendaDateDay}>{booking.date_label ?? "n/a"}</Text>
+                  <Text style={styles.agendaDateTime}>{booking.time_label ?? "--:--"}</Text>
+                </View>
+                <View style={styles.agendaMain}>
+                  <Text style={styles.bookingTitle}>{booking.service_name}</Text>
+                  <Text style={styles.bookingMeta}>
+                    {booking.client_name ?? "Cliente"} - {booking.operator_name}
+                  </Text>
+                </View>
+                <Pressable
+                  onPress={(event) => {
+                    event.stopPropagation();
+                    if (booking.start_time) {
+                      const bookingDate = new Date(booking.start_time);
+                      setVisibleMonth(bookingDate);
+                      handleSelectDay(
+                        buildCalendarDay(
+                          center,
+                          bookingDate,
+                          bookingDate,
+                          buildBookingCountMap(agendaBookings),
+                        ),
+                      );
+                    }
+                  }}
+                  style={styles.manageDayButton}
+                >
+                  <Text style={styles.manageDayText}>Giorno</Text>
+                </Pressable>
               </Pressable>
-            );
-          })}
-        </View>
-      </SectionCard>
+            ))}
+          </View>
+        </SectionCard>
+      )}
 
       <Modal
         animationType="slide"
@@ -475,14 +708,16 @@ export function CenterCalendarScreen({
                             {booking.client_phone ?? "Telefono non disponibile"}
                           </Text>
                         </View>
-                        <Text
-                          style={[
-                            styles.bookingStatus,
-                            booking.status === "canceled" && styles.bookingStatusCanceled,
-                          ]}
-                        >
-                          {booking.status}
-                        </Text>
+                        {booking.status !== "confirmed" ? (
+                          <Text
+                            style={[
+                              styles.bookingStatus,
+                              booking.status === "canceled" && styles.bookingStatusCanceled,
+                            ]}
+                          >
+                            {booking.status}
+                          </Text>
+                        ) : null}
                       </View>
 
                       {booking.status !== "canceled" ? (
@@ -611,25 +846,158 @@ const styles = StyleSheet.create({
     paddingTop: spacing.xl,
     paddingBottom: spacing.xxl,
   },
+  viewToggle: {
+    backgroundColor: colors.surface,
+    borderColor: colors.overlayBorder,
+    borderRadius: 12,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: spacing.xs,
+    marginBottom: spacing.lg,
+    padding: spacing.xs,
+  },
+  viewToggleItem: {
+    alignItems: "center",
+    borderRadius: 10,
+    flex: 1,
+    flexDirection: "row",
+    gap: spacing.xs,
+    justifyContent: "center",
+    minHeight: 44,
+  },
+  viewToggleActive: {
+    backgroundColor: colors.surfaceSky,
+  },
+  viewToggleLabel: {
+    color: colors.textMuted,
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  viewToggleLabelActive: {
+    color: colors.brandInk,
+  },
+  monthHeader: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: spacing.md,
+  },
+  monthButton: {
+    alignItems: "center",
+    backgroundColor: colors.surfaceSoft,
+    borderColor: colors.border,
+    borderRadius: 10,
+    borderWidth: 1,
+    height: 38,
+    justifyContent: "center",
+    width: 38,
+  },
+  todayButton: {
+    alignItems: "center",
+    backgroundColor: colors.surfaceSoft,
+    borderColor: colors.border,
+    borderRadius: 10,
+    borderWidth: 1,
+    minHeight: 38,
+    justifyContent: "center",
+    paddingHorizontal: spacing.lg,
+  },
+  todayButtonText: {
+    color: colors.brandDark,
+    fontSize: 13,
+    fontWeight: "800",
+  },
+  weekHeader: {
+    flexDirection: "row",
+    gap: 6,
+    marginBottom: spacing.xs,
+  },
+  weekHeaderText: {
+    color: colors.textMuted,
+    flex: 1,
+    fontSize: 11,
+    fontWeight: "800",
+    textAlign: "center",
+  },
   calendarGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: spacing.sm,
+    gap: 6,
   },
   dateCard: {
     backgroundColor: colors.surfaceMuted,
     borderColor: colors.border,
-    borderRadius: 16,
+    borderRadius: 10,
     borderWidth: 1,
-    minWidth: 102,
-    padding: spacing.md,
+    flexBasis: "13.45%",
+    minHeight: 76,
+    padding: spacing.xs,
   },
   dateCardSelected: {
     borderColor: colors.brandDark,
     borderWidth: 2,
   },
+  dateCardMuted: {
+    opacity: 0.45,
+  },
   dateCardClosed: {
     opacity: 0.55,
+  },
+  bookingBadge: {
+    alignItems: "center",
+    backgroundColor: colors.brand,
+    borderRadius: 999,
+    marginTop: spacing.xs,
+    minWidth: 24,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  bookingBadgeText: {
+    color: colors.surface,
+    fontSize: 11,
+    fontWeight: "800",
+  },
+  agendaList: {
+    gap: spacing.sm,
+  },
+  agendaRow: {
+    alignItems: "center",
+    backgroundColor: colors.surfaceSoft,
+    borderColor: colors.border,
+    borderRadius: 12,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: spacing.md,
+    padding: spacing.md,
+  },
+  agendaDate: {
+    width: 78,
+  },
+  agendaDateDay: {
+    color: colors.brandInk,
+    fontSize: 13,
+    fontWeight: "800",
+  },
+  agendaDateTime: {
+    color: colors.textMuted,
+    fontSize: 12,
+    marginTop: spacing.xs,
+  },
+  agendaMain: {
+    flex: 1,
+  },
+  manageDayButton: {
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: 10,
+    borderWidth: 1,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+  },
+  manageDayText: {
+    color: colors.brandDark,
+    fontSize: 12,
+    fontWeight: "800",
   },
   modalBackdrop: {
     alignItems: "center",

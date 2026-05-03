@@ -141,7 +141,8 @@ function AppointmentRow({
           {appointment.date_label} - {appointment.time_label}
         </Text>
         <Text style={styles.meta}>
-          {appointment.operator_name} - {appointment.status}
+          {appointment.operator_name}
+          {appointment.status !== "confirmed" ? ` - ${appointment.status}` : ""}
         </Text>
       </View>
       <View style={styles.rowSide}>

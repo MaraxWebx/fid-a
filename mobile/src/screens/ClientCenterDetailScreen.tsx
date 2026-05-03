@@ -119,6 +119,14 @@ export function ClientCenterDetailScreen({
   }, [center]);
 
   const isFavorite = center ? favoriteCenterIds.includes(center.id) : false;
+  const ratingAverage =
+    center?.rating_average ??
+    (reviews.length > 0
+      ? Number(
+          (reviews.reduce((total, review) => total + review.rating, 0) / reviews.length).toFixed(1),
+        )
+      : null);
+  const reviewsCount = center?.reviews_count ?? reviews.length;
 
   const handleToggleFavorite = async () => {
     if (!center) return;
@@ -179,6 +187,22 @@ export function ClientCenterDetailScreen({
               />
             </Pressable>
           </View>
+        </View>
+      </View>
+
+      <View style={styles.ratingSummary}>
+        <View style={styles.ratingIcon}>
+          <Ionicons color={colors.brandInk} name="star" size={20} />
+        </View>
+        <View style={styles.ratingCopy}>
+          <Text style={styles.ratingValue}>
+            {ratingAverage !== null ? `${ratingAverage}/5` : "Nessuna valutazione"}
+          </Text>
+          <Text style={styles.ratingMeta}>
+            {reviewsCount > 0
+              ? `${reviewsCount} recensioni ricevute`
+              : "La media apparira dopo le prime recensioni"}
+          </Text>
         </View>
       </View>
 
@@ -291,7 +315,8 @@ export function ClientCenterDetailScreen({
             <View key={booking.id} style={styles.historyRow}>
               <Text style={styles.rowTitle}>{booking.service_name}</Text>
               <Text style={styles.meta}>
-                {booking.date_label} - {booking.time_label} - {booking.status}
+                {booking.date_label} - {booking.time_label}
+                {booking.status !== "confirmed" ? ` - ${booking.status}` : ""}
               </Text>
             </View>
           ))}
@@ -417,6 +442,38 @@ const styles = StyleSheet.create({
     height: 40,
     justifyContent: "center",
     width: 40,
+  },
+  ratingSummary: {
+    alignItems: "center",
+    backgroundColor: colors.surfaceSand,
+    borderColor: colors.warning,
+    borderRadius: 12,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: spacing.md,
+    marginTop: spacing.lg,
+    padding: spacing.md,
+  },
+  ratingIcon: {
+    alignItems: "center",
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    height: 42,
+    justifyContent: "center",
+    width: 42,
+  },
+  ratingCopy: {
+    flex: 1,
+  },
+  ratingValue: {
+    color: colors.brandInk,
+    fontSize: 18,
+    fontWeight: "800",
+  },
+  ratingMeta: {
+    color: colors.textMuted,
+    fontSize: 13,
+    marginTop: spacing.xs,
   },
   actionWrap: {
     gap: spacing.sm,

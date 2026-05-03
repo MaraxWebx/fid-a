@@ -2,6 +2,7 @@ from datetime import UTC, date, datetime, time, timedelta
 import hashlib
 import hmac
 import secrets
+from zoneinfo import ZoneInfo
 
 from bson import ObjectId
 from fastapi import FastAPI, HTTPException, Query, Request
@@ -37,7 +38,30 @@ def serialize_id(value):
     return str(value) if isinstance(value, ObjectId) else value
 
 
+def get_center_rating_summary(center_id: ObjectId):
+    pipeline = [
+        {"$match": {"center_id": center_id}},
+        {
+            "$group": {
+                "_id": "$center_id",
+                "average": {"$avg": "$rating"},
+                "count": {"$sum": 1},
+            }
+        },
+    ]
+    summary = next(db.reviews.aggregate(pipeline), None)
+    if not summary:
+        return {"rating_average": None, "reviews_count": 0}
+
+    average = summary.get("average")
+    return {
+        "rating_average": round(average, 1) if isinstance(average, (int, float)) else None,
+        "reviews_count": summary.get("count", 0),
+    }
+
+
 def serialize_center(document):
+    rating_summary = get_center_rating_summary(document["_id"])
     return {
         "id": serialize_id(document["_id"]),
         "email": document.get("email") or document.get("mail"),
@@ -50,6 +74,8 @@ def serialize_center(document):
         "registration_status": document.get("registration_status"),
         "subscription_status": document.get("subscription_status"),
         "is_listable": document.get("is_listable", False),
+        "rating_average": rating_summary["rating_average"],
+        "reviews_count": rating_summary["reviews_count"],
         "created_at": document.get("created_at"),
     }
 
@@ -86,6 +112,13 @@ def serialize_booking(document):
     start_time = document.get("start_time")
     end_time = document.get("end_time")
     price = document.get("service", {}).get("price")
+    operator_name = document.get("operator_name")
+
+    if not operator_name or operator_name == "Staff":
+        center = document.get("center")
+        if not center and document.get("center_id"):
+            center = db.centers.find_one({"_id": document.get("center_id")})
+        operator_name = (center or {}).get("name") or "Centro"
 
     return {
         "id": serialize_id(document["_id"]),
@@ -93,7 +126,7 @@ def serialize_booking(document):
         "user_id": serialize_id(document.get("user_id")),
         "service_id": serialize_id(document.get("service_id")),
         "service_name": document.get("service_name") or document.get("service", {}).get("name"),
-        "operator_name": document.get("operator_name"),
+        "operator_name": operator_name,
         "client_name": document.get("client_name"),
         "client_phone": document.get("client_phone"),
         "status": document.get("status"),
@@ -125,7 +158,7 @@ def serialize_review(document):
 
 
 def build_client_booking_stats(user_id: ObjectId, center_id: ObjectId | None = None):
-    now = datetime.now(UTC).replace(tzinfo=None)
+    now = datetime.now(ZoneInfo("Europe/Rome")).replace(tzinfo=None)
     match_query = {
         "user_id": user_id,
         "status": {"$ne": "canceled"},
@@ -402,6 +435,7 @@ def ensure_review_prompt_notifications(user_id: ObjectId):
             {
                 "user_id": user_id,
                 "start_time": {"$lte": now},
+                "status": {"$ne": "canceled"},
             }
         )
     )
@@ -418,7 +452,33 @@ def ensure_review_prompt_notifications(user_id: ObjectId):
                 "metadata.booking_id": str(booking["_id"]),
             }
         )
+        start_time = booking.get("start_time")
+        date_label = start_time.strftime("%d/%m/%Y") if isinstance(start_time, datetime) else None
+        time_label = start_time.strftime("%H:%M") if isinstance(start_time, datetime) else None
+        service_name = booking.get("service_name") or "Trattamento"
+        message = (
+            f"Recensisci {service_name} del {date_label} alle {time_label}."
+            if date_label and time_label
+            else f"Recensisci {service_name}."
+        )
+
         if existing_notification:
+            db.notifications.update_one(
+                {"_id": existing_notification["_id"]},
+                {
+                    "$set": {
+                        "message": message,
+                        "metadata": {
+                            **existing_notification.get("metadata", {}),
+                            "booking_id": str(booking["_id"]),
+                            "service_name": service_name,
+                            "date_label": date_label,
+                            "time_label": time_label,
+                        },
+                        "updated_at": now,
+                    }
+                },
+            )
             continue
 
         create_notification(
@@ -427,10 +487,12 @@ def ensure_review_prompt_notifications(user_id: ObjectId):
             center_id=booking.get("center_id"),
             notification_type="review_prompt",
             title="Valuta il tuo trattamento!",
-            message="Lascia una recensione da 1 a 5 stelle con un commento breve.",
+            message=message,
             metadata={
                 "booking_id": str(booking["_id"]),
-                "service_name": booking.get("service_name"),
+                "service_name": service_name,
+                "date_label": date_label,
+                "time_label": time_label,
             },
         )
 
@@ -1300,16 +1362,32 @@ def mark_notifications_read(payload: NotificationReadPayload):
 @app.get("/api/centers/{center_id}/dashboard")
 def get_center_dashboard(center_id: str):
     object_id = parse_object_id(center_id, "center id")
-    today_start = datetime(2026, 5, 2, 0, 0, 0)
-    today_end = datetime(2026, 5, 2, 23, 59, 59)
+    center = db.centers.find_one({"_id": object_id})
+    if not center:
+        raise HTTPException(status_code=404, detail="Center not found.")
+
+    now = datetime.now(ZoneInfo("Europe/Rome")).replace(tzinfo=None)
+    today_start = datetime.combine(now.date(), time(0, 0))
+    tomorrow_start = today_start + timedelta(days=1)
+    active_booking_query = {"center_id": object_id, "status": {"$ne": "canceled"}}
 
     todays_bookings = list(
         db.bookings.find(
             {
-                "center_id": object_id,
-                "start_time": {"$gte": today_start, "$lte": today_end},
+                **active_booking_query,
+                "start_time": {"$gte": today_start, "$lt": tomorrow_start},
             }
         ).sort("start_time", 1)
+    )
+    upcoming_bookings = list(
+        db.bookings.find(
+            {
+                **active_booking_query,
+                "start_time": {"$gte": today_start},
+            }
+        )
+        .sort("start_time", 1)
+        .limit(8)
     )
 
     pipeline = [
@@ -1328,26 +1406,41 @@ def get_center_dashboard(center_id: str):
     ]
     recent_bookings = list(db.bookings.aggregate(pipeline))
 
-    distinct_clients = db.bookings.distinct("user_id", {"center_id": object_id})
-    services_count = db.services.count_documents({"center_id": object_id, "visibility": "active"})
+    todays_clients = {
+        booking.get("user_id")
+        for booking in todays_bookings
+        if booking.get("user_id") is not None
+    }
+    upcoming_bookings_count = db.bookings.count_documents(
+        {**active_booking_query, "start_time": {"$gte": now}}
+    )
 
     total_revenue = 0
+    service_ids = [booking.get("service_id") for booking in todays_bookings if booking.get("service_id")]
+    services_by_id = {
+        service["_id"]: service
+        for service in db.services.find({"_id": {"$in": service_ids}})
+    }
     for booking in todays_bookings:
-        service = db.services.find_one({"_id": booking.get("service_id")})
+        service = services_by_id.get(booking.get("service_id"))
         if service and isinstance(service.get("price"), (int, float)):
             total_revenue += service["price"]
 
     agenda = []
-    for booking in todays_bookings:
+    for booking in upcoming_bookings:
         user = db.users.find_one({"_id": booking.get("user_id")})
+        start_time = booking.get("start_time")
+        date_prefix = ""
+        if isinstance(start_time, datetime) and start_time.date() != today_start.date():
+            date_prefix = start_time.strftime("%d/%m ")
         agenda.append(
             {
                 "id": serialize_id(booking["_id"]),
-                "time_label": booking["start_time"].strftime("%H:%M"),
+                "time_label": f"{date_prefix}{start_time.strftime('%H:%M')}" if isinstance(start_time, datetime) else "",
                 "client_name": (user or {}).get("name", "Cliente"),
-                "operator_name": booking.get("operator_name") or "Staff",
+                "operator_name": center.get("name", "Centro"),
                 "service": booking.get("service_name", "Servizio"),
-                "status_label": booking.get("status", "confirmed"),
+                "status_label": "" if booking.get("status") == "confirmed" else booking.get("status", ""),
             }
         )
 
@@ -1366,9 +1459,9 @@ def get_center_dashboard(center_id: str):
     return {
         "metrics": [
             {"id": "metric-1", "label": "Appuntamenti oggi", "value": str(len(todays_bookings))},
-            {"id": "metric-2", "label": "Clienti attivi", "value": str(len(distinct_clients))},
-            {"id": "metric-3", "label": "Trattamenti attivi", "value": str(services_count)},
-            {"id": "metric-4", "label": "Fatturato oggi", "value": f"EUR {total_revenue}"},
+            {"id": "metric-2", "label": "Clienti oggi", "value": str(len(todays_clients))},
+            {"id": "metric-3", "label": "Incasso previsto oggi", "value": f"EUR {total_revenue:g}"},
+            {"id": "metric-4", "label": "Prossime prenotazioni", "value": str(upcoming_bookings_count)},
         ],
         "agenda": agenda,
         "clients": clients,
@@ -1417,6 +1510,47 @@ def get_center_clients(center_id: str):
         for document in documents
         if document.get("_id") is not None
     ]
+
+
+@app.get("/api/centers/{center_id}/clients/{client_id}")
+def get_center_client_detail(center_id: str, client_id: str):
+    center_object_id = parse_object_id(center_id, "center id")
+    client_object_id = parse_object_id(client_id, "client id")
+
+    center = db.centers.find_one({"_id": center_object_id})
+    if not center:
+        raise HTTPException(status_code=404, detail="Center not found.")
+
+    user = db.users.find_one({"_id": client_object_id, "role": "client"})
+    if not user:
+        raise HTTPException(status_code=404, detail="Client not found.")
+
+    pipeline = [
+        {"$match": {"center_id": center_object_id, "user_id": client_object_id}},
+        {
+            "$lookup": {
+                "from": "services",
+                "localField": "service_id",
+                "foreignField": "_id",
+                "as": "service",
+            }
+        },
+        {"$unwind": {"path": "$service", "preserveNullAndEmptyArrays": True}},
+        {"$sort": {"start_time": -1}},
+    ]
+    bookings = list(db.bookings.aggregate(pipeline))
+    reviews = list(
+        db.reviews.find({"center_id": center_object_id, "user_id": client_object_id}).sort(
+            "created_at", -1
+        )
+    )
+
+    return {
+        "client": serialize_user(user),
+        "bookings": [serialize_booking(booking) for booking in bookings],
+        "reviews": [serialize_review(review) for review in reviews],
+        "stats": build_client_booking_stats(client_object_id, center_object_id),
+    }
 
 
 @app.get("/api/centers/{center_id}/bookings")
@@ -1514,13 +1648,12 @@ def create_review(payload: ReviewPayload):
         "updated_at": now,
     }
     result = db.reviews.insert_one(review_document)
-    db.notifications.update_many(
+    db.notifications.delete_many(
         {
             "user_id": user["_id"],
             "type": "review_prompt",
             "metadata.booking_id": payload.booking_id,
         },
-        {"$set": {"is_read": True, "updated_at": now}},
     )
     create_notification(
         role="center",
@@ -1566,7 +1699,7 @@ def create_booking(payload: BookingPayload):
         "user_id": user["_id"],
         "service_id": service_object_id,
         "service_name": service.get("name"),
-        "operator_name": "Staff",
+        "operator_name": center.get("name", "Centro"),
         "status": "confirmed",
         "slot_id": payload.slot_id,
         "start_time": start_time,

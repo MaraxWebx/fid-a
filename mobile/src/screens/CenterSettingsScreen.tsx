@@ -20,12 +20,19 @@ import { treatmentCatalog } from '../data/treatmentCatalog';
 import {
   getCenterReviews,
   getCenterServices,
+  updateCenterOnboarding,
   updateCenterProfile,
   updateCenterServices,
 } from '../lib/api';
 import { colors } from '../theme/colors';
 import { spacing } from '../theme/spacing';
-import type { ActivationStatus, Center, Review, Service } from '../types/api';
+import type {
+  ActivationStatus,
+  Center,
+  CenterOnboardingInput,
+  Review,
+  Service,
+} from '../types/api';
 
 type CenterSettingsScreenProps = {
   activation: ActivationStatus;
@@ -33,6 +40,40 @@ type CenterSettingsScreenProps = {
   onCenterUpdated: (center: Center, activation: ActivationStatus) => void;
   onLogout: () => void;
 };
+
+type WeekdayKey = 'Lun' | 'Mar' | 'Mer' | 'Gio' | 'Ven' | 'Sab' | 'Dom';
+type DaySchedule = {
+  enabled: boolean;
+  start: string;
+  end: string;
+};
+
+const weekdayOptions: { key: WeekdayKey; fullLabel: string }[] = [
+  { key: 'Lun', fullLabel: 'Lunedi' },
+  { key: 'Mar', fullLabel: 'Martedi' },
+  { key: 'Mer', fullLabel: 'Mercoledi' },
+  { key: 'Gio', fullLabel: 'Giovedi' },
+  { key: 'Ven', fullLabel: 'Venerdi' },
+  { key: 'Sab', fullLabel: 'Sabato' },
+  { key: 'Dom', fullLabel: 'Domenica' },
+];
+
+function buildInitialSchedule(center: Center): Record<WeekdayKey, DaySchedule> {
+  return weekdayOptions.reduce(
+    (accumulator, day) => {
+      const currentHours = center.opening_hours?.[day.key];
+      const isEnabled = center.opening_days?.includes(day.key) ?? false;
+
+      accumulator[day.key] = {
+        enabled: isEnabled,
+        start: currentHours?.start ?? '09:00',
+        end: currentHours?.end ?? '19:00',
+      };
+      return accumulator;
+    },
+    {} as Record<WeekdayKey, DaySchedule>,
+  );
+}
 
 export function CenterSettingsScreen({
   activation,
@@ -49,11 +90,18 @@ export function CenterSettingsScreen({
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [profileName, setProfileName] = useState(center.name);
   const [profileLogoUrl, setProfileLogoUrl] = useState(center.branding.logo ?? '');
+  const [schedule, setSchedule] = useState(() => buildInitialSchedule(center));
+  const [selectedDayKey, setSelectedDayKey] = useState<WeekdayKey>('Lun');
+  const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
+  const [savingSchedule, setSavingSchedule] = useState(false);
 
   useEffect(() => {
     setProfileName(center.name);
     setProfileLogoUrl(center.branding.logo ?? '');
+    setSchedule(buildInitialSchedule(center));
   }, [center]);
+
+  const selectedDaySchedule = schedule[selectedDayKey];
 
   useEffect(() => {
     let mounted = true;
@@ -96,6 +144,14 @@ export function CenterSettingsScreen({
     () => services.filter((service) => service.visibility === 'active'),
     [services],
   );
+  const ratingAverage =
+    center.rating_average ??
+    (reviews.length > 0
+      ? Number(
+          (reviews.reduce((total, review) => total + review.rating, 0) / reviews.length).toFixed(1),
+        )
+      : null);
+  const reviewsCount = center.reviews_count ?? reviews.length;
 
   const handleSaveTreatment = async (
     selectedCategory: string,
@@ -153,6 +209,42 @@ export function CenterSettingsScreen({
     }
   };
 
+  const handleSaveSchedule = async () => {
+    setSavingSchedule(true);
+    setCatalogError(null);
+
+    const openingDays = weekdayOptions
+      .filter(({ key }) => schedule[key].enabled)
+      .map(({ key }) => key);
+    const openingHours: CenterOnboardingInput['opening_hours'] = Object.fromEntries(
+      openingDays.map((day) => [
+        day,
+        {
+          start: schedule[day].start || null,
+          end: schedule[day].end || null,
+        },
+      ]),
+    );
+
+    try {
+      const response = await updateCenterOnboarding(center.id, {
+        logo_url: center.branding.logo ?? '',
+        opening_days: openingDays,
+        opening_hours: openingHours,
+        primary_services: configuredServices.map((service) => service.name),
+      });
+      onCenterUpdated(response.center, response.activation);
+    } catch (error) {
+      setCatalogError(
+        error instanceof Error
+          ? error.message
+          : 'Aggiornamento orari non riuscito.',
+      );
+    } finally {
+      setSavingSchedule(false);
+    }
+  };
+
   return (
     <ScrollView contentContainerStyle={styles.content} style={styles.container}>
       <ScreenHeader
@@ -179,9 +271,14 @@ export function CenterSettingsScreen({
             <Text style={styles.profileMeta}>
               Logo: {center.branding.logo ? 'configurato' : 'non configurato'}
             </Text>
-            <Text style={styles.profileMeta}>
-              Logo: {center.branding.logo ? 'configurato' : 'non configurato'}
-            </Text>
+            <View style={styles.ratingInline}>
+              <Ionicons color={colors.brandInk} name="star" size={16} />
+              <Text style={styles.ratingInlineText}>
+                {ratingAverage !== null
+                  ? `${ratingAverage}/5 su ${reviewsCount} recensioni`
+                  : 'Nessuna valutazione ancora'}
+              </Text>
+            </View>
           </View>
           <Pressable
             onPress={() => setIsProfileModalOpen(true)}
@@ -201,6 +298,46 @@ export function CenterSettingsScreen({
           </Text>
         </SectionCard>
       ) : null}
+
+      <SectionCard eyebrow="Orari" title="Orari settimanali">
+        <Text style={styles.catalogIntro}>
+          Modifica i giorni e gli orari base del centro. Le eccezioni per singole date restano
+          gestibili dall'agenda.
+        </Text>
+        <View style={styles.scheduleList}>
+          {weekdayOptions.map((day) => {
+            const entry = schedule[day.key];
+
+            return (
+              <Pressable
+                key={day.key}
+                onPress={() => {
+                  setSelectedDayKey(day.key);
+                  setIsScheduleModalOpen(true);
+                }}
+                style={styles.scheduleRow}
+              >
+                <View style={styles.scheduleMain}>
+                  <Text style={styles.scheduleTitle}>{day.fullLabel}</Text>
+                  <Text style={styles.scheduleMeta}>
+                    {entry.enabled ? `${entry.start} - ${entry.end}` : 'Chiuso'}
+                  </Text>
+                </View>
+                <Text style={styles.scheduleAction}>Modifica</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+        <View style={styles.saveScheduleWrap}>
+          <PrimaryButton
+            disabled={savingSchedule}
+            label={savingSchedule ? 'Salvataggio...' : 'Salva orari'}
+            onPress={() => {
+              void handleSaveSchedule();
+            }}
+          />
+        </View>
+      </SectionCard>
 
       <SectionCard eyebrow="Catalogo" title="Categorie trattamenti">
         <Text style={styles.catalogIntro}>
@@ -327,6 +464,98 @@ export function CenterSettingsScreen({
         </View>
       </Modal>
 
+      <Modal
+        animationType="slide"
+        onRequestClose={() => setIsScheduleModalOpen(false)}
+        transparent
+        visible={isScheduleModalOpen}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeader}>
+              <View style={styles.modalCopy}>
+                <Text style={styles.modalEyebrow}>Orario di default</Text>
+                <Text style={styles.modalTitle}>
+                  {weekdayOptions.find(({ key }) => key === selectedDayKey)?.fullLabel}
+                </Text>
+              </View>
+              <Pressable onPress={() => setIsScheduleModalOpen(false)}>
+                <Text style={styles.modalClose}>Chiudi</Text>
+              </Pressable>
+            </View>
+
+            <Pressable
+              onPress={() => {
+                setSchedule((current) => ({
+                  ...current,
+                  [selectedDayKey]: {
+                    ...current[selectedDayKey],
+                    enabled: !current[selectedDayKey].enabled,
+                  },
+                }));
+              }}
+              style={[
+                styles.dayModalToggle,
+                selectedDaySchedule.enabled && styles.dayModalToggleActive,
+              ]}
+            >
+              <View>
+                <Text style={styles.scheduleTitle}>Disponibilita del giorno</Text>
+                <Text style={styles.scheduleMeta}>
+                  {selectedDaySchedule.enabled ? 'Aperto' : 'Chiuso'}
+                </Text>
+              </View>
+              <Text style={styles.scheduleAction}>
+                {selectedDaySchedule.enabled ? 'APERTO' : 'CHIUSO'}
+              </Text>
+            </Pressable>
+
+            {selectedDaySchedule.enabled ? (
+              <View style={styles.hoursRow}>
+                <View style={styles.hoursField}>
+                  <Text style={styles.fieldLabel}>Dalle</Text>
+                  <TextInput
+                    keyboardType="numbers-and-punctuation"
+                    onChangeText={(value) => {
+                      setSchedule((current) => ({
+                        ...current,
+                        [selectedDayKey]: {
+                          ...current[selectedDayKey],
+                          start: value,
+                        },
+                      }));
+                    }}
+                    placeholder="09:00"
+                    placeholderTextColor={colors.textSoft}
+                    style={styles.input}
+                    value={selectedDaySchedule.start}
+                  />
+                </View>
+                <View style={styles.hoursField}>
+                  <Text style={styles.fieldLabel}>Alle</Text>
+                  <TextInput
+                    keyboardType="numbers-and-punctuation"
+                    onChangeText={(value) => {
+                      setSchedule((current) => ({
+                        ...current,
+                        [selectedDayKey]: {
+                          ...current[selectedDayKey],
+                          end: value,
+                        },
+                      }));
+                    }}
+                    placeholder="19:00"
+                    placeholderTextColor={colors.textSoft}
+                    style={styles.input}
+                    value={selectedDaySchedule.end}
+                  />
+                </View>
+              </View>
+            ) : null}
+          </View>
+        </View>
+      </Modal>
+
     </ScrollView>
   );
 }
@@ -381,6 +610,18 @@ const styles = StyleSheet.create({
     fontSize: 14,
     marginTop: spacing.xs,
   },
+  ratingInline: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 6,
+    marginTop: spacing.sm,
+  },
+  ratingInlineText: {
+    color: colors.brandInk,
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '800',
+  },
   editButton: {
     alignItems: 'center',
     backgroundColor: colors.surface,
@@ -400,6 +641,41 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     fontSize: 14,
     marginBottom: spacing.lg,
+  },
+  scheduleList: {
+    gap: spacing.sm,
+  },
+  scheduleRow: {
+    alignItems: 'center',
+    backgroundColor: colors.surfaceSoft,
+    borderColor: colors.border,
+    borderRadius: 12,
+    borderWidth: 1,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    padding: spacing.md,
+  },
+  scheduleMain: {
+    flex: 1,
+    paddingRight: spacing.md,
+  },
+  scheduleTitle: {
+    color: colors.text,
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  scheduleMeta: {
+    color: colors.textMuted,
+    fontSize: 13,
+    marginTop: spacing.xs,
+  },
+  scheduleAction: {
+    color: colors.brandDark,
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  saveScheduleWrap: {
+    marginTop: spacing.lg,
   },
   catalogRow: {
     borderTopColor: colors.border,
@@ -486,5 +762,25 @@ const styles = StyleSheet.create({
   modalActions: {
     gap: spacing.md,
     marginTop: spacing.md,
+  },
+  dayModalToggle: {
+    alignItems: 'center',
+    backgroundColor: colors.surfaceSoft,
+    borderRadius: 12,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    padding: spacing.md,
+  },
+  dayModalToggleActive: {
+    borderColor: colors.brandDark,
+    borderWidth: 1,
+  },
+  hoursRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginTop: spacing.lg,
+  },
+  hoursField: {
+    flex: 1,
   },
 });

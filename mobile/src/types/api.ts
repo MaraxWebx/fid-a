@@ -15,6 +15,8 @@ export type Center = {
   registration_status?: string;
   subscription_status?: string;
   is_listable?: boolean;
+  rating_average?: number | null;
+  reviews_count?: number;
   created_at?: string;
 };
 
@@ -180,6 +182,13 @@ export type CenterClient = {
   email?: string;
   bookings: number;
   last_visit: string | null;
+};
+
+export type CenterClientDetail = {
+  client: UserProfile;
+  bookings: Booking[];
+  reviews: Review[];
+  stats: UserBeautyStats;
 };
 
 export type CenterRegistrationInput = {

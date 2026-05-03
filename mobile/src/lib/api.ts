@@ -13,6 +13,7 @@ import type {
   CenterAuthResponse,
   CenterClient,
   CenterDashboard,
+  CenterClientDetail,
   CenterOnboardingInput,
   CenterOnboardingResponse,
   CenterProfileInput,
@@ -138,6 +139,10 @@ export function getCenterDashboard(centerId: string) {
 
 export function getCenterClients(centerId: string) {
   return request<CenterClient[]>(`/api/centers/${centerId}/clients`);
+}
+
+export function getCenterClientDetail(centerId: string, clientId: string) {
+  return request<CenterClientDetail>(`/api/centers/${centerId}/clients/${clientId}`);
 }
 
 export function getCenterBookings(centerId: string, date?: string) {

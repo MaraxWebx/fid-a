@@ -2,14 +2,16 @@ import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Image,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from "react-native";
+import Ionicons from "react-native-vector-icons/Ionicons";
 
 import { getCenterDashboard, getCenterReviews } from "../lib/api";
-import type { Center, CenterDashboard, Review } from "../types/api";
+import type { ActivationStatus, Center, CenterDashboard, Review } from "../types/api";
 import { ScreenHeader } from "../components/ScreenHeader";
 import { SectionCard } from "../components/SectionCard";
 import { StatTile } from "../components/StatTile";
@@ -17,10 +19,18 @@ import { colors } from "../theme/colors";
 import { spacing } from "../theme/spacing";
 
 type CenterDashboardScreenProps = {
+  activation: ActivationStatus;
   center: Center;
+  onOpenClient: (clientId: string) => void;
+  onOpenOnboarding: () => void;
 };
 
-export function CenterDashboardScreen({ center }: CenterDashboardScreenProps) {
+export function CenterDashboardScreen({
+  activation,
+  center,
+  onOpenClient,
+  onOpenOnboarding,
+}: CenterDashboardScreenProps) {
   const [dashboard, setDashboard] = useState<CenterDashboard | null>(null);
   const [latestReview, setLatestReview] = useState<Review | null>(null);
   const [loading, setLoading] = useState(true);
@@ -57,6 +67,20 @@ export function CenterDashboardScreen({ center }: CenterDashboardScreenProps) {
         subtitle="Panoramica generale dell'attivita con dati reali letti dal database."
       />
 
+      {!activation.onboarding_completed || !activation.is_listable ? (
+        <Pressable onPress={onOpenOnboarding} style={styles.onboardingAlert}>
+          <View style={styles.alertIcon}>
+            <Ionicons color={colors.brandDark} name="alert-circle-outline" size={22} />
+          </View>
+          <View style={styles.alertCopy}>
+            <Text style={styles.alertTitle}>Completa il tuo profilo</Text>
+            <Text style={styles.alertText}>
+              Mancano alcuni dati per rendere operativo il centro.
+            </Text>
+          </View>
+          <Ionicons color={colors.brandDark} name="chevron-forward" size={18} />
+        </Pressable>
+      ) : null}
 
       <SectionCard eyebrow="Oggi">
         {loading ? <ActivityIndicator color={colors.brand} /> : null}
@@ -85,16 +109,22 @@ export function CenterDashboardScreen({ center }: CenterDashboardScreenProps) {
               <Text style={styles.scheduleTitle}>{entry.service}</Text>
               <Text style={styles.scheduleMeta}>{entry.operator_name}</Text>
             </View>
-            <View style={styles.statusPill}>
-              <Text style={styles.statusText}>{entry.status_label}</Text>
-            </View>
+            {entry.status_label ? (
+              <View style={styles.statusPill}>
+                <Text style={styles.statusText}>{entry.status_label}</Text>
+              </View>
+            ) : null}
           </View>
         ))}
       </SectionCard>
 
       <SectionCard eyebrow="Clienti recenti" title="Relazioni attive">
         {dashboard?.clients.map((client) => (
-          <View key={client.id} style={styles.crmRow}>
+          <Pressable
+            key={client.id}
+            onPress={() => onOpenClient(client.id)}
+            style={styles.crmRow}
+          >
             <View style={styles.crmAvatar}>
               <Text style={styles.crmAvatarText}>
                 {client.name.slice(0, 2).toUpperCase()}
@@ -105,7 +135,8 @@ export function CenterDashboardScreen({ center }: CenterDashboardScreenProps) {
               <Text style={styles.scheduleMeta}>{client.phone}</Text>
             </View>
             <Text style={styles.lastVisit}>{client.last_visit ?? "n/a"}</Text>
-          </View>
+            <Ionicons color={colors.textMuted} name="chevron-forward" size={16} />
+          </Pressable>
         ))}
       </SectionCard>
 
@@ -138,6 +169,38 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.xl,
     paddingBottom: spacing.xxl,
+  },
+  onboardingAlert: {
+    alignItems: "center",
+    backgroundColor: colors.surfaceSand,
+    borderColor: colors.warning,
+    borderRadius: 12,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: spacing.md,
+    marginBottom: spacing.lg,
+    padding: spacing.md,
+  },
+  alertIcon: {
+    alignItems: "center",
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    height: 42,
+    justifyContent: "center",
+    width: 42,
+  },
+  alertCopy: {
+    flex: 1,
+  },
+  alertTitle: {
+    color: colors.brandInk,
+    fontSize: 16,
+    fontWeight: "800",
+  },
+  alertText: {
+    color: colors.textMuted,
+    fontSize: 13,
+    marginTop: spacing.xs,
   },
   heroCard: {
     backgroundColor: colors.surface,

@@ -9,6 +9,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import Ionicons from "react-native-vector-icons/Ionicons";
 
 import { PrimaryButton } from "../components/PrimaryButton";
 import { ScreenHeader } from "../components/ScreenHeader";
@@ -51,6 +52,14 @@ const stepOrder: OnboardingStep[] = [
   "services",
   "summary",
 ];
+
+const stepIconMap = {
+  welcome: "sparkles-outline",
+  brand: "color-palette-outline",
+  schedule: "calendar-outline",
+  services: "cut-outline",
+  summary: "checkmark-circle-outline",
+} as const;
 
 const weekdayOptions: { key: WeekdayKey; fullLabel: string }[] = [
   { key: "Lun", fullLabel: "Lunedi" },
@@ -185,6 +194,7 @@ export function CenterOnboardingScreen({
     if (step === "welcome") {
       return (
         <>
+          <StepIcon name={stepIconMap[step]} />
           <Text style={styles.stepKicker}>Step 1 di 5</Text>
           <Text style={styles.stepTitle}>Benvenuto in Fidea</Text>
           <Text style={styles.stepBody}>
@@ -199,6 +209,7 @@ export function CenterOnboardingScreen({
     if (step === "brand") {
       return (
         <>
+          <StepIcon name={stepIconMap[step]} />
           <Text style={styles.stepKicker}>Step 2 di 5</Text>
           <Text style={styles.stepTitle}>Definisci il brand</Text>
           <Text style={styles.stepBody}>
@@ -217,6 +228,7 @@ export function CenterOnboardingScreen({
     if (step === "schedule") {
       return (
         <>
+          <StepIcon name={stepIconMap[step]} />
           <Text style={styles.stepKicker}>Step 3 di 5</Text>
           <Text style={styles.stepTitle}>Giorni e orari di apertura</Text>
           <Text style={styles.stepBody}>
@@ -256,6 +268,7 @@ export function CenterOnboardingScreen({
     if (step === "services") {
       return (
         <>
+          <StepIcon name={stepIconMap[step]} />
           <Text style={styles.stepKicker}>Step 4 di 5</Text>
           <Text style={styles.stepTitle}>Servizi principali</Text>
           <Text style={styles.stepBody}>
@@ -280,6 +293,7 @@ export function CenterOnboardingScreen({
 
     return (
       <>
+        <StepIcon name={stepIconMap[step]} />
         <Text style={styles.stepKicker}>Step 5 di 5</Text>
         <Text style={styles.stepTitle}>Riepilogo attivazione</Text>
         <Text style={styles.stepBody}>{activation.message}</Text>
@@ -368,17 +382,6 @@ export function CenterOnboardingScreen({
         {error ? <Text style={styles.error}>{error}</Text> : null}
         <View style={styles.actions}>
           <PrimaryButton
-            label={canGoBack ? "Indietro" : "Esci"}
-            onPress={() => {
-              if (canGoBack) {
-                setStepIndex((current) => Math.max(current - 1, 0));
-              } else {
-                onBack();
-              }
-            }}
-            variant="secondary"
-          />
-          <PrimaryButton
             disabled={isSaving}
             label={
               isSaving
@@ -390,6 +393,17 @@ export function CenterOnboardingScreen({
             onPress={() => {
               void handleNext();
             }}
+          />
+          <PrimaryButton
+            label={canGoBack ? "Indietro" : "Esci"}
+            onPress={() => {
+              if (canGoBack) {
+                setStepIndex((current) => Math.max(current - 1, 0));
+              } else {
+                onBack();
+              }
+            }}
+            variant="secondary"
           />
         </View>
 
@@ -490,6 +504,18 @@ export function CenterOnboardingScreen({
   );
 }
 
+function StepIcon({
+  name,
+}: {
+  name: React.ComponentProps<typeof Ionicons>["name"];
+}) {
+  return (
+    <View style={styles.stepIcon}>
+      <Ionicons color={colors.brandDark} name={name} size={26} />
+    </View>
+  );
+}
+
 type FieldProps = {
   autoCapitalize?: "none" | "sentences" | "words" | "characters";
   label: string;
@@ -523,15 +549,15 @@ function Field({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.brand,
+    backgroundColor: colors.canvas,
   },
   progressTrack: {
-    backgroundColor: "rgba(255,255,255,0.15)",
+    backgroundColor: colors.border,
     height: 6,
     width: "100%",
   },
   progressValue: {
-    backgroundColor: "#F6E6A8",
+    backgroundColor: colors.brand,
     height: 6,
   },
   content: {
@@ -541,19 +567,36 @@ const styles = StyleSheet.create({
   },
   stepCard: {
     backgroundColor: colors.surface,
-    borderRadius: 32,
-    padding: spacing.xl,
+    borderColor: colors.overlayBorder,
+    borderRadius: 12,
+    borderWidth: 1,
+    padding: spacing.lg,
+  },
+  stepIcon: {
+    alignItems: "center",
+    alignSelf: "center",
+    backgroundColor: colors.surfaceSky,
+    borderColor: colors.overlayBorder,
+    borderRadius: 14,
+    borderWidth: 1,
+    height: 54,
+    justifyContent: "center",
+    marginBottom: spacing.md,
+    width: 54,
   },
   stepKicker: {
     ...textStyles.eyebrow,
+    textAlign: "center",
   },
   stepTitle: {
-    ...textStyles.displayTitle,
+    ...textStyles.titleBase,
     marginTop: spacing.sm,
+    textAlign: "center",
   },
   stepBody: {
     ...textStyles.body,
     marginTop: spacing.md,
+    textAlign: "center",
   },
   fieldWrap: {
     marginTop: spacing.lg,
@@ -578,7 +621,9 @@ const styles = StyleSheet.create({
   },
   dayCard: {
     backgroundColor: colors.surfaceSoft,
-    borderRadius: 18,
+    borderColor: colors.border,
+    borderRadius: 12,
+    borderWidth: 1,
     padding: spacing.md,
   },
   dayToggle: {
@@ -619,7 +664,7 @@ const styles = StyleSheet.create({
   },
   modalCard: {
     backgroundColor: colors.surface,
-    borderRadius: 24,
+    borderRadius: 12,
     maxWidth: 560,
     padding: spacing.lg,
     width: "100%",
@@ -647,7 +692,7 @@ const styles = StyleSheet.create({
   dayModalToggle: {
     alignItems: "center",
     backgroundColor: colors.surfaceSoft,
-    borderRadius: 16,
+    borderRadius: 12,
     flexDirection: "row",
     justifyContent: "space-between",
     padding: spacing.md,
@@ -661,7 +706,7 @@ const styles = StyleSheet.create({
     marginTop: spacing.md,
   },
   error: {
-    color: "#FDE2E2",
+    color: "#B42318",
     fontSize: 14,
     marginTop: spacing.md,
   },

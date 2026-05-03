@@ -91,17 +91,19 @@ export function CenterBookingDetailModal({
                   <Text style={styles.label}>Ora</Text>
                   <Text style={styles.value}>{booking.time_label ?? "n/a"}</Text>
                 </View>
-                <View style={styles.summaryBlock}>
-                  <Text style={styles.label}>Stato</Text>
-                  <Text
-                    style={[
-                      styles.value,
-                      booking.status === "canceled" ? styles.danger : null,
-                    ]}
-                  >
-                    {booking.status}
-                  </Text>
-                </View>
+                {booking.status !== "confirmed" ? (
+                  <View style={styles.summaryBlock}>
+                    <Text style={styles.label}>Stato</Text>
+                    <Text
+                      style={[
+                        styles.value,
+                        booking.status === "canceled" ? styles.danger : null,
+                      ]}
+                    >
+                      {booking.status}
+                    </Text>
+                  </View>
+                ) : null}
               </View>
 
               <View style={styles.section}>
@@ -116,7 +118,7 @@ export function CenterBookingDetailModal({
               <View style={styles.section}>
                 <Text style={styles.sectionTitle}>Trattamento</Text>
                 <DetailRow label="Servizio" value={booking.service_name} />
-                <DetailRow label="Operatore" value={booking.operator_name} />
+                <DetailRow label="Centro" value={booking.operator_name} />
                 <DetailRow
                   label="Prezzo"
                   value={booking.price !== null ? `EUR ${booking.price}` : "n/a"}
