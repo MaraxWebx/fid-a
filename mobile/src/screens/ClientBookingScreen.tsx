@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  Image,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -14,7 +15,9 @@ import {
   getCenterServices,
   getCenters,
 } from "../lib/api";
+import { buildUpcomingDateOptions } from "../lib/date";
 import type { BookingSlot, Center, Service } from "../types/api";
+import { MiniDateCalendar } from "../components/MiniDateCalendar";
 import { PrimaryButton } from "../components/PrimaryButton";
 import { ScreenHeader } from "../components/ScreenHeader";
 import { SectionCard } from "../components/SectionCard";
@@ -27,22 +30,6 @@ type ClientBookingScreenProps = {
   selectedServiceId: string | null;
   onBookingConfirmed: () => void;
 };
-
-function buildUpcomingDates(totalDays = 14) {
-  const today = new Date();
-  return Array.from({ length: totalDays }, (_, offset) => {
-    const date = new Date(today);
-    date.setDate(today.getDate() + offset);
-    return {
-      key: date.toISOString().slice(0, 10),
-      label: new Intl.DateTimeFormat("it-IT", {
-        weekday: "short",
-        day: "2-digit",
-        month: "short",
-      }).format(date),
-    };
-  });
-}
 
 export function ClientBookingScreen({
   userEmail,
@@ -62,14 +49,14 @@ export function ClientBookingScreen({
   );
   const [serviceId, setServiceId] = useState<string | null>(selectedServiceId);
   const [selectedDateKey, setSelectedDateKey] = useState(
-    buildUpcomingDates()[0]?.key ?? "",
+    buildUpcomingDateOptions()[0]?.key ?? "",
   );
   const [slotId, setSlotId] = useState<string | null>(null);
   const [bookingLoading, setBookingLoading] = useState(false);
   const [bookingError, setBookingError] = useState<string | null>(null);
 
   const activeCenterId = localCenterId ?? selectedCenterId;
-  const upcomingDates = useMemo(() => buildUpcomingDates(), []);
+  const upcomingDates = useMemo(() => buildUpcomingDateOptions(), []);
 
   useEffect(() => {
     let mounted = true;
@@ -216,6 +203,7 @@ export function ClientBookingScreen({
               <SelectableRow
                 key={center.id}
                 active={center.id === localCenterId}
+                logoUrl={center.branding?.logo}
                 title={center.name}
                 subtitle={center.email}
                 onPress={() => setLocalCenterId(center.id)}
@@ -229,87 +217,126 @@ export function ClientBookingScreen({
         eyebrow="Centro"
         title={selectedCenter?.name ?? "Centro non selezionato"}
       >
-        <Text style={styles.notice}>
-          {selectedCenter
-            ? `${selectedCenter.email} - logo ${selectedCenter.branding?.logo ? "configurato" : "non configurato"}`
-            : "Seleziona un centro per continuare."}
-        </Text>
+        {selectedCenter ? (
+          <View style={styles.selectedCenterCard}>
+            {selectedCenter.branding?.logo ? (
+              <Image
+                source={{ uri: selectedCenter.branding.logo }}
+                style={styles.selectedCenterLogo}
+              />
+            ) : (
+              <View style={styles.selectedCenterLogoFallback}>
+                <Text style={styles.selectedCenterLogoFallbackText}>
+                  {selectedCenter.name.slice(0, 2).toUpperCase()}
+                </Text>
+              </View>
+            )}
+
+            <View style={styles.selectedCenterContent}>
+              <Text style={styles.selectedCenterTitle}>{selectedCenter.name}</Text>
+              <Text style={styles.notice}>{selectedCenter.email}</Text>
+            </View>
+          </View>
+        ) : (
+          <Text style={styles.notice}>Seleziona un centro per continuare.</Text>
+        )}
+
+        {selectedCenter ? (
+          <View style={styles.changeCenterWrap}>
+            <PrimaryButton
+              label="Cambia centro"
+              onPress={() => {
+                setLocalCenterId(null);
+                setServiceId(null);
+                setSlotId(null);
+                setSlots([]);
+                setBookingError(null);
+              }}
+              variant="secondary"
+            />
+          </View>
+        ) : null}
       </SectionCard>
 
-      <SectionCard eyebrow="Step 1" title="Scegli il servizio">
-        {servicesLoading ? <ActivityIndicator color={colors.brand} /> : null}
-        {servicesError ? <Text style={styles.notice}>{servicesError}</Text> : null}
-        {services.map((service) => (
-          <SelectableRow
-            key={service.id}
-            active={service.id === serviceId}
-            title={service.name}
-            subtitle={`${service.category} - ${service.duration ?? "-"} min - ${service.price ?? "-"} EUR`}
-            onPress={() => setServiceId(service.id)}
+      {activeCenterId ? (
+        <SectionCard eyebrow="Step 1" title="Scegli il servizio">
+          {servicesLoading ? <ActivityIndicator color={colors.brand} /> : null}
+          {servicesError ? <Text style={styles.notice}>{servicesError}</Text> : null}
+          {services.map((service) => (
+            <SelectableRow
+              key={service.id}
+              active={service.id === serviceId}
+              title={service.name}
+              subtitle={`${service.category} - ${service.duration ?? "-"} min - ${service.price ?? "-"} EUR`}
+              onPress={() => setServiceId(service.id)}
+            />
+          ))}
+        </SectionCard>
+      ) : null}
+
+      {activeCenterId && serviceId ? (
+        <SectionCard eyebrow="Step 2" title="Scegli il giorno">
+          <MiniDateCalendar
+            dates={upcomingDates}
+            onSelectDate={setSelectedDateKey}
+            selectedDateKey={selectedDateKey}
           />
-        ))}
-      </SectionCard>
+        </SectionCard>
+      ) : null}
 
-      <SectionCard eyebrow="Step 2" title="Scegli il giorno">
-        {upcomingDates.map((day) => (
-          <SelectableRow
-            key={day.key}
-            active={day.key === selectedDateKey}
-            title={day.label}
-            subtitle={day.key}
-            onPress={() => setSelectedDateKey(day.key)}
-          />
-        ))}
-      </SectionCard>
+      {activeCenterId && serviceId && selectedDateKey ? (
+        <SectionCard eyebrow="Step 3" title="Scegli l'orario">
+          {slotsLoading ? <ActivityIndicator color={colors.brand} /> : null}
+          {slotsError ? <Text style={styles.notice}>{slotsError}</Text> : null}
+          {!slotsLoading && slots.length === 0 && !slotsError ? (
+            <Text style={styles.notice}>
+              Nessuno slot disponibile per questo giorno.
+            </Text>
+          ) : null}
+          {slots.map((slot) => (
+            <SelectableRow
+              key={slot.id}
+              active={slot.id === slotId}
+              title={slot.time_label}
+              subtitle={`${slot.date_label} - ${slot.availability_label}`}
+              onPress={() => setSlotId(slot.id)}
+            />
+          ))}
+        </SectionCard>
+      ) : null}
 
-      <SectionCard eyebrow="Step 3" title="Scegli l'orario">
-        {slotsLoading ? <ActivityIndicator color={colors.brand} /> : null}
-        {slotsError ? <Text style={styles.notice}>{slotsError}</Text> : null}
-        {!slotsLoading && slots.length === 0 && !slotsError ? (
-          <Text style={styles.notice}>
-            Nessuno slot disponibile per questo giorno.
+      {activeCenterId && serviceId && slotId ? (
+        <SectionCard eyebrow="Step 4" title="Conferma prenotazione">
+          <Text style={styles.summaryLine}>
+            Centro: {selectedCenter?.name ?? "Da selezionare"}
           </Text>
-        ) : null}
-        {slots.map((slot) => (
-          <SelectableRow
-            key={slot.id}
-            active={slot.id === slotId}
-            title={slot.time_label}
-            subtitle={`${slot.date_label} - ${slot.availability_label}`}
-            onPress={() => setSlotId(slot.id)}
-          />
-        ))}
-      </SectionCard>
-
-      <SectionCard eyebrow="Step 4" title="Conferma prenotazione">
-        <Text style={styles.summaryLine}>
-          Centro: {selectedCenter?.name ?? "Da selezionare"}
-        </Text>
-        <Text style={styles.summaryLine}>
-          Servizio: {selectedService?.name ?? "Da selezionare"}
-        </Text>
-        <Text style={styles.summaryLine}>
-          Slot: {selectedSlot ? `${selectedSlot.date_label} - ${selectedSlot.time_label}` : "Seleziona uno slot"}
-        </Text>
-        {bookingError ? (
-          <Text style={styles.errorText}>{bookingError}</Text>
-        ) : null}
-        <View style={styles.buttonRow}>
-          <PrimaryButton
-            label={
-              bookingLoading ? "Prenotazione in corso..." : "Conferma booking"
-            }
-            onPress={handleConfirmBooking}
-            disabled={bookingLoading}
-          />
-        </View>
-      </SectionCard>
+          <Text style={styles.summaryLine}>
+            Servizio: {selectedService?.name ?? "Da selezionare"}
+          </Text>
+          <Text style={styles.summaryLine}>
+            Slot: {selectedSlot ? `${selectedSlot.date_label} - ${selectedSlot.time_label}` : "Seleziona uno slot"}
+          </Text>
+          {bookingError ? (
+            <Text style={styles.errorText}>{bookingError}</Text>
+          ) : null}
+          <View style={styles.buttonRow}>
+            <PrimaryButton
+              label={
+                bookingLoading ? "Prenotazione in corso..." : "Conferma booking"
+              }
+              onPress={handleConfirmBooking}
+              disabled={bookingLoading}
+            />
+          </View>
+        </SectionCard>
+      ) : null}
     </ScrollView>
   );
 }
 
 type SelectableRowProps = {
   active: boolean;
+  logoUrl?: string;
   onPress: () => void;
   subtitle: string;
   title: string;
@@ -317,6 +344,7 @@ type SelectableRowProps = {
 
 function SelectableRow({
   active,
+  logoUrl,
   onPress,
   subtitle,
   title,
@@ -326,6 +354,15 @@ function SelectableRow({
       onPress={onPress}
       style={[styles.row, active ? styles.rowActive : null]}
     >
+      {logoUrl ? (
+        <Image source={{ uri: logoUrl }} style={styles.logo} />
+      ) : (
+        <View style={styles.logoFallback}>
+          <Text style={styles.logoFallbackText}>
+            {title.slice(0, 2).toUpperCase()}
+          </Text>
+        </View>
+      )}
       <View style={styles.rowContent}>
         <Text style={styles.rowTitle}>{title}</Text>
         <Text style={styles.rowSubtitle}>{subtitle}</Text>
@@ -359,6 +396,27 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surfaceMuted,
     borderColor: colors.brand,
   },
+  logo: {
+    backgroundColor: colors.surfaceSoft,
+    borderRadius: 14,
+    height: 48,
+    marginRight: spacing.md,
+    width: 48,
+  },
+  logoFallback: {
+    alignItems: "center",
+    backgroundColor: colors.surfaceSky,
+    borderRadius: 14,
+    height: 48,
+    justifyContent: "center",
+    marginRight: spacing.md,
+    width: 48,
+  },
+  logoFallbackText: {
+    color: colors.brandInk,
+    fontSize: 14,
+    fontWeight: "800",
+  },
   rowContent: {
     flex: 1,
     paddingRight: spacing.md,
@@ -388,6 +446,43 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontSize: 15,
     marginBottom: spacing.sm,
+  },
+  selectedCenterCard: {
+    alignItems: "center",
+    flexDirection: "row",
+  },
+  selectedCenterLogo: {
+    backgroundColor: colors.surfaceSoft,
+    borderRadius: 18,
+    height: 64,
+    marginRight: spacing.md,
+    width: 64,
+  },
+  selectedCenterLogoFallback: {
+    alignItems: "center",
+    backgroundColor: colors.surfaceSky,
+    borderRadius: 18,
+    height: 64,
+    justifyContent: "center",
+    marginRight: spacing.md,
+    width: 64,
+  },
+  selectedCenterLogoFallbackText: {
+    color: colors.brandInk,
+    fontSize: 18,
+    fontWeight: "800",
+  },
+  selectedCenterContent: {
+    flex: 1,
+  },
+  selectedCenterTitle: {
+    color: colors.brandInk,
+    fontSize: 18,
+    fontWeight: "800",
+    marginBottom: spacing.xs,
+  },
+  changeCenterWrap: {
+    marginTop: spacing.md,
   },
   notice: {
     color: colors.textMuted,

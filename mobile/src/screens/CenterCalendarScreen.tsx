@@ -20,6 +20,7 @@ import {
   updateBooking,
   updateCenterAvailability,
 } from "../lib/api";
+import { toLocalDateKey } from "../lib/date";
 import { colors } from "../theme/colors";
 import { spacing } from "../theme/spacing";
 import { textStyles } from "../theme/typography";
@@ -53,7 +54,7 @@ type CalendarDay = {
 const weekdayMap = ["Dom", "Lun", "Mar", "Mer", "Gio", "Ven", "Sab"];
 
 function formatDateKey(date: Date) {
-  return date.toISOString().slice(0, 10);
+  return toLocalDateKey(date);
 }
 
 function formatDateLabel(date: Date) {

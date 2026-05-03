@@ -15,7 +15,9 @@ import {
   getUserBookings,
   updateBooking,
 } from "../lib/api";
+import { buildUpcomingDateOptions } from "../lib/date";
 import type { Booking, BookingSlot } from "../types/api";
+import { MiniDateCalendar } from "../components/MiniDateCalendar";
 import { PrimaryButton } from "../components/PrimaryButton";
 import { ScreenHeader } from "../components/ScreenHeader";
 import { SectionCard } from "../components/SectionCard";
@@ -26,27 +28,6 @@ type ClientAppointmentsScreenProps = {
   profileEmail: string;
 };
 
-type DateOption = {
-  key: string;
-  label: string;
-};
-
-function buildUpcomingDates(totalDays = 14): DateOption[] {
-  const today = new Date();
-  return Array.from({ length: totalDays }, (_, offset) => {
-    const date = new Date(today);
-    date.setDate(today.getDate() + offset);
-    return {
-      key: date.toISOString().slice(0, 10),
-      label: new Intl.DateTimeFormat("it-IT", {
-        weekday: "short",
-        day: "2-digit",
-        month: "short",
-      }).format(date),
-    };
-  });
-}
-
 export function ClientAppointmentsScreen({
   profileEmail,
 }: ClientAppointmentsScreenProps) {
@@ -55,7 +36,7 @@ export function ClientAppointmentsScreen({
   const [error, setError] = useState<string | null>(null);
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
   const [selectedDateKey, setSelectedDateKey] = useState(
-    buildUpcomingDates()[0]?.key ?? "",
+    buildUpcomingDateOptions()[0]?.key ?? "",
   );
   const [slots, setSlots] = useState<BookingSlot[]>([]);
   const [slotsLoading, setSlotsLoading] = useState(false);
@@ -64,7 +45,7 @@ export function ClientAppointmentsScreen({
   const [actionLoading, setActionLoading] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
-  const upcomingDates = useMemo(() => buildUpcomingDates(), []);
+  const upcomingDates = useMemo(() => buildUpcomingDateOptions(), []);
 
   const loadAppointments = async () => {
     setLoading(true);
@@ -131,7 +112,7 @@ export function ClientAppointmentsScreen({
 
   const openEditModal = (booking: Booking) => {
     setSelectedBooking(booking);
-    setSelectedDateKey(buildUpcomingDates()[0]?.key ?? "");
+    setSelectedDateKey(buildUpcomingDateOptions()[0]?.key ?? "");
     setSelectedSlotId(null);
     setSlots([]);
     setSlotsError(null);
@@ -243,27 +224,11 @@ export function ClientAppointmentsScreen({
             </Text>
 
             <Text style={styles.sectionLabel}>Nuovo giorno</Text>
-            <View style={styles.chipGrid}>
-              {upcomingDates.map((day) => (
-                <Pressable
-                  key={day.key}
-                  onPress={() => setSelectedDateKey(day.key)}
-                  style={[
-                    styles.chip,
-                    day.key === selectedDateKey && styles.chipActive,
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.chipText,
-                      day.key === selectedDateKey && styles.chipTextActive,
-                    ]}
-                  >
-                    {day.label}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
+            <MiniDateCalendar
+              dates={upcomingDates}
+              onSelectDate={setSelectedDateKey}
+              selectedDateKey={selectedDateKey}
+            />
 
             <Text style={styles.sectionLabel}>Nuovo orario</Text>
             {slotsLoading ? <ActivityIndicator color={colors.brand} /> : null}
@@ -465,32 +430,6 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     marginTop: spacing.lg,
     marginBottom: spacing.sm,
-  },
-  chipGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: spacing.sm,
-  },
-  chip: {
-    backgroundColor: colors.surfaceSoft,
-    borderColor: colors.border,
-    borderRadius: 999,
-    borderWidth: 1,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-  },
-  chipActive: {
-    backgroundColor: colors.surfaceSky,
-    borderColor: colors.brand,
-  },
-  chipText: {
-    color: colors.textMuted,
-    fontSize: 13,
-    fontWeight: "700",
-    textTransform: "capitalize",
-  },
-  chipTextActive: {
-    color: colors.brandInk,
   },
   slotList: {
     gap: spacing.sm,
