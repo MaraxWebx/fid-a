@@ -58,11 +58,43 @@ export type Booking = {
   created_at?: string;
 };
 
+export type Review = {
+  id: string;
+  center_id: string;
+  user_id: string;
+  booking_id: string;
+  service_name?: string;
+  rating: number;
+  comment: string;
+  user_name?: string;
+  created_at?: string;
+};
+
+export type AppNotification = {
+  id: string;
+  role: string;
+  center_id?: string;
+  user_id?: string;
+  type: string;
+  title: string;
+  message: string;
+  is_read: boolean;
+  metadata?: Record<string, string | number | boolean | null>;
+  created_at?: string;
+};
+
 export type BookingInput = {
   center_id: string;
   user_email: string;
   service_id: string;
   slot_id: string;
+};
+
+export type ReviewInput = {
+  booking_id: string;
+  user_email: string;
+  rating: number;
+  comment: string;
 };
 
 export type DashboardMetric = {
@@ -141,6 +173,12 @@ export type CenterOnboardingInput = {
 export type CenterOnboardingResponse = {
   center: Center;
   activation: ActivationStatus;
+};
+
+export type CenterProfileInput = {
+  name: string;
+  logo_url: string;
+  brand_color: string;
 };
 
 export type CenterAvailabilityInput = {

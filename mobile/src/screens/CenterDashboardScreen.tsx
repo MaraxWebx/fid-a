@@ -8,8 +8,8 @@ import {
   View,
 } from "react-native";
 
-import { getCenterDashboard } from "../lib/api";
-import type { Center, CenterDashboard } from "../types/api";
+import { getCenterDashboard, getCenterReviews } from "../lib/api";
+import type { Center, CenterDashboard, Review } from "../types/api";
 import { ScreenHeader } from "../components/ScreenHeader";
 import { SectionCard } from "../components/SectionCard";
 import { StatTile } from "../components/StatTile";
@@ -22,15 +22,18 @@ type CenterDashboardScreenProps = {
 
 export function CenterDashboardScreen({ center }: CenterDashboardScreenProps) {
   const [dashboard, setDashboard] = useState<CenterDashboard | null>(null);
+  const [latestReview, setLatestReview] = useState<Review | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let mounted = true;
 
-    getCenterDashboard(center.id)
-      .then((dashboardResponse) => {
-        if (mounted) setDashboard(dashboardResponse);
+    Promise.all([getCenterDashboard(center.id), getCenterReviews(center.id)])
+      .then(([dashboardResponse, reviewsResponse]) => {
+        if (!mounted) return;
+        setDashboard(dashboardResponse);
+        setLatestReview(reviewsResponse[0] ?? null);
       })
       .catch(() => {
         if (mounted)
@@ -123,6 +126,23 @@ export function CenterDashboardScreen({ center }: CenterDashboardScreenProps) {
             <Text style={styles.lastVisit}>{client.last_visit ?? "n/a"}</Text>
           </View>
         ))}
+      </SectionCard>
+
+      <SectionCard eyebrow="Recensioni" title="Ultima recensione ricevuta">
+        {latestReview ? (
+          <View style={styles.reviewCard}>
+            <Text style={styles.reviewStars}>
+              {"★".repeat(latestReview.rating)}
+              {"☆".repeat(5 - latestReview.rating)}
+            </Text>
+            <Text style={styles.reviewComment}>{latestReview.comment}</Text>
+            <Text style={styles.reviewMeta}>
+              {latestReview.user_name ?? "Cliente"} · {latestReview.service_name ?? "Trattamento"}
+            </Text>
+          </View>
+        ) : (
+          <Text style={styles.reviewEmpty}>Ancora nessuna recensione ricevuta.</Text>
+        )}
       </SectionCard>
     </ScrollView>
   );
@@ -275,5 +295,29 @@ const styles = StyleSheet.create({
   lastVisit: {
     color: colors.textMuted,
     fontSize: 12,
+  },
+  reviewCard: {
+    backgroundColor: colors.surfaceMuted,
+    borderRadius: 14,
+    padding: spacing.md,
+  },
+  reviewStars: {
+    color: colors.brandDark,
+    fontSize: 18,
+    fontWeight: "800",
+  },
+  reviewComment: {
+    color: colors.text,
+    fontSize: 15,
+    marginTop: spacing.sm,
+  },
+  reviewMeta: {
+    color: colors.textMuted,
+    fontSize: 13,
+    marginTop: spacing.sm,
+  },
+  reviewEmpty: {
+    color: colors.textMuted,
+    fontSize: 14,
   },
 });

@@ -103,6 +103,62 @@ def serialize_booking(document):
     }
 
 
+def serialize_review(document):
+    return {
+        "id": serialize_id(document["_id"]),
+        "center_id": serialize_id(document.get("center_id")),
+        "user_id": serialize_id(document.get("user_id")),
+        "booking_id": serialize_id(document.get("booking_id")),
+        "service_name": document.get("service_name"),
+        "rating": document.get("rating"),
+        "comment": document.get("comment"),
+        "user_name": document.get("user_name"),
+        "created_at": document.get("created_at"),
+    }
+
+
+def serialize_notification(document):
+    return {
+        "id": serialize_id(document["_id"]),
+        "role": document.get("role"),
+        "center_id": serialize_id(document.get("center_id")),
+        "user_id": serialize_id(document.get("user_id")),
+        "type": document.get("type"),
+        "title": document.get("title"),
+        "message": document.get("message"),
+        "is_read": document.get("is_read", False),
+        "metadata": document.get("metadata", {}),
+        "created_at": document.get("created_at"),
+    }
+
+
+def create_notification(
+    *,
+    role: str,
+    title: str,
+    message: str,
+    center_id: ObjectId | None = None,
+    user_id: ObjectId | None = None,
+    notification_type: str,
+    metadata: dict | None = None,
+):
+    now = datetime.now(UTC)
+    db.notifications.insert_one(
+        {
+            "role": role,
+            "center_id": center_id,
+            "user_id": user_id,
+            "type": notification_type,
+            "title": title,
+            "message": message,
+            "is_read": False,
+            "metadata": metadata or {},
+            "created_at": now,
+            "updated_at": now,
+        }
+    )
+
+
 def parse_object_id(value: str, label: str):
     try:
         return ObjectId(value)
@@ -141,6 +197,12 @@ class CenterAvailabilityPayload(BaseModel):
     availability_overrides: dict[str, CenterAvailabilityDayPayload] = Field(default_factory=dict)
 
 
+class CenterProfilePayload(BaseModel):
+    name: str | None = Field(default=None, min_length=2, max_length=120)
+    logo_url: str | None = None
+    brand_color: str | None = None
+
+
 class CenterServiceConfigItemPayload(BaseModel):
     name: str = Field(min_length=2, max_length=160)
     category: str = Field(min_length=2, max_length=80)
@@ -152,6 +214,17 @@ class CenterServiceConfigItemPayload(BaseModel):
 
 class CenterServicesCatalogPayload(BaseModel):
     services: list[CenterServiceConfigItemPayload] = Field(default_factory=list)
+
+
+class ReviewPayload(BaseModel):
+    booking_id: str = Field(min_length=24, max_length=24)
+    user_email: str = Field(min_length=5, max_length=160)
+    rating: int = Field(ge=1, le=5)
+    comment: str = Field(min_length=1, max_length=128)
+
+
+class NotificationReadPayload(BaseModel):
+    notification_ids: list[str] = Field(default_factory=list)
 
 
 class ClientRegistrationPayload(BaseModel):
@@ -222,6 +295,46 @@ def verify_password(password: str, stored_hash: str | None):
     salt, digest = stored_hash.split("$", 1)
     computed = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt.encode("utf-8"), 100000)
     return hmac.compare_digest(digest, computed.hex())
+
+
+def ensure_review_prompt_notifications(user_id: ObjectId):
+    now = datetime.now(UTC)
+    bookings = list(
+        db.bookings.find(
+            {
+                "user_id": user_id,
+                "start_time": {"$lte": now},
+            }
+        )
+    )
+
+    for booking in bookings:
+        has_review = db.reviews.find_one({"booking_id": booking["_id"], "user_id": user_id})
+        if has_review:
+            continue
+
+        existing_notification = db.notifications.find_one(
+            {
+                "user_id": user_id,
+                "type": "review_prompt",
+                "metadata.booking_id": str(booking["_id"]),
+            }
+        )
+        if existing_notification:
+            continue
+
+        create_notification(
+            role="client",
+            user_id=user_id,
+            center_id=booking.get("center_id"),
+            notification_type="review_prompt",
+            title="Valuta il tuo trattamento!",
+            message="Lascia una recensione da 1 a 5 stelle con un commento breve.",
+            metadata={
+                "booking_id": str(booking["_id"]),
+                "service_name": booking.get("service_name"),
+            },
+        )
 
 
 def build_checkout_urls(request: Request):
@@ -625,6 +738,39 @@ def update_center_onboarding(center_id: str, payload: CenterOnboardingPayload):
     }
 
 
+@app.patch("/api/centers/{center_id}/profile")
+def update_center_profile(center_id: str, payload: CenterProfilePayload):
+    object_id = parse_object_id(center_id, "center id")
+    center = db.centers.find_one({"_id": object_id})
+
+    if not center:
+        raise HTTPException(status_code=404, detail="Center not found.")
+
+    branding = center.get("branding", {})
+    update_fields = {
+        "updated_at": datetime.now(UTC),
+    }
+
+    if payload.name is not None and payload.name.strip():
+        update_fields["name"] = payload.name.strip()
+
+    if payload.logo_url is not None:
+        branding["logo"] = payload.logo_url.strip()
+
+    if payload.brand_color is not None:
+        branding["primary_color"] = payload.brand_color.strip()
+
+    update_fields["branding"] = branding
+
+    db.centers.update_one({"_id": object_id}, {"$set": update_fields})
+    updated_center = db.centers.find_one({"_id": object_id})
+
+    return {
+        "center": serialize_center(updated_center),
+        "activation": build_activation_status(updated_center),
+    }
+
+
 @app.patch("/api/centers/{center_id}/availability")
 def update_center_availability(center_id: str, payload: CenterAvailabilityPayload):
     object_id = parse_object_id(center_id, "center id")
@@ -679,6 +825,13 @@ def list_center_services(center_id: str):
         )
     )
     return [serialize_service(document) for document in documents]
+
+
+@app.get("/api/centers/{center_id}/reviews")
+def list_center_reviews(center_id: str):
+    object_id = parse_object_id(center_id, "center id")
+    documents = list(db.reviews.find({"center_id": object_id}).sort("created_at", -1))
+    return [serialize_review(document) for document in documents]
 
 
 @app.patch("/api/centers/{center_id}/services")
@@ -764,6 +917,46 @@ def get_user_bookings(email: str = Query(default=DEFAULT_PROFILE_EMAIL)):
 
     documents = list(db.bookings.aggregate(pipeline))
     return [serialize_booking(document) for document in documents]
+
+
+@app.get("/api/notifications")
+def get_notifications(
+    role: str = Query(...),
+    email: str | None = Query(default=None),
+    center_id: str | None = Query(default=None),
+):
+    query: dict = {"role": role}
+
+    if role == "client":
+        if not email:
+            raise HTTPException(status_code=400, detail="Email is required for client notifications.")
+        user = db.users.find_one({"email": email.strip().lower(), "role": "client"})
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found.")
+        ensure_review_prompt_notifications(user["_id"])
+        query["user_id"] = user["_id"]
+    elif role == "center":
+        if not center_id:
+            raise HTTPException(status_code=400, detail="Center id is required for center notifications.")
+        query["center_id"] = parse_object_id(center_id, "center id")
+    else:
+        raise HTTPException(status_code=400, detail="Unsupported role.")
+
+    documents = list(db.notifications.find(query).sort("created_at", -1))
+    return [serialize_notification(document) for document in documents]
+
+
+@app.patch("/api/notifications/read")
+def mark_notifications_read(payload: NotificationReadPayload):
+    object_ids = [parse_object_id(value, "notification id") for value in payload.notification_ids]
+    if not object_ids:
+        return {"updated": 0}
+
+    result = db.notifications.update_many(
+        {"_id": {"$in": object_ids}},
+        {"$set": {"is_read": True, "updated_at": datetime.now(UTC)}},
+    )
+    return {"updated": result.modified_count}
 
 
 @app.get("/api/centers/{center_id}/dashboard")
@@ -887,6 +1080,59 @@ def get_center_clients(center_id: str):
     ]
 
 
+@app.post("/api/reviews")
+def create_review(payload: ReviewPayload):
+    booking_object_id = parse_object_id(payload.booking_id, "booking id")
+    user = db.users.find_one({"email": payload.user_email.strip().lower(), "role": "client"})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found.")
+
+    booking = db.bookings.find_one({"_id": booking_object_id, "user_id": user["_id"]})
+    if not booking:
+        raise HTTPException(status_code=404, detail="Booking not found.")
+
+    existing_review = db.reviews.find_one({"booking_id": booking_object_id, "user_id": user["_id"]})
+    if existing_review:
+        raise HTTPException(status_code=409, detail="Review already submitted for this booking.")
+
+    now = datetime.now(UTC)
+    review_document = {
+        "booking_id": booking_object_id,
+        "center_id": booking.get("center_id"),
+        "user_id": user["_id"],
+        "user_name": user.get("name", "Cliente"),
+        "service_name": booking.get("service_name"),
+        "rating": payload.rating,
+        "comment": payload.comment.strip(),
+        "created_at": now,
+        "updated_at": now,
+    }
+    result = db.reviews.insert_one(review_document)
+    db.notifications.update_many(
+        {
+            "user_id": user["_id"],
+            "type": "review_prompt",
+            "metadata.booking_id": payload.booking_id,
+        },
+        {"$set": {"is_read": True, "updated_at": now}},
+    )
+    create_notification(
+        role="center",
+        center_id=booking.get("center_id"),
+        user_id=user["_id"],
+        notification_type="review_received",
+        title="Nuova recensione ricevuta",
+        message=f"{user.get('name', 'Cliente')} ha lasciato {payload.rating}/5 stelle.",
+        metadata={
+            "booking_id": payload.booking_id,
+            "rating": payload.rating,
+            "service_name": booking.get("service_name"),
+        },
+    )
+    created_review = db.reviews.find_one({"_id": result.inserted_id})
+    return serialize_review(created_review)
+
+
 @app.post("/api/bookings")
 def create_booking(payload: BookingPayload):
     # Validate center exists
@@ -925,5 +1171,18 @@ def create_booking(payload: BookingPayload):
 
     result = db.bookings.insert_one(booking_document)
     created_booking = db.bookings.find_one({"_id": result.inserted_id})
+    create_notification(
+        role="center",
+        center_id=center_object_id,
+        user_id=user["_id"],
+        notification_type="new_booking",
+        title="Nuova prenotazione",
+        message=f"{user.get('name', 'Cliente')} ha prenotato {service.get('name')}.",
+        metadata={
+            "booking_id": str(result.inserted_id),
+            "service_name": service.get("name"),
+            "user_name": user.get("name", "Cliente"),
+        },
+    )
 
     return serialize_booking(created_booking)

@@ -10,45 +10,68 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import Ionicons from 'react-native-vector-icons/Ionicons';
 
 import { PrimaryButton } from '../components/PrimaryButton';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { ServiceCatalogPicker } from '../components/ServiceCatalogPicker';
 import { SectionCard } from '../components/SectionCard';
 import { treatmentCatalog } from '../data/treatmentCatalog';
-import { getCenterServices, updateCenterServices } from '../lib/api';
+import {
+  getCenterReviews,
+  getCenterServices,
+  updateCenterProfile,
+  updateCenterServices,
+} from '../lib/api';
 import { colors } from '../theme/colors';
 import { spacing } from '../theme/spacing';
-import type { ActivationStatus, Center, Service } from '../types/api';
+import type { ActivationStatus, Center, Review, Service } from '../types/api';
 
 type CenterSettingsScreenProps = {
   activation: ActivationStatus;
   center: Center;
+  onCenterUpdated: (center: Center, activation: ActivationStatus) => void;
   onLogout: () => void;
 };
 
 export function CenterSettingsScreen({
   activation,
   center,
+  onCenterUpdated,
   onLogout,
 }: CenterSettingsScreenProps) {
   const [services, setServices] = useState<Service[]>([]);
+  const [reviews, setReviews] = useState<Review[]>([]);
   const [loadingServices, setLoadingServices] = useState(true);
   const [savingService, setSavingService] = useState(false);
+  const [savingProfile, setSavingProfile] = useState(false);
   const [catalogError, setCatalogError] = useState<string | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [selectedTreatment, setSelectedTreatment] = useState<string | null>(null);
   const [priceInput, setPriceInput] = useState('');
   const [durationInput, setDurationInput] = useState('');
-  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isServiceModalOpen, setIsServiceModalOpen] = useState(false);
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+  const [profileName, setProfileName] = useState(center.name);
+  const [profileLogoUrl, setProfileLogoUrl] = useState(center.branding.logo ?? '');
+  const [profileBrandColor, setProfileBrandColor] = useState(
+    center.branding.primary_color ?? '',
+  );
+
+  useEffect(() => {
+    setProfileName(center.name);
+    setProfileLogoUrl(center.branding.logo ?? '');
+    setProfileBrandColor(center.branding.primary_color ?? '');
+  }, [center]);
 
   useEffect(() => {
     let mounted = true;
 
-    getCenterServices(center.id)
-      .then((response) => {
+    Promise.all([getCenterServices(center.id), getCenterReviews(center.id)])
+      .then(([servicesResponse, reviewsResponse]) => {
         if (mounted) {
-          setServices(response);
+          setServices(servicesResponse);
+          setReviews(reviewsResponse);
         }
       })
       .catch(() => {
@@ -92,7 +115,7 @@ export function CenterSettingsScreen({
         : '',
     );
     setCatalogError(null);
-    setIsModalOpen(true);
+    setIsServiceModalOpen(true);
   };
 
   const handleSaveTreatment = async () => {
@@ -130,7 +153,7 @@ export function CenterSettingsScreen({
         ],
       });
       setServices(response);
-      setIsModalOpen(false);
+      setIsServiceModalOpen(false);
     } catch (error) {
       setCatalogError(
         error instanceof Error
@@ -142,32 +165,68 @@ export function CenterSettingsScreen({
     }
   };
 
+  const handleSaveProfile = async () => {
+    setSavingProfile(true);
+    setCatalogError(null);
+
+    try {
+      const response = await updateCenterProfile(center.id, {
+        name: profileName,
+        logo_url: profileLogoUrl,
+        brand_color: profileBrandColor,
+      });
+      onCenterUpdated(response.center, response.activation);
+      setIsProfileModalOpen(false);
+    } catch (error) {
+      setCatalogError(
+        error instanceof Error
+          ? error.message
+          : 'Aggiornamento profilo non riuscito.',
+      );
+    } finally {
+      setSavingProfile(false);
+    }
+  };
+
   return (
     <ScrollView contentContainerStyle={styles.content} style={styles.container}>
       <ScreenHeader
         eyebrow="Impostazioni"
         logoUrl={center.branding.logo}
         title={center.name}
-        subtitle="Brand, informazioni e configurazione trattamenti del centro."
+        subtitle="Profilo centro e configurazione trattamenti."
       />
 
-      <View style={styles.profileHero}>
-        {center.branding.logo ? (
-          <Image source={{ uri: center.branding.logo }} style={styles.profileLogo} />
-        ) : (
-          <View style={styles.profileLogoFallback}>
-            <Text style={styles.profileLogoText}>
-              {center.name.slice(0, 2).toUpperCase()}
+      <SectionCard eyebrow="Profilo centro" title="Informazioni principali">
+        <View style={styles.profileCard}>
+          {center.branding.logo ? (
+            <Image source={{ uri: center.branding.logo }} style={styles.profileLogo} />
+          ) : (
+            <View style={styles.profileLogoFallback}>
+              <Text style={styles.profileLogoText}>
+                {center.name.slice(0, 2).toUpperCase()}
+              </Text>
+            </View>
+          )}
+          <View style={styles.profileMain}>
+            <Text style={styles.profileTitle}>{center.name}</Text>
+            <Text style={styles.profileMeta}>{center.email}</Text>
+            <Text style={styles.profileMeta}>
+              Logo: {center.branding.logo ? 'configurato' : 'non configurato'}
+            </Text>
+            <Text style={styles.profileMeta}>
+              Colore: {center.branding.primary_color ?? 'non impostato'}
             </Text>
           </View>
-        )}
-        <View style={styles.profileCopy}>
-          <Text style={styles.profileTitle}>{center.name}</Text>
-          <Text style={styles.profileSubtitle}>
-            Profilo centro e configurazione operativa del listino.
-          </Text>
+          <Pressable
+            onPress={() => setIsProfileModalOpen(true)}
+            style={styles.editButton}
+          >
+            <Ionicons color={colors.brandInk} name="create-outline" size={18} />
+            <Text style={styles.editButtonLabel}>Modifica</Text>
+          </Pressable>
         </View>
-      </View>
+      </SectionCard>
 
       {!activation.is_listable ? (
         <SectionCard eyebrow="Attivazione" title="Centro non ancora visibile" tone="sand">
@@ -178,36 +237,10 @@ export function CenterSettingsScreen({
         </SectionCard>
       ) : null}
 
-      <SectionCard eyebrow="Branding" title="Identita centro">
-        <View style={styles.brandPreview}>
-          {center.branding.logo ? (
-            <Image source={{ uri: center.branding.logo }} style={styles.brandPreviewLogo} />
-          ) : (
-            <View style={styles.brandPreviewFallback}>
-              <Text style={styles.brandPreviewText}>
-                {center.name.slice(0, 2).toUpperCase()}
-              </Text>
-            </View>
-          )}
-          <View style={styles.brandPreviewCopy}>
-            <Text style={styles.brandPreviewTitle}>{center.name}</Text>
-            <Text style={styles.catalogDetail}>
-              Anteprima logo e colore principale del centro.
-            </Text>
-          </View>
-        </View>
-        <SettingRow label="Nome centro" value={center.name} />
-        <SettingRow label="Logo" value={center.branding.logo ?? 'Logo non caricato'} />
-        <SettingRow
-          label="Colore principale"
-          value={center.branding.primary_color ?? 'Colore non impostato'}
-        />
-      </SectionCard>
-
       <SectionCard eyebrow="Catalogo" title="Categorie trattamenti">
         <Text style={styles.catalogIntro}>
-          Tocca un trattamento per aprire la modale e inserire prezzo e durata.
-          Dopo il salvataggio puoi passare subito al prossimo.
+          Tocca una categoria per aprire la lista trattamenti in modale, poi
+          seleziona il servizio e imposta prezzo e durata.
         </Text>
         {loadingServices ? <ActivityIndicator color={colors.brand} /> : null}
         {catalogError ? <Text style={styles.errorText}>{catalogError}</Text> : null}
@@ -244,6 +277,25 @@ export function CenterSettingsScreen({
         )}
       </SectionCard>
 
+      <SectionCard eyebrow="Recensioni" title="Tutte le recensioni">
+        {reviews.length === 0 ? (
+          <Text style={styles.catalogDetail}>Nessuna recensione disponibile al momento.</Text>
+        ) : (
+          reviews.map((review) => (
+            <View key={review.id} style={styles.catalogRow}>
+              <Text style={styles.catalogTitle}>
+                {"★".repeat(review.rating)}
+                {"☆".repeat(5 - review.rating)}
+              </Text>
+              <Text style={styles.catalogDetail}>{review.comment}</Text>
+              <Text style={styles.catalogDetail}>
+                {review.user_name ?? 'Cliente'} · {review.service_name ?? 'Trattamento'}
+              </Text>
+            </View>
+          ))
+        )}
+      </SectionCard>
+
       <SectionCard eyebrow="Sessione" title="Torna alla home app">
         <Text style={styles.catalogDetail}>
           Esci dalla sessione del centro e torna alla schermata iniziale pubblica di Fidea.
@@ -255,9 +307,80 @@ export function CenterSettingsScreen({
 
       <Modal
         animationType="slide"
-        onRequestClose={() => setIsModalOpen(false)}
+        onRequestClose={() => setIsProfileModalOpen(false)}
         transparent
-        visible={isModalOpen}
+        visible={isProfileModalOpen}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeader}>
+              <View style={styles.modalCopy}>
+                <Text style={styles.modalEyebrow}>Profilo centro</Text>
+                <Text style={styles.modalTitle}>Modifica informazioni</Text>
+              </View>
+              <Pressable onPress={() => setIsProfileModalOpen(false)}>
+                <Text style={styles.modalClose}>Chiudi</Text>
+              </Pressable>
+            </View>
+
+            <View style={styles.fieldWrap}>
+              <Text style={styles.fieldLabel}>Nome centro</Text>
+              <TextInput
+                onChangeText={setProfileName}
+                placeholder="Nome centro"
+                placeholderTextColor={colors.textSoft}
+                style={styles.input}
+                value={profileName}
+              />
+            </View>
+
+            <View style={styles.fieldWrap}>
+              <Text style={styles.fieldLabel}>Logo URL</Text>
+              <TextInput
+                autoCapitalize="none"
+                onChangeText={setProfileLogoUrl}
+                placeholder="https://..."
+                placeholderTextColor={colors.textSoft}
+                style={styles.input}
+                value={profileLogoUrl}
+              />
+            </View>
+
+            <View style={styles.fieldWrap}>
+              <Text style={styles.fieldLabel}>Colore principale</Text>
+              <TextInput
+                autoCapitalize="characters"
+                onChangeText={setProfileBrandColor}
+                placeholder="#2F4F6F"
+                placeholderTextColor={colors.textSoft}
+                style={styles.input}
+                value={profileBrandColor}
+              />
+            </View>
+
+            <View style={styles.modalActions}>
+              <PrimaryButton
+                label="Annulla"
+                onPress={() => setIsProfileModalOpen(false)}
+                variant="secondary"
+              />
+              <PrimaryButton
+                disabled={savingProfile}
+                label={savingProfile ? 'Salvataggio...' : 'Salva profilo'}
+                onPress={() => {
+                  void handleSaveProfile();
+                }}
+              />
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        animationType="slide"
+        onRequestClose={() => setIsServiceModalOpen(false)}
+        transparent
+        visible={isServiceModalOpen}
       >
         <View style={styles.modalBackdrop}>
           <View style={styles.modalCard}>
@@ -266,7 +389,7 @@ export function CenterSettingsScreen({
                 <Text style={styles.modalEyebrow}>{selectedCategory ?? 'Trattamento'}</Text>
                 <Text style={styles.modalTitle}>{selectedTreatment ?? ''}</Text>
               </View>
-              <Pressable onPress={() => setIsModalOpen(false)}>
+              <Pressable onPress={() => setIsServiceModalOpen(false)}>
                 <Text style={styles.modalClose}>Chiudi</Text>
               </Pressable>
             </View>
@@ -295,12 +418,10 @@ export function CenterSettingsScreen({
               />
             </View>
 
-            {catalogError ? <Text style={styles.errorText}>{catalogError}</Text> : null}
-
             <View style={styles.modalActions}>
               <PrimaryButton
                 label="Annulla"
-                onPress={() => setIsModalOpen(false)}
+                onPress={() => setIsServiceModalOpen(false)}
                 variant="secondary"
               />
               <PrimaryButton
@@ -318,15 +439,6 @@ export function CenterSettingsScreen({
   );
 }
 
-function SettingRow({ label, value }: { label: string; value: string }) {
-  return (
-    <View style={styles.settingRow}>
-      <Text style={styles.settingLabel}>{label}</Text>
-      <Text style={styles.settingValue}>{value}</Text>
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -337,13 +449,12 @@ const styles = StyleSheet.create({
     paddingTop: spacing.xl,
     paddingBottom: spacing.xxl,
   },
-  profileHero: {
+  profileCard: {
     alignItems: 'center',
     backgroundColor: colors.surfaceMuted,
     borderRadius: 18,
     flexDirection: 'row',
     gap: spacing.md,
-    marginBottom: spacing.lg,
     padding: spacing.lg,
   },
   profileLogo: {
@@ -365,7 +476,7 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: '800',
   },
-  profileCopy: {
+  profileMain: {
     flex: 1,
   },
   profileTitle: {
@@ -373,59 +484,25 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: '800',
   },
-  profileSubtitle: {
+  profileMeta: {
     color: colors.textMuted,
     fontSize: 14,
     marginTop: spacing.xs,
   },
-  brandPreview: {
+  editButton: {
     alignItems: 'center',
-    flexDirection: 'row',
-    gap: spacing.md,
-    marginBottom: spacing.sm,
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: 14,
+    borderWidth: 1,
+    gap: 4,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
   },
-  brandPreviewLogo: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 18,
-    height: 52,
-    width: 52,
-  },
-  brandPreviewFallback: {
-    alignItems: 'center',
-    backgroundColor: colors.brand,
-    borderRadius: 18,
-    height: 52,
-    justifyContent: 'center',
-    width: 52,
-  },
-  brandPreviewText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '800',
-  },
-  brandPreviewCopy: {
-    flex: 1,
-  },
-  brandPreviewTitle: {
+  editButtonLabel: {
     color: colors.brandInk,
-    fontSize: 17,
-    fontWeight: '800',
-  },
-  settingRow: {
-    borderTopColor: colors.border,
-    borderTopWidth: 1,
-    paddingVertical: spacing.md,
-  },
-  settingLabel: {
-    color: colors.textMuted,
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  settingValue: {
-    color: colors.text,
-    fontSize: 16,
+    fontSize: 12,
     fontWeight: '700',
-    marginTop: spacing.xs,
   },
   catalogIntro: {
     color: colors.textMuted,

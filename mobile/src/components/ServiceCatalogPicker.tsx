@@ -1,4 +1,4 @@
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 
 import { colors } from '../theme/colors';
@@ -63,36 +63,52 @@ export function ServiceCatalogPicker({
         })}
       </View>
 
-      {activeSection ? (
-        <View style={styles.listWrap}>
-          <Text style={styles.listTitle}>{activeSection.category}</Text>
-          <View style={styles.treatmentList}>
-            {activeSection.treatments.map((treatment) => {
-              const configured = configuredMap.get(treatment);
+      <Modal
+        animationType="slide"
+        onRequestClose={() => onSelectCategory('')}
+        transparent
+        visible={Boolean(activeSection)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeader}>
+              <View>
+                <Text style={styles.modalEyebrow}>Categoria</Text>
+                <Text style={styles.modalTitle}>{activeSection?.category ?? ''}</Text>
+              </View>
+              <Pressable onPress={() => onSelectCategory('')}>
+                <Text style={styles.modalClose}>Chiudi</Text>
+              </Pressable>
+            </View>
 
-              return (
-                <Pressable
-                  key={treatment}
-                  onPress={() =>
-                    onSelectTreatment(activeSection.category, treatment)
-                  }
-                  style={[
-                    styles.treatmentCard,
-                    configured ? styles.treatmentCardActive : null,
-                  ]}
-                >
-                  <Text style={styles.treatmentName}>{treatment}</Text>
-                  <Text style={styles.treatmentMeta}>
-                    {configured
-                      ? `${configured.duration ?? '-'} min · EUR ${configured.price ?? '-'}`
-                      : 'Tocca per configurare'}
-                  </Text>
-                </Pressable>
-              );
-            })}
+            <View style={styles.treatmentList}>
+              {activeSection?.treatments.map((treatment) => {
+                const configured = configuredMap.get(treatment);
+
+                return (
+                  <Pressable
+                    key={treatment}
+                    onPress={() =>
+                      onSelectTreatment(activeSection.category, treatment)
+                    }
+                    style={[
+                      styles.treatmentCard,
+                      configured ? styles.treatmentCardActive : null,
+                    ]}
+                  >
+                    <Text style={styles.treatmentName}>{treatment}</Text>
+                    <Text style={styles.treatmentMeta}>
+                      {configured
+                        ? `${configured.duration ?? '-'} min · EUR ${configured.price ?? '-'}`
+                        : 'Tocca per configurare'}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
           </View>
         </View>
-      ) : null}
+      </Modal>
     </View>
   );
 }
@@ -108,9 +124,9 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     borderRadius: 18,
     borderWidth: 1,
-    minHeight: 118,
-    padding: spacing.md,
-    width: '48%',
+    minHeight: 102,
+    padding: spacing.sm,
+    width: '31%',
   },
   categoryCardActive: {
     backgroundColor: colors.surfaceSky,
@@ -128,23 +144,51 @@ const styles = StyleSheet.create({
     backgroundColor: colors.brand,
   },
   categoryTitle: {
-    ...textStyles.titleXs,
+    fontSize: 12,
+    fontWeight: '800',
     color: colors.text,
-    marginTop: spacing.md,
+    marginTop: spacing.sm,
   },
   categoryMeta: {
     color: colors.textMuted,
-    fontSize: 12,
+    fontSize: 11,
     marginTop: spacing.xs,
   },
-  listWrap: {
-    marginTop: spacing.lg,
+  modalBackdrop: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(17, 24, 39, 0.4)',
+    flex: 1,
+    justifyContent: 'flex-end',
+    padding: spacing.lg,
   },
-  listTitle: {
+  modalCard: {
+    backgroundColor: colors.surface,
+    borderRadius: 24,
+    maxWidth: 560,
+    padding: spacing.lg,
+    width: '100%',
+  },
+  modalHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: spacing.lg,
+  },
+  modalEyebrow: {
+    color: colors.textMuted,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  modalTitle: {
     color: colors.brandInk,
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: '800',
-    marginBottom: spacing.sm,
+    marginTop: spacing.xs,
+  },
+  modalClose: {
+    color: colors.brandDark,
+    fontSize: 14,
+    fontWeight: '700',
   },
   treatmentList: {
     gap: spacing.sm,

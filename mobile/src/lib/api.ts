@@ -1,4 +1,5 @@
 import type {
+  AppNotification,
   Booking,
   BookingInput,
   Center,
@@ -10,12 +11,15 @@ import type {
   CenterDashboard,
   CenterOnboardingInput,
   CenterOnboardingResponse,
+  CenterProfileInput,
   CenterRegistrationInput,
   CenterRegistrationResponse,
   CenterServiceConfigInput,
   ClientAuthResponse,
   ClientRegistrationInput,
   LoginInput,
+  Review,
+  ReviewInput,
   Service,
   UserProfile,
 } from '../types/api';
@@ -74,6 +78,10 @@ export function getCenterServices(centerId: string) {
   return request<Service[]>(`/api/centers/${centerId}/services`);
 }
 
+export function getCenterReviews(centerId: string) {
+  return request<Review[]>(`/api/centers/${centerId}/reviews`);
+}
+
 export function getUserProfile(email: string) {
   const query = encodeURIComponent(email);
   return request<UserProfile>(`/api/users/profile?email=${query}`);
@@ -99,6 +107,13 @@ export function registerCenter(payload: CenterRegistrationInput) {
 export function updateCenterOnboarding(centerId: string, payload: CenterOnboardingInput) {
   return patch<CenterOnboardingResponse, CenterOnboardingInput>(
     `/api/centers/${centerId}/onboarding`,
+    payload,
+  );
+}
+
+export function updateCenterProfile(centerId: string, payload: CenterProfileInput) {
+  return patch<CenterOnboardingResponse, CenterProfileInput>(
+    `/api/centers/${centerId}/profile`,
     payload,
   );
 }
@@ -131,6 +146,28 @@ export function loginClient(payload: LoginInput) {
 
 export function getCenterActivationStatus(centerId: string) {
   return request<CenterActivationStatusResponse>(`/api/centers/${centerId}/activation-status`);
+}
+
+export function getNotifications(params: {
+  role: 'client' | 'center';
+  email?: string;
+  centerId?: string;
+}) {
+  const search = new URLSearchParams({ role: params.role });
+  if (params.email) search.set('email', params.email);
+  if (params.centerId) search.set('center_id', params.centerId);
+  return request<AppNotification[]>(`/api/notifications?${search.toString()}`);
+}
+
+export function markNotificationsRead(notificationIds: string[]) {
+  return patch<{ updated: number }, { notification_ids: string[] }>(
+    '/api/notifications/read',
+    { notification_ids: notificationIds },
+  );
+}
+
+export function createReview(payload: ReviewInput) {
+  return post<Review, ReviewInput>('/api/reviews', payload);
 }
 
 export function createBooking(payload: BookingInput) {

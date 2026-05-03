@@ -1,8 +1,19 @@
 import { StatusBar } from "expo-status-bar";
-import { useState } from "react";
-import { SafeAreaView, StyleSheet } from "react-native";
+import { useEffect, useState } from "react";
+import {
+  Modal,
+  Pressable,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
+import Ionicons from "react-native-vector-icons/Ionicons";
 
 import { BottomTabs } from "./src/components/BottomTabs";
+import { PrimaryButton } from "./src/components/PrimaryButton";
 import { AuthScreen } from "./src/screens/AuthScreen";
 import { CenterOnboardingScreen } from "./src/screens/CenterOnboardingScreen";
 import { CenterPaymentScreen } from "./src/screens/CenterPaymentScreen";
@@ -17,9 +28,20 @@ import { CenterClientsScreen } from "./src/screens/CenterClientsScreen";
 import { CenterDashboardScreen } from "./src/screens/CenterDashboardScreen";
 import { CenterSettingsScreen } from "./src/screens/CenterSettingsScreen";
 import { PublicLandingScreen } from "./src/screens/PublicLandingScreen";
-import { loginCenter, loginClient } from "./src/lib/api";
+import {
+  createReview,
+  getNotifications,
+  loginCenter,
+  loginClient,
+  markNotificationsRead,
+} from "./src/lib/api";
 import { colors } from "./src/theme/colors";
-import type { ActivationStatus, Center, UserProfile } from "./src/types/api";
+import type {
+  ActivationStatus,
+  AppNotification,
+  Center,
+  UserProfile,
+} from "./src/types/api";
 
 type ClientTab = "home" | "appointments" | "profile" | "booking";
 type CenterTab = "home" | "calendar" | "clients" | "settings";
@@ -62,6 +84,15 @@ export default function App() {
     error: "",
     loading: false,
   });
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [notificationsLoading, setNotificationsLoading] = useState(false);
+  const [reviewModalOpen, setReviewModalOpen] = useState(false);
+  const [selectedReviewNotification, setSelectedReviewNotification] =
+    useState<AppNotification | null>(null);
+  const [reviewRating, setReviewRating] = useState(5);
+  const [reviewComment, setReviewComment] = useState("");
+  const [reviewSubmitting, setReviewSubmitting] = useState(false);
 
   const handleLogout = () => {
     setSession(null);
@@ -79,6 +110,74 @@ export default function App() {
     setSession((current) =>
       current?.role === "center" ? { role: "center", center, activation } : current,
     );
+  };
+
+  const loadNotifications = async () => {
+    if (!session) {
+      setNotifications([]);
+      return;
+    }
+
+    setNotificationsLoading(true);
+    try {
+      const response =
+        session.role === "center"
+          ? await getNotifications({ role: "center", centerId: session.center.id })
+          : await getNotifications({ role: "client", email: session.user.email });
+      setNotifications(response);
+    } finally {
+      setNotificationsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadNotifications();
+  }, [session]);
+
+  const unreadNotifications = notifications.filter((item) => !item.is_read).length;
+
+  const openNotifications = async () => {
+    setNotificationsOpen(true);
+    await loadNotifications();
+    const unreadIds = notifications.filter((item) => !item.is_read).map((item) => item.id);
+    if (unreadIds.length > 0) {
+      try {
+        await markNotificationsRead(unreadIds);
+        await loadNotifications();
+      } catch {}
+    }
+  };
+
+  const handleOpenReview = (notification: AppNotification) => {
+    setSelectedReviewNotification(notification);
+    setReviewRating(5);
+    setReviewComment("");
+    setReviewModalOpen(true);
+  };
+
+  const handleSubmitReview = async () => {
+    if (!session || session.role !== "client" || !selectedReviewNotification) {
+      return;
+    }
+
+    const bookingId = String(selectedReviewNotification.metadata?.booking_id ?? "");
+    if (!bookingId || !reviewComment.trim()) {
+      return;
+    }
+
+    setReviewSubmitting(true);
+    try {
+      await createReview({
+        booking_id: bookingId,
+        user_email: session.user.email,
+        rating: reviewRating,
+        comment: reviewComment.trim(),
+      });
+      setReviewModalOpen(false);
+      await loadNotifications();
+    } finally {
+      setReviewSubmitting(false);
+    }
   };
 
   const handleClientLogin = async () => {
@@ -363,6 +462,7 @@ export default function App() {
             <CenterSettingsScreen
               activation={session.activation}
               center={session.center}
+              onCenterUpdated={handleCenterSessionUpdated}
               onLogout={handleLogout}
             />
           ) : null}
@@ -378,6 +478,106 @@ export default function App() {
           />
         </>
       )}
+      <Pressable onPress={() => void openNotifications()} style={styles.notificationFab}>
+        <Ionicons color={colors.surface} name="notifications" size={20} />
+        {unreadNotifications > 0 ? (
+          <View style={styles.notificationBadge}>
+            <Text style={styles.notificationBadgeText}>{unreadNotifications}</Text>
+          </View>
+        ) : null}
+      </Pressable>
+
+      <Modal
+        animationType="slide"
+        onRequestClose={() => setNotificationsOpen(false)}
+        transparent
+        visible={notificationsOpen}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Notifiche</Text>
+              <Pressable onPress={() => setNotificationsOpen(false)}>
+                <Text style={styles.modalClose}>Chiudi</Text>
+              </Pressable>
+            </View>
+            <ScrollView contentContainerStyle={styles.modalList}>
+              {notificationsLoading ? (
+                <Text style={styles.modalMeta}>Caricamento notifiche...</Text>
+              ) : null}
+              {!notificationsLoading && notifications.length === 0 ? (
+                <Text style={styles.modalMeta}>Nessuna notifica disponibile.</Text>
+              ) : null}
+              {notifications.map((item) => (
+                <View key={item.id} style={styles.notificationRow}>
+                  <Text style={styles.notificationTitle}>{item.title}</Text>
+                  <Text style={styles.notificationMessage}>{item.message}</Text>
+                  {session.role === "client" && item.type === "review_prompt" ? (
+                    <View style={styles.notificationActionWrap}>
+                      <PrimaryButton
+                        label="Valuta ora"
+                        onPress={() => handleOpenReview(item)}
+                      />
+                    </View>
+                  ) : null}
+                </View>
+              ))}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        animationType="slide"
+        onRequestClose={() => setReviewModalOpen(false)}
+        transparent
+        visible={reviewModalOpen}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Valuta il tuo trattamento</Text>
+              <Pressable onPress={() => setReviewModalOpen(false)}>
+                <Text style={styles.modalClose}>Chiudi</Text>
+              </Pressable>
+            </View>
+            <Text style={styles.modalMeta}>
+              Lascia da 1 a 5 stelle e un commento massimo di 128 caratteri.
+            </Text>
+            <View style={styles.starsRow}>
+              {[1, 2, 3, 4, 5].map((star) => (
+                <Pressable key={star} onPress={() => setReviewRating(star)}>
+                  <Text style={[styles.star, star <= reviewRating && styles.starActive]}>
+                    ★
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+            <TextInput
+              maxLength={128}
+              multiline
+              onChangeText={setReviewComment}
+              placeholder="Scrivi un commento breve"
+              placeholderTextColor={colors.textSoft}
+              style={styles.reviewInput}
+              value={reviewComment}
+            />
+            <Text style={styles.modalMeta}>{reviewComment.length}/128</Text>
+            <View style={styles.modalActions}>
+              <PrimaryButton
+                label="Annulla"
+                onPress={() => setReviewModalOpen(false)}
+                variant="secondary"
+              />
+              <PrimaryButton
+                disabled={reviewSubmitting || !reviewComment.trim()}
+                label={reviewSubmitting ? "Invio..." : "Invia recensione"}
+                onPress={() => void handleSubmitReview()}
+              />
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -386,5 +586,116 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: colors.canvas,
+  },
+  notificationFab: {
+    alignItems: "center",
+    backgroundColor: colors.brand,
+    borderRadius: 22,
+    elevation: 6,
+    height: 44,
+    justifyContent: "center",
+    position: "absolute",
+    right: 20,
+    top: 16,
+    width: 44,
+  },
+  notificationBadge: {
+    alignItems: "center",
+    backgroundColor: "#B42318",
+    borderRadius: 10,
+    minWidth: 20,
+    paddingHorizontal: 5,
+    position: "absolute",
+    right: -4,
+    top: -4,
+  },
+  notificationBadgeText: {
+    color: colors.surface,
+    fontSize: 11,
+    fontWeight: "800",
+  },
+  modalBackdrop: {
+    alignItems: "center",
+    backgroundColor: "rgba(17,24,39,0.35)",
+    flex: 1,
+    justifyContent: "flex-end",
+    padding: 16,
+  },
+  modalCard: {
+    backgroundColor: colors.surface,
+    borderRadius: 24,
+    maxWidth: 560,
+    padding: 20,
+    width: "100%",
+  },
+  modalHeader: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 16,
+  },
+  modalTitle: {
+    color: colors.brandInk,
+    fontSize: 20,
+    fontWeight: "800",
+  },
+  modalClose: {
+    color: colors.brandDark,
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  modalList: {
+    gap: 12,
+    paddingBottom: 8,
+  },
+  modalMeta: {
+    color: colors.textMuted,
+    fontSize: 14,
+  },
+  notificationRow: {
+    backgroundColor: colors.surfaceMuted,
+    borderRadius: 14,
+    padding: 14,
+  },
+  notificationTitle: {
+    color: colors.brandInk,
+    fontSize: 15,
+    fontWeight: "800",
+  },
+  notificationMessage: {
+    color: colors.text,
+    fontSize: 14,
+    marginTop: 6,
+  },
+  notificationActionWrap: {
+    marginTop: 12,
+  },
+  starsRow: {
+    flexDirection: "row",
+    gap: 8,
+    marginTop: 16,
+  },
+  star: {
+    color: colors.textSoft,
+    fontSize: 30,
+  },
+  starActive: {
+    color: "#F2B30F",
+  },
+  reviewInput: {
+    backgroundColor: colors.surfaceSoft,
+    borderColor: colors.border,
+    borderRadius: 12,
+    borderWidth: 1,
+    color: colors.text,
+    fontSize: 15,
+    marginTop: 16,
+    minHeight: 110,
+    padding: 14,
+    textAlignVertical: "top",
+  },
+  modalActions: {
+    gap: 12,
+    marginTop: 16,
   },
 });
