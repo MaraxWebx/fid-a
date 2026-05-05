@@ -1,6 +1,7 @@
 from datetime import UTC, date, datetime, time, timedelta
 import hashlib
 import hmac
+import re
 import secrets
 from zoneinfo import ZoneInfo
 
@@ -1391,7 +1392,7 @@ def get_center_dashboard(center_id: str):
     )
 
     pipeline = [
-        {"$match": {"center_id": object_id}},
+        {"$match": active_booking_query},
         {
             "$lookup": {
                 "from": "users",
@@ -1402,7 +1403,7 @@ def get_center_dashboard(center_id: str):
         },
         {"$unwind": {"path": "$user", "preserveNullAndEmptyArrays": True}},
         {"$sort": {"start_time": -1}},
-        {"$limit": 5},
+        {"$limit": 30},
     ]
     recent_bookings = list(db.bookings.aggregate(pipeline))
 
@@ -1444,17 +1445,43 @@ def get_center_dashboard(center_id: str):
             }
         )
 
-    clients = []
+    clients_by_key = {}
     for booking in recent_bookings:
         user = booking.get("user") or {}
-        clients.append(
-            {
-                "id": serialize_id(user.get("_id")) if user.get("_id") else serialize_id(booking["_id"]),
-                "name": user.get("name", "Cliente"),
-                "phone": user.get("phone", "n/a"),
-                "last_visit": booking["start_time"].strftime("Ultima visita: %d %b"),
-            }
+        start_time = booking.get("start_time")
+        serialized_client_id = serialize_id(user.get("_id")) if user.get("_id") else serialize_id(booking["_id"])
+        user_phone = user.get("phone", "")
+        user_name = user.get("name", "Cliente")
+        normalized_phone = re.sub(r"\D", "", user_phone)
+        client_key = (
+            f"phone:{normalized_phone}"
+            if normalized_phone
+            else f"name:{user_name.strip().lower()}" if user_name else f"id:{serialized_client_id}"
         )
+        history_item = {
+            "id": serialize_id(booking["_id"]),
+            "service_name": booking.get("service_name", "Servizio"),
+            "date_label": start_time.strftime("%d %b") if isinstance(start_time, datetime) else "",
+            "time_label": start_time.strftime("%H:%M") if isinstance(start_time, datetime) else "",
+            "status": booking.get("status", ""),
+        }
+
+        if client_key not in clients_by_key:
+            clients_by_key[client_key] = {
+                "id": serialized_client_id,
+                "name": user_name,
+                "phone": user_phone or "n/a",
+                "last_visit": (
+                    start_time.strftime("Ultima visita: %d %b")
+                    if isinstance(start_time, datetime)
+                    else "Ultima visita: n/a"
+                ),
+                "history": [],
+            }
+
+        clients_by_key[client_key]["history"].append(history_item)
+
+    clients = list(clients_by_key.values())[:5]
 
     return {
         "metrics": [

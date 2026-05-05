@@ -162,11 +162,20 @@ export type DashboardAgendaItem = {
   status_label: string;
 };
 
+export type DashboardClientHistoryItem = {
+  id: string;
+  service_name: string;
+  date_label: string;
+  time_label: string;
+  status: string;
+};
+
 export type DashboardClient = {
   id: string;
   name: string;
   phone: string;
   last_visit: string | null;
+  history?: DashboardClientHistoryItem[];
 };
 
 export type CenterDashboard = {

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Image,
@@ -11,7 +11,7 @@ import {
 import Ionicons from "react-native-vector-icons/Ionicons";
 
 import { getCenterDashboard, getCenterReviews } from "../lib/api";
-import type { ActivationStatus, Center, CenterDashboard, Review } from "../types/api";
+import type { ActivationStatus, Center, CenterDashboard, DashboardClient, Review } from "../types/api";
 import { ScreenHeader } from "../components/ScreenHeader";
 import { SectionCard } from "../components/SectionCard";
 import { StatTile } from "../components/StatTile";
@@ -25,6 +25,48 @@ type CenterDashboardScreenProps = {
   onOpenOnboarding: () => void;
 };
 
+function getClientDedupKey(client: DashboardClient) {
+  const phone = client.phone?.replace(/\D/g, "");
+  if (phone && phone !== "0") return `phone:${phone}`;
+
+  const name = client.name.trim().toLowerCase();
+  if (name) return `name:${name}`;
+
+  return `id:${client.id}`;
+}
+
+function dedupeDashboardClients(clients: DashboardClient[]) {
+  const clientsByKey = new Map<string, DashboardClient>();
+
+  clients.forEach((client) => {
+    const key = getClientDedupKey(client);
+    const existingClient = clientsByKey.get(key);
+
+    if (!existingClient) {
+      clientsByKey.set(key, {
+        ...client,
+        history: [...(client.history ?? [])],
+      });
+      return;
+    }
+
+    const historyById = new Map(
+      (existingClient.history ?? []).map((entry) => [entry.id, entry]),
+    );
+    (client.history ?? []).forEach((entry) => {
+      historyById.set(entry.id, entry);
+    });
+
+    clientsByKey.set(key, {
+      ...existingClient,
+      last_visit: existingClient.last_visit ?? client.last_visit,
+      history: Array.from(historyById.values()),
+    });
+  });
+
+  return Array.from(clientsByKey.values());
+}
+
 export function CenterDashboardScreen({
   activation,
   center,
@@ -33,8 +75,13 @@ export function CenterDashboardScreen({
 }: CenterDashboardScreenProps) {
   const [dashboard, setDashboard] = useState<CenterDashboard | null>(null);
   const [latestReview, setLatestReview] = useState<Review | null>(null);
+  const [expandedClientId, setExpandedClientId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const activeClients = useMemo(
+    () => dedupeDashboardClients(dashboard?.clients ?? []),
+    [dashboard?.clients],
+  );
 
   useEffect(() => {
     let mounted = true;
@@ -119,25 +166,64 @@ export function CenterDashboardScreen({
       </SectionCard>
 
       <SectionCard eyebrow="Clienti recenti" title="Relazioni attive">
-        {dashboard?.clients.map((client) => (
-          <Pressable
-            key={client.id}
-            onPress={() => onOpenClient(client.id)}
-            style={styles.crmRow}
-          >
-            <View style={styles.crmAvatar}>
-              <Text style={styles.crmAvatarText}>
-                {client.name.slice(0, 2).toUpperCase()}
-              </Text>
+        {activeClients.map((client) => {
+          const isExpanded = expandedClientId === client.id;
+          const history = client.history ?? [];
+
+          return (
+            <View key={client.id} style={styles.crmItem}>
+              <Pressable
+                onPress={() => setExpandedClientId(isExpanded ? null : client.id)}
+                style={styles.crmRow}
+              >
+                <View style={styles.crmAvatar}>
+                  <Text style={styles.crmAvatarText}>
+                    {client.name.slice(0, 2).toUpperCase()}
+                  </Text>
+                </View>
+                <View style={styles.crmMain}>
+                  <Text style={styles.scheduleTitle}>{client.name}</Text>
+                  <Text style={styles.scheduleMeta}>{client.phone}</Text>
+                  {history.length > 1 ? (
+                    <Text style={styles.relationshipCount}>
+                      {history.length} relazioni registrate
+                    </Text>
+                  ) : null}
+                </View>
+                <Text style={styles.lastVisit}>{client.last_visit ?? "n/a"}</Text>
+                <Ionicons
+                  color={colors.textMuted}
+                  name={isExpanded ? "chevron-up" : "chevron-down"}
+                  size={16}
+                />
+              </Pressable>
+
+              {isExpanded ? (
+                <View style={styles.relationshipHistory}>
+                  {history.length === 0 ? (
+                    <Text style={styles.relationshipEmpty}>Nessuno storico disponibile.</Text>
+                  ) : null}
+                  {history.map((entry) => (
+                    <View key={entry.id} style={styles.relationshipRow}>
+                      <View style={styles.relationshipDot} />
+                      <View style={styles.relationshipMain}>
+                        <Text style={styles.relationshipTitle}>{entry.service_name}</Text>
+                        <Text style={styles.relationshipMeta}>
+                          {entry.date_label} {entry.time_label}
+                          {entry.status && entry.status !== "confirmed" ? ` - ${entry.status}` : ""}
+                        </Text>
+                      </View>
+                    </View>
+                  ))}
+                  <Pressable onPress={() => onOpenClient(client.id)} style={styles.openClientButton}>
+                    <Text style={styles.openClientText}>Apri scheda cliente</Text>
+                    <Ionicons color={colors.brandDark} name="chevron-forward" size={15} />
+                  </Pressable>
+                </View>
+              ) : null}
             </View>
-            <View style={styles.crmMain}>
-              <Text style={styles.scheduleTitle}>{client.name}</Text>
-              <Text style={styles.scheduleMeta}>{client.phone}</Text>
-            </View>
-            <Text style={styles.lastVisit}>{client.last_visit ?? "n/a"}</Text>
-            <Ionicons color={colors.textMuted} name="chevron-forward" size={16} />
-          </Pressable>
-        ))}
+          );
+        })}
       </SectionCard>
 
       <SectionCard eyebrow="Recensioni" title="Ultima recensione ricevuta">
@@ -314,11 +400,13 @@ const styles = StyleSheet.create({
   },
   crmRow: {
     alignItems: "center",
-    borderTopColor: colors.border,
-    borderTopWidth: 1,
     flexDirection: "row",
     gap: spacing.md,
     paddingVertical: spacing.md,
+  },
+  crmItem: {
+    borderTopColor: colors.border,
+    borderTopWidth: 1,
   },
   crmAvatar: {
     alignItems: "center",
@@ -339,6 +427,57 @@ const styles = StyleSheet.create({
   lastVisit: {
     color: colors.textMuted,
     fontSize: 12,
+  },
+  relationshipCount: {
+    color: colors.brandDark,
+    fontSize: 12,
+    fontWeight: "700",
+    marginTop: spacing.xs,
+  },
+  relationshipHistory: {
+    gap: spacing.sm,
+    paddingBottom: spacing.md,
+    paddingLeft: 54,
+  },
+  relationshipRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: spacing.sm,
+  },
+  relationshipDot: {
+    backgroundColor: colors.brand,
+    borderRadius: 4,
+    height: 8,
+    width: 8,
+  },
+  relationshipMain: {
+    flex: 1,
+  },
+  relationshipTitle: {
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: "800",
+  },
+  relationshipMeta: {
+    color: colors.textMuted,
+    fontSize: 12,
+    marginTop: 2,
+  },
+  relationshipEmpty: {
+    color: colors.textMuted,
+    fontSize: 13,
+  },
+  openClientButton: {
+    alignItems: "center",
+    alignSelf: "flex-start",
+    flexDirection: "row",
+    gap: spacing.xs,
+    paddingTop: spacing.xs,
+  },
+  openClientText: {
+    color: colors.brandDark,
+    fontSize: 13,
+    fontWeight: "800",
   },
   reviewCard: {
     backgroundColor: colors.surfaceMuted,
