@@ -170,6 +170,7 @@ export type DashboardAgendaItem = {
   operator_name: string;
   service: string;
   status_label: string;
+  duration_label?: string | null;
   canceled_at?: string | null;
   cancellation_reason?: string | null;
   client_cancellations_count?: number;

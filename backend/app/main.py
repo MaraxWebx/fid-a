@@ -1450,7 +1450,11 @@ def get_center_dashboard(center_id: str):
     )
 
     total_revenue = 0
-    service_ids = [booking.get("service_id") for booking in todays_bookings if booking.get("service_id")]
+    service_ids = [
+        booking.get("service_id")
+        for booking in [*todays_bookings, *upcoming_bookings, *canceled_today_bookings]
+        if booking.get("service_id")
+    ]
     services_by_id = {
         service["_id"]: service
         for service in db.services.find({"_id": {"$in": service_ids}})
@@ -1480,6 +1484,8 @@ def get_center_dashboard(center_id: str):
             {"center_id": object_id, "user_id": booking.get("user_id"), "status": "canceled"}
         )
         booking_status = booking.get("status", "")
+        service = services_by_id.get(booking.get("service_id"))
+        duration = service.get("duration") if service else None
         agenda.append(
             {
                 "id": serialize_id(booking["_id"]),
@@ -1488,6 +1494,7 @@ def get_center_dashboard(center_id: str):
                 "operator_name": center.get("name", "Centro"),
                 "service": booking.get("service_name", "Servizio"),
                 "status_label": "Annullato" if booking_status == "canceled" else ("Confermato" if booking_status == "confirmed" else booking_status),
+                "duration_label": f"{duration} min" if isinstance(duration, int) else None,
                 "canceled_at": booking.get("canceled_at"),
                 "cancellation_reason": booking.get("cancellation_reason"),
                 "client_cancellations_count": cancellation_count,

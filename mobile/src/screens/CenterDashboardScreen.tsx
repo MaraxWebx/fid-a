@@ -95,6 +95,7 @@ const demoAgenda: DashboardAgendaItem[] = [
     service: "Pulizia viso luxury",
     status_label: "Confermato",
     time_label: "09:30",
+    duration_label: "75 min",
   },
   {
     id: "demo-2",
@@ -103,6 +104,7 @@ const demoAgenda: DashboardAgendaItem[] = [
     service: "Manicure semipermanente",
     status_label: "Arrivata",
     time_label: "11:00",
+    duration_label: "50 min",
   },
   {
     id: "demo-3",
@@ -111,6 +113,7 @@ const demoAgenda: DashboardAgendaItem[] = [
     service: "Laminazione ciglia",
     status_label: "In ritardo",
     time_label: "14:20",
+    duration_label: "45 min",
   },
   {
     id: "demo-4",
@@ -119,6 +122,7 @@ const demoAgenda: DashboardAgendaItem[] = [
     service: "Massaggio rilassante",
     status_label: "Confermato",
     time_label: "16:00",
+    duration_label: "60 min",
   },
 ];
 
@@ -227,6 +231,18 @@ const demoAlerts = [
 ];
 
 const statusActions = ["Confermato", "Arrivata", "In ritardo", "Annullato"] as const;
+const statusActionIconMap = {
+  Confermato: "checkmark-circle-outline",
+  Arrivata: "person-circle-outline",
+  "In ritardo": "time-outline",
+  Annullato: "close-circle-outline",
+} as const;
+const statusActionShortLabelMap = {
+  Confermato: "Conferma",
+  Arrivata: "Arrivata",
+  "In ritardo": "Ritardo",
+  Annullato: "Annulla",
+} as const;
 
 function getClientDedupKey(client: DashboardClient) {
   const phone = client.phone?.replace(/\D/g, "");
@@ -297,8 +313,8 @@ function getTreatmentTone(service: string) {
 
 function getStatusTone(status: string) {
   const value = status.toLowerCase();
-  if (value.includes("arriv")) return { background: "#E6F8FF", text: "#1D7FA3" };
-  if (value.includes("ritardo")) return { background: "#EAF1FF", text: "#486DA8" };
+  if (value.includes("arriv")) return { background: "#EAF9F3", text: "#4D8B77" };
+  if (value.includes("ritardo")) return { background: "#FFF4E7", text: "#B47A3B" };
   if (value.includes("cancell") || value.includes("annull") || value.includes("disdet")) {
     return { background: "#EFF4FA", text: "#74889D" };
   }
@@ -637,10 +653,12 @@ export function CenterDashboardScreen({
         </View>
 
         <View style={styles.agendaCard}>
-          {agendaWithStatuses.map((entry) => (
+          <View style={styles.timelineLine} />
+          {agendaWithStatuses.map((entry, index) => (
             <AgendaRow
               key={entry.id}
               entry={entry}
+              isLast={index === agendaWithStatuses.length - 1}
               onChangeStatus={(nextStatus) => void handleChangeStatus(entry, nextStatus)}
               saving={statusSavingId === entry.id}
               status={entry.status_label}
@@ -931,11 +949,13 @@ function KpiCard({
 
 function AgendaRow({
   entry,
+  isLast,
   onChangeStatus,
   saving,
   status,
 }: {
   entry: DashboardAgendaItem;
+  isLast: boolean;
   onChangeStatus: (status: string) => void;
   saving: boolean;
   status: string;
@@ -962,15 +982,30 @@ function AgendaRow({
   };
 
   return (
-    <Animated.View style={[styles.agendaRow, { transform: [{ scale: pressScale }] }]}>
+    <Animated.View
+      style={[
+        styles.agendaRow,
+        isLast ? styles.agendaRowLast : null,
+        {
+          transform: [{ scale: pressScale }],
+        },
+      ]}
+    >
       <View style={styles.timeColumn}>
         <Text style={styles.agendaTime}>{entry.time_label}</Text>
-        <View style={[styles.categoryLine, { backgroundColor: tone.accent }]} />
+        <View style={[styles.timelineNode, { borderColor: tone.accent }]}>
+          <View style={[styles.timelineNodeCore, { backgroundColor: tone.accent }]} />
+        </View>
       </View>
 
       <View style={styles.agendaMain}>
         <View style={styles.agendaTitleRow}>
-          <Text style={styles.agendaClient}>{entry.client_name}</Text>
+          <View style={styles.agendaClientBlock}>
+            <Text style={styles.agendaClient}>{entry.client_name}</Text>
+            <Text style={styles.agendaSubMeta}>
+              {entry.duration_label ?? "60 min"} · gestione rapida
+            </Text>
+          </View>
           <View style={[styles.statusPill, { backgroundColor: statusTone.background }]}>
             <Text style={[styles.statusText, { color: statusTone.text }]}>
               {status}
@@ -982,6 +1017,15 @@ function AgendaRow({
             <Ionicons color={tone.text} name={tone.icon} size={15} />
           </View>
           <Text style={styles.serviceName}>{entry.service}</Text>
+        </View>
+        <View style={styles.appointmentMetaRow}>
+          <View style={styles.durationChip}>
+            <Ionicons color="#4D7D9B" name="hourglass-outline" size={13} />
+            <Text style={styles.durationChipText}>{entry.duration_label ?? "60 min"}</Text>
+          </View>
+          <View style={[styles.categoryChip, { backgroundColor: tone.background }]}>
+            <Text style={[styles.categoryChipText, { color: tone.text }]}>{tone.label}</Text>
+          </View>
         </View>
         <View style={styles.statusActions}>
           {statusActions.map((action) => {
@@ -1004,13 +1048,18 @@ function AgendaRow({
                     : null,
                 ]}
               >
+                <Ionicons
+                  color={active ? actionTone.text : "#6B91AB"}
+                  name={statusActionIconMap[action]}
+                  size={14}
+                />
                 <Text
                   style={[
                     styles.statusActionText,
                     active ? { color: actionTone.text } : null,
                   ]}
                 >
-                  {action}
+                  {statusActionShortLabelMap[action]}
                 </Text>
               </Pressable>
             );
@@ -1315,40 +1364,80 @@ const styles = StyleSheet.create({
     fontWeight: "800",
   },
   agendaCard: {
-    backgroundColor: "rgba(255, 255, 255, 0.82)",
-    borderColor: "rgba(174, 218, 245, 0.5)",
-    borderRadius: 22,
+    backgroundColor: "rgba(255, 255, 255, 0.62)",
+    borderColor: "rgba(174, 218, 245, 0.42)",
+    borderRadius: 26,
     borderWidth: 1,
     marginBottom: spacing.xl,
     overflow: "hidden",
-    paddingHorizontal: spacing.md,
+    padding: spacing.md,
+    position: "relative",
+    shadowColor: "#8EC8EA",
+    shadowOffset: { width: 0, height: 18 },
+    shadowOpacity: 0.1,
+    shadowRadius: 30,
+    elevation: 3,
+  },
+  timelineLine: {
+    backgroundColor: "rgba(174, 218, 245, 0.46)",
+    borderRadius: 999,
+    bottom: spacing.lg,
+    left: 47,
+    position: "absolute",
+    top: spacing.xl,
+    width: 2,
   },
   agendaRow: {
-    alignItems: "center",
-    borderBottomColor: "rgba(174, 218, 245, 0.26)",
-    borderBottomWidth: 1,
+    alignItems: "flex-start",
     flexDirection: "row",
     gap: spacing.md,
-    minHeight: 126,
-    paddingVertical: spacing.md,
+    marginBottom: spacing.md,
+    minHeight: 154,
+  },
+  agendaRowLast: {
+    marginBottom: 0,
   },
   timeColumn: {
     alignItems: "center",
-    width: 54,
+    paddingTop: spacing.md,
+    width: 62,
   },
   agendaTime: {
     color: "#1F4F70",
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: "800",
   },
-  categoryLine: {
-    borderRadius: 999,
-    height: 34,
-    marginTop: 7,
-    width: 4,
+  timelineNode: {
+    alignItems: "center",
+    backgroundColor: "rgba(255, 255, 255, 0.95)",
+    borderRadius: 18,
+    borderWidth: 2,
+    height: 24,
+    justifyContent: "center",
+    marginTop: spacing.sm,
+    shadowColor: "#8EC8EA",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.16,
+    shadowRadius: 16,
+    width: 24,
+  },
+  timelineNodeCore: {
+    borderRadius: 7,
+    height: 10,
+    width: 10,
   },
   agendaMain: {
+    backgroundColor: "rgba(255, 255, 255, 0.9)",
+    borderColor: "rgba(174, 218, 245, 0.52)",
+    borderRadius: 24,
+    borderWidth: 1,
     flex: 1,
+    padding: spacing.md,
+    shadowColor: "#8EC8EA",
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.12,
+    shadowRadius: 24,
+    elevation: 3,
   },
   agendaTitleRow: {
     alignItems: "center",
@@ -1358,14 +1447,23 @@ const styles = StyleSheet.create({
   },
   agendaClient: {
     color: "#183F5C",
-    flex: 1,
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: "800",
+  },
+  agendaClientBlock: {
+    flex: 1,
+    paddingRight: spacing.sm,
+  },
+  agendaSubMeta: {
+    color: "#8BAEC5",
+    fontSize: 12,
+    fontWeight: "700",
+    marginTop: 3,
   },
   statusPill: {
     borderRadius: 999,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 5,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 7,
   },
   statusText: {
     fontSize: 10,
@@ -1388,31 +1486,68 @@ const styles = StyleSheet.create({
   serviceName: {
     color: "#4D7D9B",
     flex: 1,
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: "700",
+  },
+  appointmentMetaRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.xs,
+    marginTop: spacing.sm,
+  },
+  durationChip: {
+    alignItems: "center",
+    backgroundColor: "#F4FBFF",
+    borderColor: "rgba(174, 218, 245, 0.62)",
+    borderRadius: 999,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 4,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 6,
+  },
+  durationChipText: {
+    color: "#4D7D9B",
+    fontSize: 12,
+    fontWeight: "800",
+  },
+  categoryChip: {
+    borderRadius: 999,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 6,
+  },
+  categoryChipText: {
+    fontSize: 12,
+    fontWeight: "800",
   },
   statusActions: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 7,
-    marginTop: spacing.sm,
+    gap: spacing.xs,
+    marginTop: spacing.md,
   },
   statusAction: {
     alignItems: "center",
     backgroundColor: "rgba(244, 251, 255, 0.72)",
     borderColor: "rgba(174, 218, 245, 0.62)",
-    borderRadius: 999,
+    borderRadius: 14,
     borderWidth: 1,
-    minHeight: 34,
+    flexDirection: "row",
+    gap: 4,
+    minHeight: 42,
     justifyContent: "center",
-    paddingHorizontal: spacing.sm,
+    paddingHorizontal: 10,
+    shadowColor: "#8EC8EA",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
   },
   cancelStatusAction: {
     borderStyle: "dashed",
   },
   statusActionText: {
     color: "#6B91AB",
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: "800",
   },
   cancellationInfo: {

@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Animated,
   Modal,
   Pressable,
   ScrollView,
@@ -20,6 +21,7 @@ import {
   getCenterBookingSlots,
   getCenterBookings,
   updateBooking,
+  updateBookingStatus,
   updateCenterAvailability,
 } from "../lib/api";
 import { toLocalDateKey } from "../lib/date";
@@ -60,6 +62,57 @@ type CalendarViewMode = "calendar" | "list";
 
 const weekdayMap = ["Dom", "Lun", "Mar", "Mer", "Gio", "Ven", "Sab"];
 const weekdayHeaders = ["Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom"];
+const statusActions = ["Confermato", "Arrivata", "In ritardo", "Annullato"] as const;
+const statusActionIconMap = {
+  Confermato: "checkmark-circle-outline",
+  Arrivata: "person-circle-outline",
+  "In ritardo": "time-outline",
+  Annullato: "close-circle-outline",
+} as const;
+const statusActionShortLabelMap = {
+  Confermato: "Conferma",
+  Arrivata: "Arrivata",
+  "In ritardo": "Ritardo",
+  Annullato: "Annulla",
+} as const;
+
+const treatmentTones = {
+  viso: {
+    accent: "#B9E7F6",
+    background: "#EEF9FD",
+    icon: "sparkles-outline",
+    label: "Viso",
+    text: "#2F6F8C",
+  },
+  unghie: {
+    accent: "#A9D8FF",
+    background: "#EAF6FF",
+    icon: "color-palette-outline",
+    label: "Unghie",
+    text: "#326A9C",
+  },
+  lashes: {
+    accent: "#B8CBE8",
+    background: "#EEF4FC",
+    icon: "eye-outline",
+    label: "Brows & lashes",
+    text: "#435F87",
+  },
+  massaggi: {
+    accent: "#B7EEF4",
+    background: "#ECFBFD",
+    icon: "leaf-outline",
+    label: "Massaggi",
+    text: "#347B87",
+  },
+  default: {
+    accent: colors.brand,
+    background: colors.surfaceSky,
+    icon: "rose-outline",
+    label: "Beauty",
+    text: colors.brandInk,
+  },
+} as const;
 
 function formatDateKey(date: Date) {
   return toLocalDateKey(date);
@@ -137,6 +190,62 @@ function formatMonthLabel(date: Date) {
   }).format(date);
 }
 
+function getTreatmentTone(service: string) {
+  const value = service.toLowerCase();
+  if (value.includes("viso") || value.includes("facial") || value.includes("glow")) {
+    return treatmentTones.viso;
+  }
+  if (value.includes("ungh") || value.includes("manicure") || value.includes("pedicure")) {
+    return treatmentTones.unghie;
+  }
+  if (
+    value.includes("laminazione") ||
+    value.includes("brow") ||
+    value.includes("lash") ||
+    value.includes("ciglia")
+  ) {
+    return treatmentTones.lashes;
+  }
+  if (value.includes("massaggio") || value.includes("relax")) {
+    return treatmentTones.massaggi;
+  }
+  return treatmentTones.default;
+}
+
+function getStatusTone(status: string) {
+  const value = status.toLowerCase();
+  if (value.includes("arriv")) return { background: "#EAF9F3", text: "#4D8B77" };
+  if (value.includes("ritardo")) return { background: "#FFF4E7", text: "#B47A3B" };
+  if (value.includes("cancell") || value.includes("annull") || value.includes("disdet")) {
+    return { background: "#EFF4FA", text: "#74889D" };
+  }
+  return { background: "#DFF3FF", text: "#2F6F8C" };
+}
+
+function normalizeStatusLabel(status: string) {
+  if (!status || status === "confirmed") return "Confermato";
+  if (status === "arrived") return "Arrivata";
+  if (status === "late") return "In ritardo";
+  if (status === "canceled") return "Annullato";
+  return status;
+}
+
+function isCanceledStatus(status: string) {
+  const value = status.toLowerCase();
+  return value.includes("annull") || value.includes("disdet") || value.includes("cancel");
+}
+
+function getBookingDurationLabel(booking: Booking) {
+  if (!booking.start_time || !booking.end_time) {
+    return "60 min";
+  }
+
+  const start = new Date(booking.start_time).getTime();
+  const end = new Date(booking.end_time).getTime();
+  const minutes = Math.round((end - start) / 60000);
+  return Number.isFinite(minutes) && minutes > 0 ? `${minutes} min` : "60 min";
+}
+
 export function CenterCalendarScreen({
   center,
   onCenterUpdated,
@@ -162,6 +271,7 @@ export function CenterCalendarScreen({
   const [bookingSlotsError, setBookingSlotsError] = useState<string | null>(null);
   const [selectedSlotId, setSelectedSlotId] = useState<string | null>(null);
   const [bookingActionLoading, setBookingActionLoading] = useState(false);
+  const [statusSavingId, setStatusSavingId] = useState<string | null>(null);
   const [bookingDetailId, setBookingDetailId] = useState<string | null>(null);
   const [agendaBookings, setAgendaBookings] = useState<Booking[]>([]);
   const [agendaLoading, setAgendaLoading] = useState(false);
@@ -412,6 +522,34 @@ export function CenterCalendarScreen({
     }
   };
 
+  const handleChangeBookingStatus = async (booking: Booking, nextStatus: string) => {
+    setStatusSavingId(booking.id);
+    setBookingsError(null);
+    setAgendaError(null);
+
+    try {
+      const updatedBooking = await updateBookingStatus(booking.id, {
+        center_id: center.id,
+        role: "center",
+        status: nextStatus,
+      });
+      setBookings((current) =>
+        current.map((item) => (item.id === booking.id ? updatedBooking : item)),
+      );
+      setAgendaBookings((current) =>
+        current.map((item) => (item.id === booking.id ? updatedBooking : item)),
+      );
+      await loadAgendaBookings();
+      if (selectedDay?.dateKey) {
+        await loadDayBookings(selectedDay.dateKey);
+      }
+    } catch {
+      setAgendaError("Aggiornamento stato appuntamento non riuscito.");
+    } finally {
+      setStatusSavingId(null);
+    }
+  };
+
   return (
     <ScrollView contentContainerStyle={styles.content} style={styles.container}>
       <ScreenHeader
@@ -534,53 +672,35 @@ export function CenterCalendarScreen({
           </View>
         </SectionCard>
       ) : (
-        <SectionCard eyebrow="Lista appuntamenti" title={`${agendaBookings.length} prenotazioni`}>
+        <View style={styles.premiumAgendaSection}>
+          <View style={styles.premiumAgendaHeader}>
+            <View>
+              <Text style={styles.premiumKicker}>Lista appuntamenti</Text>
+              <Text style={styles.premiumTitle}>{agendaBookings.length} prenotazioni</Text>
+            </View>
+            <View style={styles.premiumHeaderPill}>
+              <Ionicons color="#4D7D9B" name="sparkles-outline" size={15} />
+              <Text style={styles.premiumHeaderPillText}>timeline</Text>
+            </View>
+          </View>
           {agendaLoading ? <ActivityIndicator color={colors.brand} /> : null}
           {agendaError ? <Text style={styles.error}>{agendaError}</Text> : null}
           {!agendaLoading && agendaBookings.length === 0 ? (
             <Text style={styles.toggleMeta}>Nessuna prenotazione registrata.</Text>
           ) : null}
-          <View style={styles.agendaList}>
-            {agendaBookingsSorted.map((booking) => (
-              <Pressable
+          <View style={styles.premiumTimeline}>
+            <View style={styles.timelineLine} />
+            {agendaBookingsSorted.map((booking, index) => (
+              <AppointmentTimelineCard
+                booking={booking}
+                isLast={index === agendaBookingsSorted.length - 1}
                 key={booking.id}
-                onPress={() => setBookingDetailId(booking.id)}
-                style={styles.agendaRow}
-              >
-                <View style={styles.agendaDate}>
-                  <Text style={styles.agendaDateDay}>{booking.date_label ?? "n/a"}</Text>
-                  <Text style={styles.agendaDateTime}>{booking.time_label ?? "--:--"}</Text>
-                </View>
-                <View style={styles.agendaMain}>
-                  <Text style={styles.bookingTitle}>{booking.service_name}</Text>
-                  <Text style={styles.bookingMeta}>
-                    {booking.client_name ?? "Cliente"} - {booking.operator_name}
-                  </Text>
-                </View>
-                <Pressable
-                  onPress={(event) => {
-                    event.stopPropagation();
-                    if (booking.start_time) {
-                      const bookingDate = new Date(booking.start_time);
-                      setVisibleMonth(bookingDate);
-                      handleSelectDay(
-                        buildCalendarDay(
-                          center,
-                          bookingDate,
-                          bookingDate,
-                          buildBookingCountMap(agendaBookings),
-                        ),
-                      );
-                    }
-                  }}
-                  style={styles.manageDayButton}
-                >
-                  <Text style={styles.manageDayText}>Giorno</Text>
-                </Pressable>
-              </Pressable>
+                onChangeStatus={(nextStatus) => void handleChangeBookingStatus(booking, nextStatus)}
+                saving={statusSavingId === booking.id}
+              />
             ))}
           </View>
-        </SectionCard>
+        </View>
       )}
 
       <Modal
@@ -692,58 +812,16 @@ export function CenterCalendarScreen({
                 ) : null}
 
                 <View style={styles.bookingList}>
-                  {bookings.map((booking) => (
-                    <Pressable
+                  {bookings.map((booking, index) => (
+                    <AppointmentTimelineCard
+                      booking={booking}
+                      isCompact
+                      isLast={index === bookings.length - 1}
                       key={booking.id}
-                      onPress={() => setBookingDetailId(booking.id)}
-                      style={styles.bookingCard}
-                    >
-                      <View style={styles.bookingHead}>
-                        <View style={styles.bookingMetaWrap}>
-                          <Text style={styles.bookingTitle}>{booking.service_name}</Text>
-                          <Text style={styles.bookingMeta}>
-                            {booking.time_label} - {booking.client_name ?? "Cliente"}
-                          </Text>
-                          <Text style={styles.bookingMeta}>
-                            {booking.client_phone ?? "Telefono non disponibile"}
-                          </Text>
-                        </View>
-                        {booking.status !== "confirmed" ? (
-                          <Text
-                            style={[
-                              styles.bookingStatus,
-                              booking.status === "canceled" && styles.bookingStatusCanceled,
-                            ]}
-                          >
-                            {booking.status}
-                          </Text>
-                        ) : null}
-                      </View>
-
-                      {booking.status !== "canceled" ? (
-                        <View style={styles.bookingActions}>
-                          <Pressable
-                            onPress={(event) => {
-                              event.stopPropagation();
-                              setBookingEditor(booking);
-                            }}
-                          >
-                            <Text style={styles.linkAction}>Modifica slot</Text>
-                          </Pressable>
-                          <Pressable
-                            disabled={bookingActionLoading}
-                            onPress={(event) => {
-                              event.stopPropagation();
-                              void handleCancelBooking(booking);
-                            }}
-                          >
-                            <Text style={[styles.linkAction, styles.linkDanger]}>
-                              Annulla
-                            </Text>
-                          </Pressable>
-                        </View>
-                      ) : null}
-                    </Pressable>
+                      onChangeStatus={(nextStatus) => void handleChangeBookingStatus(booking, nextStatus)}
+                      onEditSlot={() => setBookingEditor(booking)}
+                      saving={statusSavingId === booking.id || bookingActionLoading}
+                    />
                   ))}
                 </View>
               </View>
@@ -836,6 +914,142 @@ export function CenterCalendarScreen({
   );
 }
 
+function AppointmentTimelineCard({
+  booking,
+  isCompact = false,
+  isLast,
+  onChangeStatus,
+  onEditSlot,
+  saving,
+}: {
+  booking: Booking;
+  isCompact?: boolean;
+  isLast: boolean;
+  onChangeStatus: (status: string) => void;
+  onEditSlot?: () => void;
+  saving: boolean;
+}) {
+  const tone = getTreatmentTone(booking.service_name ?? "");
+  const status = normalizeStatusLabel(booking.status);
+  const statusTone = getStatusTone(status);
+  const scale = useRef(new Animated.Value(1)).current;
+
+  const handleActionPress = (nextStatus: string) => {
+    Animated.sequence([
+      Animated.timing(scale, {
+        duration: 90,
+        toValue: 0.98,
+        useNativeDriver: true,
+      }),
+      Animated.spring(scale, {
+        friction: 5,
+        tension: 100,
+        toValue: 1,
+        useNativeDriver: true,
+      }),
+    ]).start();
+    onChangeStatus(nextStatus);
+  };
+
+  return (
+    <Animated.View
+      style={[
+        styles.timelineAppointmentRow,
+        isLast ? styles.timelineAppointmentRowLast : null,
+        { transform: [{ scale }] },
+      ]}
+    >
+      <View style={styles.timelineTimeColumn}>
+        <Text style={styles.timelineTime}>{booking.time_label ?? "--:--"}</Text>
+        <View style={[styles.timelineNode, { borderColor: tone.accent }]}>
+          <View style={[styles.timelineNodeCore, { backgroundColor: tone.accent }]} />
+        </View>
+      </View>
+
+      <View style={[styles.timelineCard, isCompact ? styles.timelineCardCompact : null]}>
+        <View style={styles.timelineCardHeader}>
+          <View style={styles.timelineClientBlock}>
+            <Text style={styles.timelineClient}>{booking.client_name ?? "Cliente"}</Text>
+            <Text style={styles.timelineSubMeta}>
+              {getBookingDurationLabel(booking)} · {booking.date_label ?? "oggi"}
+            </Text>
+          </View>
+          <View style={[styles.timelineStatusBadge, { backgroundColor: statusTone.background }]}>
+            <Text style={[styles.timelineStatusText, { color: statusTone.text }]}>
+              {status}
+            </Text>
+          </View>
+        </View>
+
+        <View style={styles.timelineServiceRow}>
+          <View style={[styles.timelineServiceIcon, { backgroundColor: tone.background }]}>
+            <Ionicons color={tone.text} name={tone.icon} size={15} />
+          </View>
+          <Text style={styles.timelineServiceName}>{booking.service_name}</Text>
+        </View>
+
+        <View style={styles.timelineMetaRow}>
+          <View style={styles.timelineDurationChip}>
+            <Ionicons color="#4D7D9B" name="hourglass-outline" size={13} />
+            <Text style={styles.timelineDurationText}>{getBookingDurationLabel(booking)}</Text>
+          </View>
+          <View style={[styles.timelineCategoryChip, { backgroundColor: tone.background }]}>
+            <Text style={[styles.timelineCategoryText, { color: tone.text }]}>{tone.label}</Text>
+          </View>
+        </View>
+
+        <View style={styles.timelineActions}>
+          {statusActions.map((action) => {
+            const active = action === status;
+            const actionTone = getStatusTone(action);
+
+            return (
+              <Pressable
+                disabled={saving}
+                key={action}
+                onPress={() => handleActionPress(action)}
+                style={[
+                  styles.timelineAction,
+                  action === "Annullato" ? styles.timelineCancelAction : null,
+                  active
+                    ? {
+                        backgroundColor: actionTone.background,
+                        borderColor: actionTone.text,
+                      }
+                    : null,
+                ]}
+              >
+                <Ionicons
+                  color={active ? actionTone.text : "#6B91AB"}
+                  name={statusActionIconMap[action]}
+                  size={14}
+                />
+                <Text
+                  style={[
+                    styles.timelineActionText,
+                    active ? { color: actionTone.text } : null,
+                  ]}
+                >
+                  {statusActionShortLabelMap[action]}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+
+        {onEditSlot && !isCanceledStatus(status) ? (
+          <Pressable onPress={onEditSlot} style={styles.editSlotButton}>
+            <Ionicons color="#4D7D9B" name="calendar-outline" size={14} />
+            <Text style={styles.editSlotText}>Modifica slot</Text>
+          </Pressable>
+        ) : null}
+
+        {saving ? <ActivityIndicator color={colors.brand} style={styles.timelineSaving} /> : null}
+      </View>
+    </Animated.View>
+  );
+}
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -847,18 +1061,22 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.xxl,
   },
   viewToggle: {
-    backgroundColor: colors.surface,
-    borderColor: colors.overlayBorder,
-    borderRadius: 12,
+    backgroundColor: "rgba(255, 255, 255, 0.78)",
+    borderColor: "rgba(174, 218, 245, 0.5)",
+    borderRadius: 20,
     borderWidth: 1,
     flexDirection: "row",
     gap: spacing.xs,
     marginBottom: spacing.lg,
     padding: spacing.xs,
+    shadowColor: "#8EC8EA",
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.08,
+    shadowRadius: 24,
   },
   viewToggleItem: {
     alignItems: "center",
-    borderRadius: 10,
+    borderRadius: 16,
     flex: 1,
     flexDirection: "row",
     gap: spacing.xs,
@@ -866,7 +1084,7 @@ const styles = StyleSheet.create({
     minHeight: 44,
   },
   viewToggleActive: {
-    backgroundColor: colors.surfaceSky,
+    backgroundColor: "#DFF3FF",
   },
   viewToggleLabel: {
     color: colors.textMuted,
@@ -884,9 +1102,9 @@ const styles = StyleSheet.create({
   },
   monthButton: {
     alignItems: "center",
-    backgroundColor: colors.surfaceSoft,
-    borderColor: colors.border,
-    borderRadius: 10,
+    backgroundColor: "#F4FBFF",
+    borderColor: "rgba(174, 218, 245, 0.7)",
+    borderRadius: 15,
     borderWidth: 1,
     height: 38,
     justifyContent: "center",
@@ -894,9 +1112,9 @@ const styles = StyleSheet.create({
   },
   todayButton: {
     alignItems: "center",
-    backgroundColor: colors.surfaceSoft,
-    borderColor: colors.border,
-    borderRadius: 10,
+    backgroundColor: "#DFF3FF",
+    borderColor: "#A9D8FF",
+    borderRadius: 15,
     borderWidth: 1,
     minHeight: 38,
     justifyContent: "center",
@@ -925,17 +1143,22 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   dateCard: {
-    backgroundColor: colors.surfaceMuted,
-    borderColor: colors.border,
-    borderRadius: 10,
+    backgroundColor: "rgba(244, 251, 255, 0.9)",
+    borderColor: "rgba(174, 218, 245, 0.5)",
+    borderRadius: 16,
     borderWidth: 1,
     flexBasis: "13.45%",
     minHeight: 76,
     padding: spacing.xs,
   },
   dateCardSelected: {
-    borderColor: colors.brandDark,
-    borderWidth: 2,
+    backgroundColor: "#8DDCFF",
+    borderColor: "#C9F1FF",
+    borderWidth: 1,
+    shadowColor: "#5DBFEA",
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.24,
+    shadowRadius: 18,
   },
   dateCardMuted: {
     opacity: 0.45,
@@ -945,7 +1168,7 @@ const styles = StyleSheet.create({
   },
   bookingBadge: {
     alignItems: "center",
-    backgroundColor: colors.brand,
+    backgroundColor: "#A9D8FF",
     borderRadius: 999,
     marginTop: spacing.xs,
     minWidth: 24,
@@ -953,9 +1176,257 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
   },
   bookingBadgeText: {
-    color: colors.surface,
+    color: colors.brandInk,
     fontSize: 11,
     fontWeight: "800",
+  },
+  premiumAgendaSection: {
+    backgroundColor: "rgba(255, 255, 255, 0.62)",
+    borderColor: "rgba(174, 218, 245, 0.42)",
+    borderRadius: 26,
+    borderWidth: 1,
+    marginBottom: spacing.lg,
+    padding: spacing.md,
+    shadowColor: "#8EC8EA",
+    shadowOffset: { width: 0, height: 18 },
+    shadowOpacity: 0.1,
+    shadowRadius: 30,
+    elevation: 3,
+  },
+  premiumAgendaHeader: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: spacing.md,
+  },
+  premiumKicker: {
+    color: "#6F9DB9",
+    fontSize: 11,
+    fontWeight: "800",
+    letterSpacing: 1,
+    textTransform: "uppercase",
+  },
+  premiumTitle: {
+    color: "#1F4F70",
+    fontSize: 22,
+    fontWeight: "800",
+    marginTop: 3,
+  },
+  premiumHeaderPill: {
+    alignItems: "center",
+    backgroundColor: "#EAF6FF",
+    borderColor: "rgba(174, 218, 245, 0.58)",
+    borderRadius: 999,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 4,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 7,
+  },
+  premiumHeaderPillText: {
+    color: "#4D7D9B",
+    fontSize: 11,
+    fontWeight: "800",
+  },
+  premiumTimeline: {
+    position: "relative",
+  },
+  timelineLine: {
+    backgroundColor: "rgba(174, 218, 245, 0.46)",
+    borderRadius: 999,
+    bottom: spacing.lg,
+    left: 31,
+    position: "absolute",
+    top: spacing.xl,
+    width: 2,
+  },
+  timelineAppointmentRow: {
+    alignItems: "flex-start",
+    flexDirection: "row",
+    gap: spacing.md,
+    marginBottom: spacing.md,
+    minHeight: 154,
+  },
+  timelineAppointmentRowLast: {
+    marginBottom: 0,
+  },
+  timelineTimeColumn: {
+    alignItems: "center",
+    paddingTop: spacing.md,
+    width: 46,
+  },
+  timelineTime: {
+    color: "#1F4F70",
+    fontSize: 14,
+    fontWeight: "800",
+  },
+  timelineNode: {
+    alignItems: "center",
+    backgroundColor: "rgba(255, 255, 255, 0.95)",
+    borderRadius: 18,
+    borderWidth: 2,
+    height: 24,
+    justifyContent: "center",
+    marginTop: spacing.sm,
+    shadowColor: "#8EC8EA",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.16,
+    shadowRadius: 16,
+    width: 24,
+  },
+  timelineNodeCore: {
+    borderRadius: 7,
+    height: 10,
+    width: 10,
+  },
+  timelineCard: {
+    backgroundColor: "rgba(255, 255, 255, 0.9)",
+    borderColor: "rgba(174, 218, 245, 0.52)",
+    borderRadius: 24,
+    borderWidth: 1,
+    flex: 1,
+    padding: spacing.md,
+    shadowColor: "#8EC8EA",
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.12,
+    shadowRadius: 24,
+    elevation: 3,
+  },
+  timelineCardCompact: {
+    shadowOpacity: 0.08,
+  },
+  timelineCardHeader: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: spacing.sm,
+    justifyContent: "space-between",
+  },
+  timelineClientBlock: {
+    flex: 1,
+    paddingRight: spacing.sm,
+  },
+  timelineClient: {
+    color: "#183F5C",
+    fontSize: 17,
+    fontWeight: "800",
+  },
+  timelineSubMeta: {
+    color: "#8BAEC5",
+    fontSize: 12,
+    fontWeight: "700",
+    marginTop: 3,
+  },
+  timelineStatusBadge: {
+    borderRadius: 999,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 7,
+  },
+  timelineStatusText: {
+    fontSize: 10,
+    fontWeight: "800",
+    textTransform: "uppercase",
+  },
+  timelineServiceRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: spacing.xs,
+    marginTop: spacing.sm,
+  },
+  timelineServiceIcon: {
+    alignItems: "center",
+    borderRadius: 10,
+    height: 28,
+    justifyContent: "center",
+    width: 28,
+  },
+  timelineServiceName: {
+    color: "#4D7D9B",
+    flex: 1,
+    fontSize: 15,
+    fontWeight: "700",
+  },
+  timelineMetaRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.xs,
+    marginTop: spacing.sm,
+  },
+  timelineDurationChip: {
+    alignItems: "center",
+    backgroundColor: "#F4FBFF",
+    borderColor: "rgba(174, 218, 245, 0.62)",
+    borderRadius: 999,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 4,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 6,
+  },
+  timelineDurationText: {
+    color: "#4D7D9B",
+    fontSize: 12,
+    fontWeight: "800",
+  },
+  timelineCategoryChip: {
+    borderRadius: 999,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 6,
+  },
+  timelineCategoryText: {
+    fontSize: 12,
+    fontWeight: "800",
+  },
+  timelineActions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.xs,
+    marginTop: spacing.md,
+  },
+  timelineAction: {
+    alignItems: "center",
+    backgroundColor: "rgba(244, 251, 255, 0.72)",
+    borderColor: "rgba(174, 218, 245, 0.62)",
+    borderRadius: 14,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 4,
+    justifyContent: "center",
+    minHeight: 42,
+    paddingHorizontal: 10,
+    shadowColor: "#8EC8EA",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+  },
+  timelineCancelAction: {
+    borderStyle: "dashed",
+  },
+  timelineActionText: {
+    color: "#6B91AB",
+    fontSize: 12,
+    fontWeight: "800",
+  },
+  editSlotButton: {
+    alignItems: "center",
+    alignSelf: "flex-start",
+    backgroundColor: "#EAF6FF",
+    borderColor: "rgba(174, 218, 245, 0.58)",
+    borderRadius: 999,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 4,
+    marginTop: spacing.sm,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 7,
+  },
+  editSlotText: {
+    color: "#4D7D9B",
+    fontSize: 12,
+    fontWeight: "800",
+  },
+  timelineSaving: {
+    alignSelf: "flex-start",
+    marginTop: spacing.sm,
   },
   agendaList: {
     gap: spacing.sm,
