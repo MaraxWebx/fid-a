@@ -118,7 +118,7 @@ export function ClientFavoritesScreen({
                   style={styles.favoriteButton}
                 >
                   <Ionicons
-                    color={isFavorite ? "#B42318" : colors.textMuted}
+                    color={isFavorite ? colors.rose : colors.textMuted}
                     name={isFavorite ? "heart" : "heart-outline"}
                     size={22}
                   />
@@ -203,7 +203,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   error: {
-    color: "#B42318",
+    color: colors.danger,
     fontSize: 14,
     marginBottom: spacing.sm,
   },

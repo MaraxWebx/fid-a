@@ -137,6 +137,9 @@ def serialize_booking(document):
         "date_label": start_time.strftime("%d/%m/%Y") if start_time else None,
         "time_label": start_time.strftime("%H:%M") if start_time else None,
         "price": price,
+        "canceled_at": document.get("canceled_at"),
+        "cancellation_reason": document.get("cancellation_reason"),
+        "status_history": document.get("status_history", []),
         "created_at": document.get("created_at"),
     }
 
@@ -315,6 +318,9 @@ class CenterAvailabilityPayload(BaseModel):
 
 
 class CenterProfilePayload(BaseModel):
+    description: str | None = Field(default=None, max_length=300)
+    instagram_url: str | None = Field(default=None, max_length=240)
+    tiktok_url: str | None = Field(default=None, max_length=240)
     name: str | None = Field(default=None, min_length=2, max_length=120)
     logo_url: str | None = None
 
@@ -373,6 +379,13 @@ class BookingUpdatePayload(BaseModel):
     center_id: str | None = None
     service_id: str = Field(min_length=24, max_length=24)
     slot_id: str = Field(min_length=1, max_length=64)
+
+
+class BookingStatusPayload(BaseModel):
+    role: str = Field(min_length=5, max_length=16)
+    center_id: str | None = None
+    status: str = Field(min_length=2, max_length=32)
+    cancellation_reason: str | None = Field(default=None, max_length=240)
 
 
 ITALIAN_WEEKDAY_KEYS = ["Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom"]
@@ -1052,6 +1065,15 @@ def update_center_profile(center_id: str, payload: CenterProfilePayload):
     if payload.logo_url is not None:
         branding["logo"] = payload.logo_url.strip()
 
+    if payload.description is not None:
+        branding["description"] = payload.description.strip()
+
+    if payload.instagram_url is not None:
+        branding["instagram_url"] = payload.instagram_url.strip()
+
+    if payload.tiktok_url is not None:
+        branding["tiktok_url"] = payload.tiktok_url.strip()
+
     update_fields["branding"] = branding
 
     db.centers.update_one({"_id": object_id}, {"$set": update_fields})
@@ -1371,6 +1393,11 @@ def get_center_dashboard(center_id: str):
     today_start = datetime.combine(now.date(), time(0, 0))
     tomorrow_start = today_start + timedelta(days=1)
     active_booking_query = {"center_id": object_id, "status": {"$ne": "canceled"}}
+    canceled_today_query = {
+        "center_id": object_id,
+        "status": "canceled",
+        "start_time": {"$gte": today_start, "$lt": tomorrow_start},
+    }
 
     todays_bookings = list(
         db.bookings.find(
@@ -1380,6 +1407,7 @@ def get_center_dashboard(center_id: str):
             }
         ).sort("start_time", 1)
     )
+    canceled_today_bookings = list(db.bookings.find(canceled_today_query).sort("start_time", 1))
     upcoming_bookings = list(
         db.bookings.find(
             {
@@ -1412,6 +1440,11 @@ def get_center_dashboard(center_id: str):
         for booking in todays_bookings
         if booking.get("user_id") is not None
     }
+    canceled_clients = {
+        booking.get("user_id")
+        for booking in canceled_today_bookings
+        if booking.get("user_id") is not None
+    }
     upcoming_bookings_count = db.bookings.count_documents(
         {**active_booking_query, "start_time": {"$gte": now}}
     )
@@ -1428,12 +1461,25 @@ def get_center_dashboard(center_id: str):
             total_revenue += service["price"]
 
     agenda = []
-    for booking in upcoming_bookings:
+    agenda_bookings_by_id = {booking["_id"]: booking for booking in upcoming_bookings}
+    for booking in canceled_today_bookings:
+        agenda_bookings_by_id[booking["_id"]] = booking
+
+    agenda_bookings = sorted(
+        agenda_bookings_by_id.values(),
+        key=lambda item: item.get("start_time") or datetime.max,
+    )[:10]
+
+    for booking in agenda_bookings:
         user = db.users.find_one({"_id": booking.get("user_id")})
         start_time = booking.get("start_time")
         date_prefix = ""
         if isinstance(start_time, datetime) and start_time.date() != today_start.date():
             date_prefix = start_time.strftime("%d/%m ")
+        cancellation_count = db.bookings.count_documents(
+            {"center_id": object_id, "user_id": booking.get("user_id"), "status": "canceled"}
+        )
+        booking_status = booking.get("status", "")
         agenda.append(
             {
                 "id": serialize_id(booking["_id"]),
@@ -1441,7 +1487,11 @@ def get_center_dashboard(center_id: str):
                 "client_name": (user or {}).get("name", "Cliente"),
                 "operator_name": center.get("name", "Centro"),
                 "service": booking.get("service_name", "Servizio"),
-                "status_label": "" if booking.get("status") == "confirmed" else booking.get("status", ""),
+                "status_label": "Annullato" if booking_status == "canceled" else ("Confermato" if booking_status == "confirmed" else booking_status),
+                "canceled_at": booking.get("canceled_at"),
+                "cancellation_reason": booking.get("cancellation_reason"),
+                "client_cancellations_count": cancellation_count,
+                "status_history": booking.get("status_history", []),
             }
         )
 
@@ -1489,6 +1539,8 @@ def get_center_dashboard(center_id: str):
             {"id": "metric-2", "label": "Clienti oggi", "value": str(len(todays_clients))},
             {"id": "metric-3", "label": "Incasso previsto oggi", "value": f"EUR {total_revenue:g}"},
             {"id": "metric-4", "label": "Prossime prenotazioni", "value": str(upcoming_bookings_count)},
+            {"id": "metric-5", "label": "Disdette oggi", "value": str(len(canceled_today_bookings))},
+            {"id": "metric-6", "label": "Clienti con disdetta", "value": str(len(canceled_clients))},
         ],
         "agenda": agenda,
         "clients": clients,
@@ -1804,6 +1856,76 @@ def update_booking(booking_id: str, payload: BookingUpdatePayload):
     return serialize_booking(updated_booking)
 
 
+@app.patch("/api/bookings/{booking_id}/status")
+def update_booking_status(booking_id: str, payload: BookingStatusPayload):
+    booking_object_id = parse_object_id(booking_id, "booking id")
+    booking = db.bookings.find_one({"_id": booking_object_id})
+    if not booking:
+        raise HTTPException(status_code=404, detail="Booking not found.")
+
+    validate_booking_actor(
+        booking,
+        role=payload.role,
+        center_id=payload.center_id,
+    )
+
+    status_map = {
+        "confermato": "confirmed",
+        "confirmed": "confirmed",
+        "arrivata": "arrived",
+        "arrivato": "arrived",
+        "arrived": "arrived",
+        "in ritardo": "late",
+        "late": "late",
+        "annullato": "canceled",
+        "disdetta cliente": "canceled",
+        "canceled": "canceled",
+    }
+    normalized_status = status_map.get(payload.status.strip().lower())
+    if normalized_status is None:
+        raise HTTPException(status_code=400, detail="Unsupported booking status.")
+
+    now = datetime.now(UTC)
+    reason = payload.cancellation_reason.strip() if payload.cancellation_reason else None
+    history_item = {
+        "status": normalized_status,
+        "changed_at": now,
+        "changed_by": payload.role,
+        "reason": reason,
+    }
+    update_fields = {
+        "status": normalized_status,
+        "updated_at": now,
+    }
+
+    if normalized_status == "canceled":
+        update_fields["canceled_at"] = now
+        update_fields["cancellation_reason"] = reason
+        update_fields["canceled_by"] = "client_request"
+    elif booking.get("status") == "canceled":
+        update_fields["canceled_at"] = None
+        update_fields["cancellation_reason"] = None
+        update_fields["canceled_by"] = None
+
+    db.bookings.update_one(
+        {"_id": booking_object_id},
+        {
+            "$set": update_fields,
+            "$push": {"status_history": history_item},
+        },
+    )
+    if normalized_status == "canceled" and booking.get("status") != "canceled" and booking.get("user_id"):
+        db.users.update_one(
+            {"_id": booking.get("user_id")},
+            {
+                "$inc": {"cancellations_count": 1},
+                "$set": {"updated_at": now},
+            },
+        )
+    updated_booking = db.bookings.find_one({"_id": booking_object_id})
+    return serialize_booking(updated_booking)
+
+
 @app.patch("/api/bookings/{booking_id}/cancel")
 def cancel_booking(booking_id: str, role: str = Query(...), user_email: str | None = Query(default=None), center_id: str | None = Query(default=None)):
     booking_object_id = parse_object_id(booking_id, "booking id")
@@ -1821,9 +1943,33 @@ def cancel_booking(booking_id: str, role: str = Query(...), user_email: str | No
     if role == "client" and is_past_booking(booking):
         raise HTTPException(status_code=409, detail="Past bookings can no longer be managed.")
 
+    now = datetime.now(UTC)
     db.bookings.update_one(
         {"_id": booking_object_id},
-        {"$set": {"status": "canceled", "updated_at": datetime.now(UTC)}},
+        {
+            "$set": {
+                "status": "canceled",
+                "canceled_at": now,
+                "canceled_by": role,
+                "updated_at": now,
+            },
+            "$push": {
+                "status_history": {
+                    "status": "canceled",
+                    "changed_at": now,
+                    "changed_by": role,
+                    "reason": None,
+                }
+            },
+        },
     )
+    if booking.get("status") != "canceled" and booking.get("user_id"):
+        db.users.update_one(
+            {"_id": booking.get("user_id")},
+            {
+                "$inc": {"cancellations_count": 1},
+                "$set": {"updated_at": now},
+            },
+        )
     updated_booking = db.bookings.find_one({"_id": booking_object_id})
     return serialize_booking(updated_booking)

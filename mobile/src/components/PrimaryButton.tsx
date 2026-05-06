@@ -52,7 +52,7 @@ const styles = StyleSheet.create({
   },
   primary: {
     backgroundColor: colors.brand,
-    shadowColor: "#20364E",
+    shadowColor: colors.brandDark,
     shadowOffset: { width: 0, height: 10 },
     shadowOpacity: 0.14,
     shadowRadius: 18,
@@ -64,8 +64,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   danger: {
-    backgroundColor: "#B42318",
-    shadowColor: "#7A271A",
+    backgroundColor: colors.rose,
+    shadowColor: colors.danger,
     shadowOffset: { width: 0, height: 10 },
     shadowOpacity: 0.14,
     shadowRadius: 18,
@@ -80,12 +80,12 @@ const styles = StyleSheet.create({
     letterSpacing: 0.2,
   },
   primaryLabel: {
-    color: colors.surface,
+    color: colors.brandInk,
   },
   secondaryLabel: {
     color: colors.brandInk,
   },
   dangerLabel: {
-    color: colors.surface,
+    color: colors.brandInk,
   },
 });

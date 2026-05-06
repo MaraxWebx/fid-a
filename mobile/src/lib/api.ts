@@ -4,6 +4,7 @@ import type {
   Booking,
   BookingDetail,
   BookingInput,
+  BookingStatusInput,
   BookingSlot,
   BookingUpdateInput,
   Center,
@@ -235,6 +236,10 @@ export function createBooking(payload: BookingInput) {
 
 export function updateBooking(bookingId: string, payload: BookingUpdateInput) {
   return patch<Booking, BookingUpdateInput>(`/api/bookings/${bookingId}`, payload);
+}
+
+export function updateBookingStatus(bookingId: string, payload: BookingStatusInput) {
+  return patch<Booking, BookingStatusInput>(`/api/bookings/${bookingId}/status`, payload);
 }
 
 export function cancelBooking(params: { bookingId: string; role: 'client' | 'center'; userEmail?: string; centerId?: string }) {

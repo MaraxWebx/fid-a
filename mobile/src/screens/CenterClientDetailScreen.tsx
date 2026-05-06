@@ -342,7 +342,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   error: {
-    color: "#B42318",
+    color: colors.danger,
     fontSize: 14,
     marginTop: spacing.md,
   },

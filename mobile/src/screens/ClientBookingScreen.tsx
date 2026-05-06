@@ -589,7 +589,7 @@ const styles = StyleSheet.create({
     lineHeight: 21,
   },
   errorText: {
-    color: "#B05252",
+    color: colors.danger,
     fontSize: 14,
     marginBottom: spacing.md,
     lineHeight: 21,
@@ -599,7 +599,7 @@ const styles = StyleSheet.create({
   },
   modalBackdrop: {
     alignItems: "center",
-    backgroundColor: "rgba(17,24,39,0.35)",
+    backgroundColor: "rgba(49,94,114,0.28)",
     flex: 1,
     justifyContent: "flex-end",
     padding: spacing.lg,

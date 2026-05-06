@@ -3,6 +3,7 @@ import { Image, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { spacing } from "../theme/spacing";
 import { textStyles } from "../theme/typography";
 import Ionicons from "react-native-vector-icons/Ionicons";
+import { colors } from "../theme/colors";
 
 type ScreenHeaderProps = {
   title: string;
@@ -25,7 +26,7 @@ export function ScreenHeader({
     <View style={styles.wrap}>
       {onBack && (
         <TouchableOpacity onPress={onBack} style={{ marginBottom: 16 }}>
-          <Ionicons name="arrow-back" size={24} color="#000" />
+          <Ionicons name="arrow-back" size={24} color={colors.brandInk} />
         </TouchableOpacity>
       )}
 
@@ -57,7 +58,7 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   logo: {
-    backgroundColor: "#FFFFFF",
+    backgroundColor: colors.surface,
     borderRadius: 16,
     height: 32,
     width: 32,

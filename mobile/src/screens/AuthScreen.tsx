@@ -197,7 +197,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
   },
   error: {
-    color: "#B05252",
+    color: colors.danger,
     fontSize: typeScale.body,
     marginTop: spacing.sm,
   },

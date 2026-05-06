@@ -181,7 +181,7 @@ export function ClientCenterDetailScreen({
               style={styles.favoriteButton}
             >
               <Ionicons
-                color={isFavorite ? "#B42318" : colors.textMuted}
+                color={isFavorite ? colors.rose : colors.textMuted}
                 name={isFavorite ? "heart" : "heart-outline"}
                 size={24}
               />
@@ -397,7 +397,7 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
   },
   logo: {
-    backgroundColor: "#FFFFFF",
+    backgroundColor: colors.surface,
     borderRadius: 18,
     height: 58,
     width: 58,
@@ -482,7 +482,7 @@ const styles = StyleSheet.create({
   defaultButton: {
     alignItems: "center",
     backgroundColor: colors.warning,
-    borderColor: "#D39A2D",
+    borderColor: colors.warning,
     borderRadius: 12,
     borderWidth: 1,
     justifyContent: "center",
@@ -653,7 +653,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   error: {
-    color: "#B42318",
+    color: colors.danger,
     fontSize: 14,
     marginTop: spacing.md,
   },

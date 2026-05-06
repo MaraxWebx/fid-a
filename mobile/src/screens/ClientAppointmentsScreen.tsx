@@ -213,7 +213,7 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   linkDanger: {
-    color: "#B42318",
+    color: colors.danger,
   },
   lockedAction: {
     color: colors.textMuted,
@@ -221,7 +221,7 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   error: {
-    color: "#B42318",
+    color: colors.danger,
     fontSize: 14,
     marginTop: spacing.md,
   },

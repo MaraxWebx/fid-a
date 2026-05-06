@@ -235,7 +235,7 @@ export function ClientHomeScreen({
                   style={styles.favoriteButton}
                 >
                   <Ionicons
-                    color={isFavorite ? "#B42318" : colors.textMuted}
+                    color={isFavorite ? colors.rose : colors.textMuted}
                     name={isFavorite ? "heart" : "heart-outline"}
                     size={22}
                   />
@@ -402,6 +402,6 @@ const styles = StyleSheet.create({
   },
 
   statusConfirmed: {
-    color: "#2E7D32",
+    color: colors.success,
   },
 });

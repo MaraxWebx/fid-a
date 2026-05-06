@@ -100,7 +100,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.sm,
-    shadowColor: "#243F5C",
+    shadowColor: colors.brandDark,
     shadowOffset: { width: 0, height: 10 },
     shadowOpacity: 0.08,
     shadowRadius: 24,

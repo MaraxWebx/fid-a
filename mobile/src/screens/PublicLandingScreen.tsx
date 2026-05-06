@@ -185,7 +185,7 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.lg,
     alignItems: "center",
     borderBottomWidth: 1,
-    borderBottomColor: "#f0f0f0",
+    borderBottomColor: colors.border,
   },
   headerTitle: {
     ...textStyles.screenTitle,
@@ -194,7 +194,7 @@ const styles = StyleSheet.create({
   tabContainer: {
     flexDirection: "row",
     borderBottomWidth: 0,
-    borderBottomColor: "#e0e0e0",
+    borderBottomColor: colors.border,
   },
   tab: {
     flex: 1,
@@ -226,7 +226,7 @@ const styles = StyleSheet.create({
   },
   input: {
     borderWidth: 1,
-    borderColor: "#d0d0d0",
+    borderColor: colors.border,
     borderRadius: 8,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.md,
@@ -245,7 +245,7 @@ const styles = StyleSheet.create({
   },
   errorText: {
     ...textStyles.titleBase,
-    color: "#B05252",
+    color: colors.danger,
     marginBottom: spacing.md,
   },
   logoImage: {

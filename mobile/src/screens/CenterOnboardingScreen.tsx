@@ -657,7 +657,7 @@ const styles = StyleSheet.create({
   },
   modalBackdrop: {
     alignItems: "center",
-    backgroundColor: "rgba(17, 24, 39, 0.4)",
+    backgroundColor: "rgba(49, 94, 114, 0.28)",
     flex: 1,
     justifyContent: "flex-end",
     padding: spacing.lg,
@@ -706,7 +706,7 @@ const styles = StyleSheet.create({
     marginTop: spacing.md,
   },
   error: {
-    color: "#B42318",
+    color: colors.danger,
     fontSize: 14,
     marginTop: spacing.md,
   },

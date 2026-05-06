@@ -3,7 +3,10 @@ export type Center = {
   email: string;
   name: string;
   branding: {
+    description?: string;
+    instagram_url?: string;
     logo?: string;
+    tiktok_url?: string;
   };
   opening_hours: Record<string, { start: string | null; end: string | null }>;
   opening_days?: string[];
@@ -117,6 +120,13 @@ export type BookingUpdateInput = {
   slot_id: string;
 };
 
+export type BookingStatusInput = {
+  role: 'center';
+  center_id: string;
+  status: string;
+  cancellation_reason?: string | null;
+};
+
 export type ReviewInput = {
   booking_id: string;
   user_email: string;
@@ -160,6 +170,15 @@ export type DashboardAgendaItem = {
   operator_name: string;
   service: string;
   status_label: string;
+  canceled_at?: string | null;
+  cancellation_reason?: string | null;
+  client_cancellations_count?: number;
+  status_history?: Array<{
+    changed_at?: string;
+    changed_by?: string;
+    reason?: string | null;
+    status: string;
+  }>;
 };
 
 export type DashboardClientHistoryItem = {
@@ -241,8 +260,11 @@ export type CenterOnboardingResponse = {
 };
 
 export type CenterProfileInput = {
+  description: string;
+  instagram_url: string;
   name: string;
   logo_url: string;
+  tiktok_url: string;
 };
 
 export type UserProfileInput = {

@@ -40,7 +40,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     marginBottom: spacing.lg,
     padding: spacing.lg,
-    shadowColor: "#243F5C",
+    shadowColor: colors.brandDark,
     shadowOffset: { width: 0, height: 10 },
     shadowOpacity: 0.06,
     shadowRadius: 26,

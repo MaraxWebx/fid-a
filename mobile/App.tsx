@@ -608,7 +608,7 @@ export default function App() {
         </>
       )}
       <Pressable onPress={() => void openNotifications()} style={styles.notificationFab}>
-        <Ionicons color={colors.surface} name="notifications" size={20} />
+        <Ionicons color={colors.brandInk} name="notifications" size={20} />
         {unreadNotifications > 0 ? (
           <View style={styles.notificationBadge}>
             <Text style={styles.notificationBadgeText}>{unreadNotifications}</Text>
@@ -756,7 +756,7 @@ const styles = StyleSheet.create({
   },
   notificationBadge: {
     alignItems: "center",
-    backgroundColor: "#B42318",
+    backgroundColor: colors.rose,
     borderRadius: 10,
     minWidth: 20,
     paddingHorizontal: 5,
@@ -765,13 +765,13 @@ const styles = StyleSheet.create({
     top: -4,
   },
   notificationBadgeText: {
-    color: colors.surface,
+    color: colors.brandInk,
     fontSize: 11,
     fontWeight: "800",
   },
   modalBackdrop: {
     alignItems: "center",
-    backgroundColor: "rgba(17,24,39,0.35)",
+    backgroundColor: "rgba(49,94,114,0.28)",
     flex: 1,
     justifyContent: "flex-end",
     padding: 16,
@@ -859,7 +859,7 @@ const styles = StyleSheet.create({
     fontSize: 30,
   },
   starActive: {
-    color: "#F2B30F",
+    color: colors.warning,
   },
   reviewInput: {
     backgroundColor: colors.surfaceSoft,

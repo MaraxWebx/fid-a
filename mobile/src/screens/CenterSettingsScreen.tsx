@@ -90,6 +90,9 @@ export function CenterSettingsScreen({
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [profileName, setProfileName] = useState(center.name);
   const [profileLogoUrl, setProfileLogoUrl] = useState(center.branding.logo ?? '');
+  const [profileDescription, setProfileDescription] = useState(center.branding.description ?? '');
+  const [profileInstagramUrl, setProfileInstagramUrl] = useState(center.branding.instagram_url ?? '');
+  const [profileTiktokUrl, setProfileTiktokUrl] = useState(center.branding.tiktok_url ?? '');
   const [schedule, setSchedule] = useState(() => buildInitialSchedule(center));
   const [selectedDayKey, setSelectedDayKey] = useState<WeekdayKey>('Lun');
   const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
@@ -98,6 +101,9 @@ export function CenterSettingsScreen({
   useEffect(() => {
     setProfileName(center.name);
     setProfileLogoUrl(center.branding.logo ?? '');
+    setProfileDescription(center.branding.description ?? '');
+    setProfileInstagramUrl(center.branding.instagram_url ?? '');
+    setProfileTiktokUrl(center.branding.tiktok_url ?? '');
     setSchedule(buildInitialSchedule(center));
   }, [center]);
 
@@ -193,8 +199,11 @@ export function CenterSettingsScreen({
 
     try {
       const response = await updateCenterProfile(center.id, {
+        description: profileDescription.trim(),
+        instagram_url: profileInstagramUrl.trim(),
         name: profileName,
         logo_url: profileLogoUrl,
+        tiktok_url: profileTiktokUrl.trim(),
       });
       onCenterUpdated(response.center, response.activation);
       setIsProfileModalOpen(false);
@@ -254,7 +263,7 @@ export function CenterSettingsScreen({
         subtitle="Profilo centro e configurazione trattamenti."
       />
 
-      <SectionCard eyebrow="Profilo centro" title="Informazioni principali">
+      <SectionCard eyebrow="Profilo centro" title="Informazioni Centro">
         <View style={styles.profileCard}>
           {center.branding.logo ? (
             <Image source={{ uri: center.branding.logo }} style={styles.profileLogo} />
@@ -271,6 +280,25 @@ export function CenterSettingsScreen({
             <Text style={styles.profileMeta}>
               Logo: {center.branding.logo ? 'configurato' : 'non configurato'}
             </Text>
+            {center.branding.description ? (
+              <Text numberOfLines={2} style={styles.profileDescription}>
+                {center.branding.description}
+              </Text>
+            ) : null}
+            <View style={styles.socialPreviewRow}>
+              {center.branding.instagram_url ? (
+                <View style={styles.socialPreviewPill}>
+                  <Ionicons color={colors.brandInk} name="logo-instagram" size={14} />
+                  <Text style={styles.socialPreviewText}>Instagram</Text>
+                </View>
+              ) : null}
+              {center.branding.tiktok_url ? (
+                <View style={styles.socialPreviewPill}>
+                  <Ionicons color={colors.brandInk} name="logo-tiktok" size={14} />
+                  <Text style={styles.socialPreviewText}>TikTok</Text>
+                </View>
+              ) : null}
+            </View>
             <View style={styles.ratingInline}>
               <Ionicons color={colors.brandInk} name="star" size={16} />
               <Text style={styles.ratingInlineText}>
@@ -417,7 +445,7 @@ export function CenterSettingsScreen({
             <View style={styles.modalHeader}>
               <View style={styles.modalCopy}>
                 <Text style={styles.modalEyebrow}>Profilo centro</Text>
-                <Text style={styles.modalTitle}>Modifica informazioni</Text>
+                <Text style={styles.modalTitle}>Modifica Informazioni Centro</Text>
               </View>
               <Pressable onPress={() => setIsProfileModalOpen(false)}>
                 <Text style={styles.modalClose}>Chiudi</Text>
@@ -445,6 +473,51 @@ export function CenterSettingsScreen({
                 style={styles.input}
                 value={profileLogoUrl}
               />
+            </View>
+
+            <View style={styles.fieldWrap}>
+              <Text style={styles.fieldLabel}>Descrizione del centro</Text>
+              <TextInput
+                maxLength={300}
+                multiline
+                onChangeText={setProfileDescription}
+                placeholder="Racconta in poche righe l'atmosfera e la specialita del tuo beauty salon"
+                placeholderTextColor={colors.textSoft}
+                style={[styles.input, styles.textArea]}
+                value={profileDescription}
+              />
+              <Text style={styles.charCounter}>{profileDescription.length}/300</Text>
+            </View>
+
+            <View style={styles.socialFieldsBlock}>
+              <Text style={styles.socialFieldsTitle}>Profili Social</Text>
+              <Text style={styles.socialFieldsIntro}>
+                Aggiungi link ufficiali, verranno mostrati nella dashboard del centro.
+              </Text>
+              <View style={styles.fieldWrap}>
+                <Text style={styles.fieldLabel}>Instagram URL</Text>
+                <TextInput
+                  autoCapitalize="none"
+                  keyboardType="url"
+                  onChangeText={setProfileInstagramUrl}
+                  placeholder="https://instagram.com/nomecentro"
+                  placeholderTextColor={colors.textSoft}
+                  style={styles.input}
+                  value={profileInstagramUrl}
+                />
+              </View>
+              <View style={styles.fieldWrap}>
+                <Text style={styles.fieldLabel}>TikTok URL</Text>
+                <TextInput
+                  autoCapitalize="none"
+                  keyboardType="url"
+                  onChangeText={setProfileTiktokUrl}
+                  placeholder="https://tiktok.com/@nomecentro"
+                  placeholderTextColor={colors.textSoft}
+                  style={styles.input}
+                  value={profileTiktokUrl}
+                />
+              </View>
             </View>
             <View style={styles.modalActions}>
               <PrimaryButton
@@ -579,7 +652,7 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
   },
   profileLogo: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderRadius: 24,
     height: 64,
     width: 64,
@@ -593,7 +666,7 @@ const styles = StyleSheet.create({
     width: 64,
   },
   profileLogoText: {
-    color: '#FFFFFF',
+    color: colors.brandInk,
     fontSize: 20,
     fontWeight: '800',
   },
@@ -609,6 +682,34 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     fontSize: 14,
     marginTop: spacing.xs,
+  },
+  profileDescription: {
+    color: colors.text,
+    fontSize: 13,
+    lineHeight: 18,
+    marginTop: spacing.sm,
+  },
+  socialPreviewRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
+    marginTop: spacing.sm,
+  },
+  socialPreviewPill: {
+    alignItems: 'center',
+    backgroundColor: colors.surfaceSky,
+    borderColor: colors.border,
+    borderRadius: 999,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 4,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 5,
+  },
+  socialPreviewText: {
+    color: colors.brandInk,
+    fontSize: 11,
+    fontWeight: '800',
   },
   ratingInline: {
     alignItems: 'center',
@@ -693,7 +794,7 @@ const styles = StyleSheet.create({
     marginTop: spacing.xs,
   },
   errorText: {
-    color: '#B42318',
+    color: colors.danger,
     fontSize: 14,
     marginTop: spacing.sm,
   },
@@ -702,7 +803,7 @@ const styles = StyleSheet.create({
   },
   modalBackdrop: {
     alignItems: 'center',
-    backgroundColor: 'rgba(17, 24, 39, 0.4)',
+    backgroundColor: 'rgba(49, 94, 114, 0.28)',
     flex: 1,
     justifyContent: 'flex-end',
     padding: spacing.lg,
@@ -758,6 +859,38 @@ const styles = StyleSheet.create({
     fontSize: 16,
     minHeight: 54,
     paddingHorizontal: spacing.md,
+  },
+  textArea: {
+    minHeight: 112,
+    paddingTop: spacing.md,
+    textAlignVertical: 'top',
+  },
+  charCounter: {
+    color: colors.textMuted,
+    fontSize: 12,
+    fontWeight: '700',
+    marginTop: spacing.xs,
+    textAlign: 'right',
+  },
+  socialFieldsBlock: {
+    backgroundColor: colors.surfaceSoft,
+    borderColor: colors.border,
+    borderRadius: 16,
+    borderWidth: 1,
+    marginTop: spacing.sm,
+    padding: spacing.md,
+  },
+  socialFieldsTitle: {
+    color: colors.brandInk,
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  socialFieldsIntro: {
+    color: colors.textMuted,
+    fontSize: 13,
+    lineHeight: 18,
+    marginBottom: spacing.md,
+    marginTop: spacing.xs,
   },
   modalActions: {
     gap: spacing.md,

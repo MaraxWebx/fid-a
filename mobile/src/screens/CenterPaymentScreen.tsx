@@ -135,7 +135,7 @@ const styles = StyleSheet.create({
     marginTop: spacing.md,
   },
   error: {
-    color: "#B05252",
+    color: colors.danger,
     fontSize: 14,
     marginTop: spacing.md,
   },
