@@ -78,7 +78,7 @@ export default function App() {
   const [session, setSession] = useState<AppSession | null>(null);
   const [publicRoute, setPublicRoute] = useState<PublicRoute>("landing");
   const [clientTab, setClientTab] = useState<ClientTab>("home");
-  const [centerTab, setCenterTab] = useState<CenterTab>("home");
+  const [centerTab, setCenterTab] = useState<CenterTab>("calendar");
   const [selectedServiceId, setSelectedServiceId] = useState<string | null>(
     null,
   );
@@ -590,9 +590,9 @@ export default function App() {
           ) : null}
           <BottomTabs
             items={[
-              { key: "home", label: "Home", icon: "home" },
               { key: "calendar", label: "Agenda", icon: "calendar" },
               { key: "clients", label: "Clienti", icon: "clients" },
+              { key: "home", label: "Dashboard", icon: "home" },
               { key: "settings", label: "Config", icon: "settings" },
             ]}
             activeKey={

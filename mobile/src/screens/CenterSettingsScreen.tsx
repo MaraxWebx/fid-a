@@ -62,6 +62,37 @@ type DashboardSectionProps = {
 };
 
 type StatusTone = 'success' | 'warning' | 'neutral' | 'rose';
+type OperatorDraft = {
+  active: boolean;
+  color: string;
+  hours: string;
+  id: string;
+  imageUrl: string;
+  name: string;
+  role: string;
+  specialties: string;
+};
+type CabinDraft = {
+  active: boolean;
+  color: string;
+  id: string;
+  name: string;
+  treatments: string;
+};
+type PackageDraft = {
+  active: boolean;
+  discount: string;
+  duration: string;
+  expiration: string;
+  id: string;
+  installments: boolean;
+  name: string;
+  notes: string;
+  price: string;
+  promoBadge: string;
+  sessions: string;
+  treatments: string;
+};
 
 const weekdayOptions: { key: WeekdayKey; fullLabel: string }[] = [
   { key: 'Lun', fullLabel: 'Lunedi' },
@@ -71,6 +102,79 @@ const weekdayOptions: { key: WeekdayKey; fullLabel: string }[] = [
   { key: 'Ven', fullLabel: 'Venerdi' },
   { key: 'Sab', fullLabel: 'Sabato' },
   { key: 'Dom', fullLabel: 'Domenica' },
+];
+
+const operatorColorOptions = ['#8FBDB7', '#D6A978', '#9BB9D4', '#DFA0A9', '#A8C99F'];
+
+const initialOperators: OperatorDraft[] = [
+  {
+    active: true,
+    color: '#8FBDB7',
+    hours: '09:00 - 18:00',
+    id: 'op-martina',
+    imageUrl: '',
+    name: 'Martina',
+    role: 'Estetista',
+    specialties: 'Viso, laser',
+  },
+  {
+    active: true,
+    color: '#9BB9D4',
+    hours: '10:00 - 19:00',
+    id: 'op-sofia',
+    imageUrl: '',
+    name: 'Sofia',
+    role: 'Nails Specialist',
+    specialties: 'Nails, pedicure',
+  },
+];
+
+const initialCabins: CabinDraft[] = [
+  {
+    active: true,
+    color: '#D6A978',
+    id: 'cabin-laser',
+    name: 'Cabina Laser',
+    treatments: 'Laser, epilazione',
+  },
+  {
+    active: true,
+    color: '#9BB9D4',
+    id: 'cabin-nails',
+    name: 'Cabina Nails',
+    treatments: 'Manicure, pedicure',
+  },
+];
+
+const initialPackages: PackageDraft[] = [
+  {
+    active: true,
+    discount: '15',
+    duration: '12 mesi',
+    expiration: '12 mesi',
+    id: 'pkg-laser',
+    installments: true,
+    name: 'Laser Package',
+    notes: 'Ideale per percorso completo con richiamo incluso.',
+    price: '499',
+    promoBadge: 'Best value',
+    sessions: '6',
+    treatments: 'Laser',
+  },
+  {
+    active: true,
+    discount: '',
+    duration: '90 min ciascuno',
+    expiration: '6 mesi',
+    id: 'pkg-relax',
+    installments: false,
+    name: 'Relax Ritual Package',
+    notes: 'Percorso corpo e benessere stagionale.',
+    price: '210',
+    promoBadge: '',
+    sessions: '3',
+    treatments: 'Massaggio relax, rituale corpo',
+  },
 ];
 
 function buildInitialSchedule(center: Center): Record<WeekdayKey, DaySchedule> {
@@ -215,6 +319,330 @@ function SettingTile({
   return <View style={styles.settingTile}>{content}</View>;
 }
 
+function OperatorManagement({
+  onAdd,
+  onDelete,
+  onUpdate,
+  operators,
+}: {
+  onAdd: () => void;
+  onDelete: (operatorId: string) => void;
+  onUpdate: (operatorId: string, field: keyof OperatorDraft, value: string | boolean) => void;
+  operators: OperatorDraft[];
+}) {
+  return (
+    <View style={styles.managementPanel}>
+      <View style={styles.managementHeader}>
+        <View>
+          <Text style={styles.cardMiniTitle}>Staff / operators</Text>
+          <Text style={styles.cardHint}>Gestisci presenze, ruoli e specialita in agenda.</Text>
+        </View>
+        <Pressable onPress={onAdd} style={styles.addMiniButton}>
+          <Ionicons color={colors.brandInk} name="add" size={16} />
+          <Text style={styles.addMiniButtonText}>Add Operator</Text>
+        </Pressable>
+      </View>
+
+      <View style={styles.managementList}>
+        {operators.map((operator) => (
+          <View key={operator.id} style={[styles.operatorCard, !operator.active ? styles.managementCardDisabled : null]}>
+            <View style={styles.managementCardTop}>
+              <View style={[styles.operatorAvatar, { backgroundColor: operator.color }]}>
+                {operator.imageUrl ? (
+                  <Image source={{ uri: operator.imageUrl }} style={styles.operatorAvatarImage} />
+                ) : (
+                  <Text style={styles.operatorAvatarText}>{operator.name.slice(0, 1).toUpperCase()}</Text>
+                )}
+              </View>
+              <View style={styles.managementCardMain}>
+                <TextInput
+                  onChangeText={(value) => onUpdate(operator.id, 'name', value)}
+                  placeholder="Nome operatore"
+                  placeholderTextColor={colors.textSoft}
+                  style={styles.inlineNameInput}
+                  value={operator.name}
+                />
+                <TextInput
+                  onChangeText={(value) => onUpdate(operator.id, 'role', value)}
+                  placeholder="Ruolo"
+                  placeholderTextColor={colors.textSoft}
+                  style={styles.inlineMetaInput}
+                  value={operator.role}
+                />
+              </View>
+              <Switch
+                onValueChange={(value) => onUpdate(operator.id, 'active', value)}
+                thumbColor={colors.surface}
+                trackColor={{ false: colors.border, true: colors.success }}
+                value={operator.active}
+              />
+            </View>
+
+            <View style={styles.managementFields}>
+              <TextInput
+                onChangeText={(value) => onUpdate(operator.id, 'hours', value)}
+                placeholder="09:00 - 18:00"
+                placeholderTextColor={colors.textSoft}
+                style={styles.managementInput}
+                value={operator.hours}
+              />
+              <TextInput
+                onChangeText={(value) => onUpdate(operator.id, 'specialties', value)}
+                placeholder="Specialita / trattamenti"
+                placeholderTextColor={colors.textSoft}
+                style={styles.managementInput}
+                value={operator.specialties}
+              />
+            </View>
+
+            <View style={styles.colorRail}>
+              {operatorColorOptions.map((color) => (
+                <Pressable
+                  key={color}
+                  onPress={() => onUpdate(operator.id, 'color', color)}
+                  style={[
+                    styles.colorDot,
+                    { backgroundColor: color },
+                    operator.color === color ? styles.colorDotSelected : null,
+                  ]}
+                />
+              ))}
+              <Pressable onPress={() => onDelete(operator.id)} style={styles.deleteMiniButton}>
+                <Ionicons color={colors.danger} name="trash-outline" size={15} />
+                <Text style={styles.deleteMiniText}>Delete</Text>
+              </Pressable>
+            </View>
+          </View>
+        ))}
+      </View>
+    </View>
+  );
+}
+
+function CabinManagement({
+  cabins,
+  onAdd,
+  onDelete,
+  onUpdate,
+}: {
+  cabins: CabinDraft[];
+  onAdd: () => void;
+  onDelete: (cabinId: string) => void;
+  onUpdate: (cabinId: string, field: keyof CabinDraft, value: string | boolean) => void;
+}) {
+  return (
+    <View style={styles.managementPanel}>
+      <View style={styles.managementHeader}>
+        <View>
+          <Text style={styles.cardMiniTitle}>Cabins / rooms</Text>
+          <Text style={styles.cardHint}>Personalizza cabine, stanze e risorse prenotabili.</Text>
+        </View>
+        <Pressable onPress={onAdd} style={styles.addMiniButton}>
+          <Ionicons color={colors.brandInk} name="add" size={16} />
+          <Text style={styles.addMiniButtonText}>Add Cabin</Text>
+        </Pressable>
+      </View>
+
+      <View style={styles.cabinGrid}>
+        {cabins.map((cabin) => (
+          <View key={cabin.id} style={[styles.cabinCard, !cabin.active ? styles.managementCardDisabled : null]}>
+            <View style={styles.managementCardTop}>
+              <View style={[styles.cabinColorBar, { backgroundColor: cabin.color }]} />
+              <View style={styles.managementCardMain}>
+                <TextInput
+                  onChangeText={(value) => onUpdate(cabin.id, 'name', value)}
+                  placeholder="Nome cabina"
+                  placeholderTextColor={colors.textSoft}
+                  style={styles.inlineNameInput}
+                  value={cabin.name}
+                />
+                <TextInput
+                  onChangeText={(value) => onUpdate(cabin.id, 'treatments', value)}
+                  placeholder="Trattamenti assegnati"
+                  placeholderTextColor={colors.textSoft}
+                  style={styles.inlineMetaInput}
+                  value={cabin.treatments}
+                />
+              </View>
+              <Switch
+                onValueChange={(value) => onUpdate(cabin.id, 'active', value)}
+                thumbColor={colors.surface}
+                trackColor={{ false: colors.border, true: colors.success }}
+                value={cabin.active}
+              />
+            </View>
+            <View style={styles.colorRail}>
+              {operatorColorOptions.map((color) => (
+                <Pressable
+                  key={color}
+                  onPress={() => onUpdate(cabin.id, 'color', color)}
+                  style={[
+                    styles.colorDot,
+                    { backgroundColor: color },
+                    cabin.color === color ? styles.colorDotSelected : null,
+                  ]}
+                />
+              ))}
+              <Pressable onPress={() => onDelete(cabin.id)} style={styles.deleteMiniButton}>
+                <Ionicons color={colors.danger} name="trash-outline" size={15} />
+                <Text style={styles.deleteMiniText}>Delete</Text>
+              </Pressable>
+            </View>
+          </View>
+        ))}
+      </View>
+    </View>
+  );
+}
+
+function PackagesManagement({
+  onAdd,
+  onArchive,
+  onDuplicate,
+  onUpdate,
+  packages,
+}: {
+  onAdd: () => void;
+  onArchive: (packageId: string) => void;
+  onDuplicate: (item: PackageDraft) => void;
+  onUpdate: (packageId: string, field: keyof PackageDraft, value: string | boolean) => void;
+  packages: PackageDraft[];
+}) {
+  return (
+    <View style={styles.packagesPanel}>
+      <View style={styles.managementHeader}>
+        <View>
+          <Text style={styles.cardMiniTitle}>Packages</Text>
+          <Text style={styles.cardHint}>Percorsi, abbonamenti e rituali vendibili dal centro.</Text>
+        </View>
+        <Pressable onPress={onAdd} style={styles.addMiniButton}>
+          <Ionicons color={colors.brandInk} name="add" size={16} />
+          <Text style={styles.addMiniButtonText}>Create Package</Text>
+        </Pressable>
+      </View>
+
+      <View style={styles.packageList}>
+        {packages.map((item) => (
+          <View key={item.id} style={[styles.packageCard, !item.active ? styles.managementCardDisabled : null]}>
+            <View style={styles.packageTop}>
+              <View style={styles.packageTitleBlock}>
+                <TextInput
+                  onChangeText={(value) => onUpdate(item.id, 'name', value)}
+                  placeholder="Package name"
+                  placeholderTextColor={colors.textSoft}
+                  style={styles.packageNameInput}
+                  value={item.name}
+                />
+                <TextInput
+                  onChangeText={(value) => onUpdate(item.id, 'treatments', value)}
+                  placeholder="Included treatments"
+                  placeholderTextColor={colors.textSoft}
+                  style={styles.packageTreatmentsInput}
+                  value={item.treatments}
+                />
+              </View>
+              <Switch
+                onValueChange={(value) => onUpdate(item.id, 'active', value)}
+                thumbColor={colors.surface}
+                trackColor={{ false: colors.border, true: colors.success }}
+                value={item.active}
+              />
+            </View>
+
+            <View style={styles.packagePriceRow}>
+              <Text style={styles.packageCurrency}>EUR</Text>
+              <TextInput
+                keyboardType="decimal-pad"
+                onChangeText={(value) => onUpdate(item.id, 'price', value)}
+                placeholder="499"
+                placeholderTextColor={colors.textSoft}
+                style={styles.packagePriceInput}
+                value={item.price}
+              />
+              {item.promoBadge.trim() ? (
+                <View style={styles.packageBadge}>
+                  <Text style={styles.packageBadgeText}>{item.promoBadge}</Text>
+                </View>
+              ) : null}
+            </View>
+
+            <View style={styles.packageFields}>
+              <TextInput
+                keyboardType="number-pad"
+                onChangeText={(value) => onUpdate(item.id, 'sessions', value)}
+                placeholder="Sessions"
+                placeholderTextColor={colors.textSoft}
+                style={styles.packageField}
+                value={item.sessions}
+              />
+              <TextInput
+                onChangeText={(value) => onUpdate(item.id, 'duration', value)}
+                placeholder="Duration"
+                placeholderTextColor={colors.textSoft}
+                style={styles.packageField}
+                value={item.duration}
+              />
+              <TextInput
+                onChangeText={(value) => onUpdate(item.id, 'expiration', value)}
+                placeholder="Expiration"
+                placeholderTextColor={colors.textSoft}
+                style={styles.packageField}
+                value={item.expiration}
+              />
+            </View>
+
+            <View style={styles.packageFields}>
+              <TextInput
+                keyboardType="number-pad"
+                onChangeText={(value) => onUpdate(item.id, 'discount', value)}
+                placeholder="Discount %"
+                placeholderTextColor={colors.textSoft}
+                style={styles.packageField}
+                value={item.discount}
+              />
+              <TextInput
+                onChangeText={(value) => onUpdate(item.id, 'promoBadge', value)}
+                placeholder="Promo badge"
+                placeholderTextColor={colors.textSoft}
+                style={styles.packageField}
+                value={item.promoBadge}
+              />
+            </View>
+
+            <TextInput
+              multiline
+              onChangeText={(value) => onUpdate(item.id, 'notes', value)}
+              placeholder="Notes"
+              placeholderTextColor={colors.textSoft}
+              style={[styles.packageField, styles.packageNotes]}
+              value={item.notes}
+            />
+
+            <View style={styles.packageFooter}>
+              <Pressable
+                onPress={() => onUpdate(item.id, 'installments', !item.installments)}
+                style={[styles.packageToggle, item.installments ? styles.packageToggleActive : null]}
+              >
+                <Text style={styles.packageToggleText}>
+                  {item.installments ? 'Installments on' : 'Installments off'}
+                </Text>
+              </Pressable>
+              <Pressable onPress={() => onDuplicate(item)} style={styles.serviceAction}>
+                <Ionicons color={colors.brandInk} name="copy-outline" size={15} />
+                <Text style={styles.serviceActionText}>Duplicate</Text>
+              </Pressable>
+              <Pressable onPress={() => onArchive(item.id)} style={[styles.serviceAction, styles.serviceActionDanger]}>
+                <Ionicons color={colors.danger} name="archive-outline" size={15} />
+                <Text style={[styles.serviceActionText, styles.serviceActionDangerText]}>Archive</Text>
+              </Pressable>
+            </View>
+          </View>
+        ))}
+      </View>
+    </View>
+  );
+}
+
 export function CenterSettingsScreen({
   activation,
   center,
@@ -247,6 +675,9 @@ export function CenterSettingsScreen({
   const [editingServiceName, setEditingServiceName] = useState('');
   const [editingServicePrice, setEditingServicePrice] = useState('');
   const [editingServiceDuration, setEditingServiceDuration] = useState('');
+  const [operators, setOperators] = useState<OperatorDraft[]>(initialOperators);
+  const [cabins, setCabins] = useState<CabinDraft[]>(initialCabins);
+  const [packages, setPackages] = useState<PackageDraft[]>(initialPackages);
 
   useEffect(() => {
     setProfileName(center.name);
@@ -389,11 +820,102 @@ export function CenterSettingsScreen({
       strengths,
       summary:
         reviews.length > 0
-          ? `La fiducia e guidata soprattutto da ${mostMentionedService}. Le recensioni positive sono ${positiveReviews.length}/${reviews.length}; rispondi alle note critiche per proteggere conversione e ritorno clienti.`
-          : 'Appena arriveranno nuove recensioni, qui compariranno trend, punti forti e segnali da gestire.',
+          ? `La fiducia e guidata soprattutto da ${mostMentionedService}. Le recensioni positive sono ${positiveReviews.length}/${reviews.length}.`
+          : 'Appena arriveranno nuove recensioni, qui compariranno media, trend e ultime opinioni.',
       trend,
     };
   }, [reviews]);
+
+  const addOperator = () => {
+    setOperators((current) => [
+      ...current,
+      {
+        active: true,
+        color: operatorColorOptions[current.length % operatorColorOptions.length],
+        hours: '09:00 - 18:00',
+        id: `op-${Date.now()}`,
+        imageUrl: '',
+        name: 'Nuovo operatore',
+        role: 'Estetista',
+        specialties: '',
+      },
+    ]);
+  };
+
+  const updateOperator = (operatorId: string, field: keyof OperatorDraft, value: string | boolean) => {
+    setOperators((current) =>
+      current.map((operator) => (operator.id === operatorId ? { ...operator, [field]: value } : operator)),
+    );
+  };
+
+  const deleteOperator = (operatorId: string) => {
+    setOperators((current) => current.filter((operator) => operator.id !== operatorId));
+  };
+
+  const addCabin = () => {
+    setCabins((current) => [
+      ...current,
+      {
+        active: true,
+        color: operatorColorOptions[current.length % operatorColorOptions.length],
+        id: `cabin-${Date.now()}`,
+        name: 'Nuova cabina',
+        treatments: '',
+      },
+    ]);
+  };
+
+  const updateCabin = (cabinId: string, field: keyof CabinDraft, value: string | boolean) => {
+    setCabins((current) =>
+      current.map((cabin) => (cabin.id === cabinId ? { ...cabin, [field]: value } : cabin)),
+    );
+  };
+
+  const deleteCabin = (cabinId: string) => {
+    setCabins((current) => current.filter((cabin) => cabin.id !== cabinId));
+  };
+
+  const addPackage = () => {
+    setPackages((current) => [
+      ...current,
+      {
+        active: true,
+        discount: '',
+        duration: '60 min ciascuno',
+        expiration: '6 mesi',
+        id: `pkg-${Date.now()}`,
+        installments: false,
+        name: 'New Package',
+        notes: '',
+        price: '',
+        promoBadge: '',
+        sessions: '3',
+        treatments: '',
+      },
+    ]);
+  };
+
+  const updatePackage = (packageId: string, field: keyof PackageDraft, value: string | boolean) => {
+    setPackages((current) =>
+      current.map((item) => (item.id === packageId ? { ...item, [field]: value } : item)),
+    );
+  };
+
+  const duplicatePackage = (item: PackageDraft) => {
+    setPackages((current) => [
+      ...current,
+      {
+        ...item,
+        active: false,
+        id: `pkg-${Date.now()}`,
+        name: `${item.name} copia`,
+      },
+    ]);
+  };
+
+  const archivePackage = (packageId: string) => {
+    setPackages((current) => current.filter((item) => item.id !== packageId));
+  };
 
   const toggleDayEnabled = (dayKey: WeekdayKey) => {
     setSchedule((current) => ({
@@ -594,11 +1116,11 @@ export function CenterSettingsScreen({
     }
 
     if (service.price === null || service.duration === null) {
-      return { label: 'Incomplete', tone: 'warning' };
+      return { label: 'needs-attention', tone: 'warning' };
     }
 
     if (service.visibility === 'hidden') {
-      return { label: 'Hidden online', tone: 'rose' };
+      return { label: 'hidden', tone: 'rose' };
     }
 
     return { label: 'Active', tone: 'success' };
@@ -818,25 +1340,27 @@ export function CenterSettingsScreen({
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.heroCard}>
-          <View style={styles.heroTopRow}>
-            {center.branding.logo ? (
-              <Image source={{ uri: center.branding.logo }} style={styles.heroLogo} />
-            ) : (
-              <View style={styles.heroLogoFallback}>
-                <Text style={styles.heroLogoText}>{center.name.slice(0, 2).toUpperCase()}</Text>
-              </View>
-            )}
-            <StatusPill
-              label={activation.is_listable ? 'Online' : 'Da completare'}
-              tone={businessStatusTone}
-            />
-          </View>
-          <Text style={styles.heroEyebrow}>Business dashboard</Text>
+          {center.branding.logo ? (
+            <Image source={{ uri: center.branding.logo }} style={styles.heroLogo} />
+          ) : (
+            <View style={styles.heroLogoFallback}>
+              <Text style={styles.heroLogoText}>{center.name.slice(0, 2).toUpperCase()}</Text>
+            </View>
+          )}
           <Text style={styles.heroTitle}>{center.name}</Text>
           <Text numberOfLines={2} style={styles.heroSubtitle}>
             {center.branding.description ||
               'Configura profilo, operativita e catalogo del tuo beauty center.'}
           </Text>
+          <Pressable onPress={() => setIsProfileModalOpen(true)} style={styles.logoUploadButton}>
+            <Text style={styles.logoUploadText}>Upload Center Logo</Text>
+          </Pressable>
+          <View style={styles.heroStatusWrap}>
+            <StatusPill
+              label={activation.is_listable ? 'Online' : 'Da completare'}
+              tone={businessStatusTone}
+            />
+          </View>
 
           <View style={styles.heroMetrics}>
             <MetricCard
@@ -890,19 +1414,26 @@ export function CenterSettingsScreen({
             title="Center profile"
             tone={center.branding.logo ? 'success' : 'warning'}
           />
-          <SettingTile
-            detail="Operatori, ruoli e assegnazioni agenda"
-            icon="people-outline"
-            status="Base"
-            title="Staff management"
+          <OperatorManagement
+            onAdd={addOperator}
+            onDelete={deleteOperator}
+            onUpdate={updateOperator}
+            operators={operators}
           />
         </DashboardSection>
 
         <DashboardSection
           eyebrow="02 Operations"
-          title="Ritmo del centro"
+          title="Operations"
           subtitle="Orari, eccezioni e regole di prenotazione in una vista compatta."
         >
+          <CabinManagement
+            cabins={cabins}
+            onAdd={addCabin}
+            onDelete={deleteCabin}
+            onUpdate={updateCabin}
+          />
+
           <View style={styles.weekCard}>
             <View style={styles.weekHeader}>
               <View>
@@ -1182,10 +1713,9 @@ export function CenterSettingsScreen({
               <View>
                 <Text style={styles.cardMiniTitle}>Service list</Text>
                 <Text style={styles.cardHint}>
-                  {services.length} servizi / {hiddenServicesCount} hidden / {incompleteServicesCount} incomplete
+                  {services.length} servizi configurati
                 </Text>
               </View>
-              {draftServicesCount > 0 ? <StatusPill label={`${draftServicesCount} draft`} tone="warning" /> : null}
             </View>
             {managedServices.length === 0 ? (
               <Text style={styles.emptyText}>
@@ -1210,9 +1740,7 @@ export function CenterSettingsScreen({
                     style={[
                       styles.serviceCard,
                       service.visibility === 'hidden' ? styles.serviceCardHidden : null,
-                      serviceStatus.label === 'Incomplete' || serviceStatus.label === 'Draft'
-                        ? styles.serviceCardDraft
-                        : null,
+                      serviceStatus.tone === 'warning' ? styles.serviceCardDraft : null,
                     ]}
                   >
                     <View style={styles.serviceCardTop}>
@@ -1234,7 +1762,7 @@ export function CenterSettingsScreen({
                               {service.category}
                             </Text>
                           </View>
-                          <StatusPill label={serviceStatus.label} tone={serviceStatus.tone} />
+                          {serviceStatus.tone === 'warning' ? <View style={styles.subtleWarningDot} /> : null}
                         </View>
                       </View>
                       <Switch
@@ -1326,13 +1854,13 @@ export function CenterSettingsScreen({
             )}
           </View>
 
-          <View style={styles.packagesCard}>
-            <View>
-              <Text style={styles.cardMiniTitle}>Packages</Text>
-              <Text style={styles.cardHint}>Percorsi, abbonamenti e bundle premium.</Text>
-            </View>
-            <StatusPill label="Da creare" tone="warning" />
-          </View>
+          <PackagesManagement
+            onAdd={addPackage}
+            onArchive={archivePackage}
+            onDuplicate={duplicatePackage}
+            onUpdate={updatePackage}
+            packages={packages}
+          />
         </DashboardSection>
 
         <DashboardSection
@@ -1391,45 +1919,10 @@ export function CenterSettingsScreen({
               </View>
             </View>
 
-            <View style={styles.insightBlock}>
-              <View style={styles.insightHeader}>
-                <Ionicons color={colors.brandInk} name="sparkles-outline" size={16} />
-                <Text style={styles.insightTitle}>AI review insights</Text>
-              </View>
-              <View style={styles.highlightRows}>
-                <View style={styles.highlightGroup}>
-                  <Text style={styles.highlightLabel}>Strengths</Text>
-                  <View style={styles.highlightChips}>
-                    {(reviewInsights.strengths.length > 0
-                      ? reviewInsights.strengths
-                      : [{ count: 0, label: 'accoglienza' }]
-                    ).map((item) => (
-                      <View key={item.label} style={styles.highlightChip}>
-                        <Text style={styles.highlightChipText}>{item.label}</Text>
-                      </View>
-                    ))}
-                  </View>
-                </View>
-                <View style={styles.highlightGroup}>
-                  <Text style={styles.highlightLabel}>Watchlist</Text>
-                  <View style={styles.highlightChips}>
-                    {(reviewInsights.complaints.length > 0
-                      ? reviewInsights.complaints
-                      : [{ count: 0, label: 'nessun pattern' }]
-                    ).map((item) => (
-                      <View key={item.label} style={[styles.highlightChip, styles.highlightChipWarning]}>
-                        <Text style={styles.highlightChipText}>{item.label}</Text>
-                      </View>
-                    ))}
-                  </View>
-                </View>
-              </View>
-            </View>
-
             <View style={styles.reviewList}>
               {reviews.length === 0 ? (
                 <Text style={styles.emptyText}>
-                  Le recensioni dei clienti appariranno qui con insight e strumenti di risposta.
+                  Le recensioni dei clienti appariranno qui con media, data e testo.
                 </Text>
               ) : (
                 reviews.slice(0, 4).map((review) => (
@@ -1452,20 +1945,15 @@ export function CenterSettingsScreen({
                     <Text numberOfLines={4} style={styles.reviewText}>
                       {review.comment}
                     </Text>
-                    <View style={styles.reviewActions}>
-                      <Pressable style={styles.reviewActionPrimary}>
-                        <Ionicons color={colors.brandInk} name="chatbubble-ellipses-outline" size={15} />
-                        <Text style={styles.reviewActionPrimaryText}>Rispondi</Text>
-                      </Pressable>
-                      <Pressable style={styles.reviewAction}>
-                        <Ionicons color={colors.brandInk} name="heart-outline" size={15} />
-                        <Text style={styles.reviewActionText}>Highlight</Text>
-                      </Pressable>
-                      <Pressable style={styles.reviewAction}>
-                        <Ionicons color={colors.danger} name="flag-outline" size={15} />
-                        <Text style={[styles.reviewActionText, styles.reviewActionDangerText]}>Modera</Text>
-                      </Pressable>
-                    </View>
+                    <Text style={styles.reviewDate}>
+                      {review.created_at
+                        ? new Intl.DateTimeFormat('it-IT', {
+                            day: '2-digit',
+                            month: 'short',
+                            year: 'numeric',
+                          }).format(new Date(review.created_at))
+                        : 'Data non disponibile'}
+                    </Text>
                   </View>
                 ))
               )}
@@ -1602,7 +2090,7 @@ export function CenterSettingsScreen({
             </View>
 
             <View style={styles.fieldWrap}>
-              <Text style={styles.fieldLabel}>Logo URL</Text>
+              <Text style={styles.fieldLabel}>Beauty Center Logo Upload</Text>
               <TextInput
                 autoCapitalize="none"
                 onChangeText={setProfileLogoUrl}
@@ -1762,6 +2250,7 @@ const styles = StyleSheet.create({
     paddingBottom: 112,
   },
   heroCard: {
+    alignItems: 'center',
     backgroundColor: colors.surface,
     borderColor: 'rgba(33, 77, 99, 0.06)',
     borderRadius: 28,
@@ -1774,29 +2263,23 @@ const styles = StyleSheet.create({
     shadowRadius: 28,
     elevation: 3,
   },
-  heroTopRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: spacing.lg,
-  },
   heroLogo: {
     backgroundColor: colors.surfaceSoft,
-    borderRadius: 18,
-    height: 48,
-    width: 48,
+    borderRadius: 34,
+    height: 96,
+    width: 96,
   },
   heroLogoFallback: {
     alignItems: 'center',
     backgroundColor: colors.surfaceLavender,
-    borderRadius: 18,
-    height: 48,
+    borderRadius: 34,
+    height: 96,
     justifyContent: 'center',
-    width: 48,
+    width: 96,
   },
   heroLogoText: {
     color: colors.brandInk,
-    fontSize: 17,
+    fontSize: 28,
     fontWeight: '700',
   },
   heroEyebrow: {
@@ -1809,13 +2292,31 @@ const styles = StyleSheet.create({
     fontSize: 28,
     fontWeight: '700',
     lineHeight: 34,
-    marginTop: spacing.xs,
+    marginTop: spacing.md,
+    textAlign: 'center',
   },
   heroSubtitle: {
     color: colors.textMuted,
     fontSize: 15,
     lineHeight: 22,
     marginTop: spacing.xs,
+    textAlign: 'center',
+  },
+  logoUploadButton: {
+    backgroundColor: colors.surfaceSky,
+    borderRadius: radius.round,
+    justifyContent: 'center',
+    marginTop: spacing.md,
+    minHeight: 38,
+    paddingHorizontal: spacing.lg,
+  },
+  logoUploadText: {
+    color: colors.brandInk,
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  heroStatusWrap: {
+    marginTop: spacing.sm,
   },
   heroMetrics: {
     flexDirection: 'row',
@@ -2457,15 +2958,261 @@ const styles = StyleSheet.create({
     lineHeight: 19,
     marginTop: spacing.sm,
   },
-  packagesCard: {
-    alignItems: 'center',
+  packagesPanel: {
     backgroundColor: colors.surface,
     borderRadius: radius.xl,
+    gap: spacing.md,
+    marginTop: spacing.sm,
+    padding: spacing.md,
+  },
+  packageList: {
+    gap: spacing.md,
+  },
+  packageCard: {
+    backgroundColor: '#FFFDF8',
+    borderColor: 'rgba(33, 77, 99, 0.07)',
+    borderRadius: radius.xl,
+    borderWidth: 1,
+    padding: spacing.md,
+  },
+  packageTop: {
+    alignItems: 'flex-start',
     flexDirection: 'row',
     gap: spacing.sm,
     justifyContent: 'space-between',
+  },
+  packageTitleBlock: {
+    flex: 1,
+  },
+  packageNameInput: {
+    color: colors.brandInk,
+    fontSize: 20,
+    fontWeight: '800',
+    minHeight: 32,
+    padding: 0,
+  },
+  packageTreatmentsInput: {
+    color: colors.textMuted,
+    fontSize: 13,
+    minHeight: 28,
+    padding: 0,
+  },
+  packagePriceRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing.xs,
+    marginTop: spacing.md,
+  },
+  packageCurrency: {
+    color: colors.textMuted,
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  packagePriceInput: {
+    color: colors.brandInk,
+    flex: 1,
+    fontSize: 30,
+    fontWeight: '800',
+    minHeight: 42,
+    padding: 0,
+  },
+  packageBadge: {
+    backgroundColor: colors.surfaceSand,
+    borderRadius: radius.round,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 6,
+  },
+  packageBadgeText: {
+    color: colors.brandInk,
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  packageFields: {
+    flexDirection: 'row',
+    gap: spacing.xs,
+    marginTop: spacing.xs,
+  },
+  packageField: {
+    backgroundColor: colors.surfaceSoft,
+    borderRadius: radius.md,
+    color: colors.text,
+    flex: 1,
+    fontSize: 13,
+    minHeight: 42,
+    paddingHorizontal: spacing.sm,
+  },
+  packageNotes: {
+    marginTop: spacing.xs,
+    minHeight: 70,
+    paddingTop: spacing.sm,
+    textAlignVertical: 'top',
+  },
+  packageFooter: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
+    marginTop: spacing.sm,
+  },
+  packageToggle: {
+    backgroundColor: colors.surfaceMuted,
+    borderRadius: radius.round,
+    justifyContent: 'center',
+    minHeight: 32,
+    paddingHorizontal: spacing.sm,
+  },
+  packageToggleActive: {
+    backgroundColor: colors.surfaceSky,
+  },
+  packageToggleText: {
+    color: colors.brandInk,
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  managementPanel: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.xl,
+    gap: spacing.md,
     marginTop: spacing.sm,
     padding: spacing.md,
+  },
+  managementHeader: {
+    alignItems: 'flex-start',
+    flexDirection: 'row',
+    gap: spacing.sm,
+    justifyContent: 'space-between',
+  },
+  addMiniButton: {
+    alignItems: 'center',
+    backgroundColor: colors.surfaceSky,
+    borderRadius: radius.round,
+    flexDirection: 'row',
+    gap: 4,
+    minHeight: 34,
+    paddingHorizontal: spacing.sm,
+  },
+  addMiniButtonText: {
+    color: colors.brandInk,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  managementList: {
+    gap: spacing.sm,
+  },
+  operatorCard: {
+    backgroundColor: colors.surfaceSoft,
+    borderColor: 'rgba(33, 77, 99, 0.06)',
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    padding: spacing.md,
+  },
+  cabinGrid: {
+    gap: spacing.sm,
+  },
+  cabinCard: {
+    backgroundColor: '#FBFDFD',
+    borderColor: 'rgba(33, 77, 99, 0.06)',
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    padding: spacing.md,
+  },
+  cabinColorBar: {
+    borderRadius: radius.round,
+    height: 44,
+    width: 5,
+  },
+  managementCardDisabled: {
+    opacity: 0.58,
+  },
+  managementCardTop: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  managementCardMain: {
+    flex: 1,
+  },
+  operatorAvatar: {
+    alignItems: 'center',
+    borderRadius: radius.round,
+    height: 44,
+    justifyContent: 'center',
+    overflow: 'hidden',
+    width: 44,
+  },
+  operatorAvatarImage: {
+    height: '100%',
+    width: '100%',
+  },
+  operatorAvatarText: {
+    color: colors.surface,
+    fontSize: 17,
+    fontWeight: '800',
+  },
+  inlineNameInput: {
+    color: colors.brandInk,
+    fontSize: 16,
+    fontWeight: '800',
+    minHeight: 28,
+    padding: 0,
+  },
+  inlineMetaInput: {
+    color: colors.textMuted,
+    fontSize: 13,
+    minHeight: 26,
+    padding: 0,
+  },
+  managementFields: {
+    flexDirection: 'row',
+    gap: spacing.xs,
+    marginTop: spacing.sm,
+  },
+  managementInput: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    color: colors.text,
+    flex: 1,
+    fontSize: 13,
+    minHeight: 42,
+    paddingHorizontal: spacing.sm,
+  },
+  colorRail: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
+    marginTop: spacing.sm,
+  },
+  colorDot: {
+    borderColor: colors.surface,
+    borderRadius: radius.round,
+    borderWidth: 2,
+    height: 24,
+    width: 24,
+  },
+  colorDotSelected: {
+    borderColor: colors.brandInk,
+  },
+  subtleWarningDot: {
+    backgroundColor: colors.warning,
+    borderRadius: radius.round,
+    height: 8,
+    width: 8,
+  },
+  deleteMiniButton: {
+    alignItems: 'center',
+    backgroundColor: colors.roseSoft,
+    borderRadius: radius.round,
+    flexDirection: 'row',
+    gap: 4,
+    marginLeft: 'auto',
+    minHeight: 30,
+    paddingHorizontal: spacing.sm,
+  },
+  deleteMiniText: {
+    color: colors.danger,
+    fontSize: 11,
+    fontWeight: '700',
   },
   reviewsPanel: {
     backgroundColor: colors.surface,
@@ -2645,6 +3392,12 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontSize: 14,
     lineHeight: 21,
+    marginTop: spacing.sm,
+  },
+  reviewDate: {
+    color: colors.textMuted,
+    fontSize: 12,
+    fontWeight: '600',
     marginTop: spacing.sm,
   },
   reviewActions: {
