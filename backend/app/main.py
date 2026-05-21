@@ -8,7 +8,7 @@ from zoneinfo import ZoneInfo
 from bson import ObjectId
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, Response
 from pymongo.errors import PyMongoError
 from pydantic import BaseModel, Field
 import stripe
@@ -404,6 +404,238 @@ class BookingStatusPayload(BaseModel):
 
 
 ITALIAN_WEEKDAY_KEYS = ["Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom"]
+ITALIAN_WEEKDAY_FULL = ["Lunedi", "Martedi", "Mercoledi", "Giovedi", "Venerdi", "Sabato", "Domenica"]
+
+
+def format_eur(value: float):
+    return f"EUR {value:,.0f}".replace(",", ".")
+
+
+def parse_report_period(period: str):
+    today = datetime.now(ZoneInfo("Europe/Rome")).replace(tzinfo=None).date()
+    normalized = period.strip().lower()
+
+    if normalized == "week":
+        start = today - timedelta(days=today.weekday())
+        end = start + timedelta(days=7)
+        title = "Settimana corrente"
+    elif normalized == "quarter":
+        quarter_month = ((today.month - 1) // 3) * 3 + 1
+        start = date(today.year, quarter_month, 1)
+        end_month = quarter_month + 3
+        end_year = today.year + (1 if end_month > 12 else 0)
+        end_month = end_month - 12 if end_month > 12 else end_month
+        end = date(end_year, end_month, 1)
+        title = "Trimestre corrente"
+    else:
+        start = date(today.year, today.month, 1)
+        end = date(today.year + (1 if today.month == 12 else 0), 1 if today.month == 12 else today.month + 1, 1)
+        title = "Mese corrente"
+        normalized = "month"
+
+    return normalized, datetime.combine(start, time(0, 0)), datetime.combine(end, time(0, 0)), title
+
+
+def booking_price(booking: dict):
+    service = booking.get("service") or {}
+    price = service.get("price")
+    return float(price) if isinstance(price, (int, float)) else 0.0
+
+
+def add_breakdown(accumulator: dict[str, float], label: str, amount: float):
+    key = label or "Non assegnato"
+    accumulator[key] = accumulator.get(key, 0.0) + amount
+
+
+def sorted_breakdown(items: dict[str, float], limit: int = 5):
+    total = sum(items.values()) or 1
+    return [
+        {
+            "label": label,
+            "value": round(value, 2),
+            "percent": max(4, round((value / total) * 100)),
+        }
+        for label, value in sorted(items.items(), key=lambda item: item[1], reverse=True)[:limit]
+    ]
+
+
+def build_business_insights(center: dict, period: str = "month"):
+    normalized_period, start, end, period_label = parse_report_period(period)
+    now = datetime.now(ZoneInfo("Europe/Rome")).replace(tzinfo=None)
+    no_show_deletion = db.no_show_report_deletions.find_one(
+        {
+            "center_id": center["_id"],
+            "period_key": normalized_period,
+            "period_start": start,
+            "period_end": end,
+        }
+    )
+    no_show_report_deleted = bool(no_show_deletion)
+
+    pipeline = [
+        {
+            "$match": {
+                "center_id": center["_id"],
+                "start_time": {"$gte": start, "$lt": end},
+            }
+        },
+        {
+            "$lookup": {
+                "from": "services",
+                "localField": "service_id",
+                "foreignField": "_id",
+                "as": "service",
+            }
+        },
+        {"$unwind": {"path": "$service", "preserveNullAndEmptyArrays": True}},
+        {
+            "$lookup": {
+                "from": "users",
+                "localField": "user_id",
+                "foreignField": "_id",
+                "as": "user",
+            }
+        },
+        {"$unwind": {"path": "$user", "preserveNullAndEmptyArrays": True}},
+        {"$sort": {"start_time": 1}},
+    ]
+    bookings = list(db.bookings.aggregate(pipeline))
+
+    expected_revenue = 0.0
+    confirmed_revenue = 0.0
+    no_show_losses = 0.0
+    categories: dict[str, float] = {}
+    staff: dict[str, float] = {}
+    weekdays: dict[str, float] = {}
+    time_slots: dict[str, float] = {}
+    no_show_clients: dict[str, dict] = {}
+    no_show_slots: dict[str, float] = {}
+    no_show_services: dict[str, float] = {}
+
+    def slot_label(value: datetime | None):
+        if not isinstance(value, datetime):
+            return "Orario n/d"
+        if value.hour < 12:
+            return "08:00-12:00"
+        if value.hour < 16:
+            return "12:00-16:00"
+        if value.hour < 20:
+            return "16:00-20:00"
+        return "20:00+"
+
+    for booking in bookings:
+        status = booking.get("status")
+        amount = booking_price(booking)
+        start_time = booking.get("start_time")
+        service = booking.get("service") or {}
+        category = service.get("category") or "Trattamenti"
+        operator = booking.get("operator_name") or center.get("name") or "Staff"
+        weekday = ITALIAN_WEEKDAY_FULL[start_time.weekday()] if isinstance(start_time, datetime) else "Giorno n/d"
+        slot = slot_label(start_time)
+
+        if status in ["booked", "confirmed", "late"] and isinstance(start_time, datetime) and start_time >= now:
+            expected_revenue += amount
+        if status == "completed":
+            confirmed_revenue += amount
+            add_breakdown(categories, category, amount)
+            add_breakdown(staff, operator, amount)
+            add_breakdown(weekdays, weekday, amount)
+            add_breakdown(time_slots, slot, amount)
+        if status == "no_show" and not no_show_report_deleted:
+            no_show_losses += amount
+            client_name = (booking.get("user") or {}).get("name") or booking.get("client_name") or "Cliente"
+            if client_name not in no_show_clients:
+                no_show_clients[client_name] = {"label": client_name, "count": 0, "value": 0.0}
+            no_show_clients[client_name]["count"] += 1
+            no_show_clients[client_name]["value"] += amount
+            add_breakdown(no_show_slots, slot, amount)
+            add_breakdown(no_show_services, booking.get("service_name") or service.get("name") or "Trattamento", amount)
+
+    breakdowns = {
+        "categories": sorted_breakdown(categories),
+        "staff": sorted_breakdown(staff),
+        "weekdays": sorted_breakdown(weekdays),
+        "time_slots": sorted_breakdown(time_slots),
+    }
+
+    insights = []
+    top_day = breakdowns["weekdays"][0] if breakdowns["weekdays"] else None
+    top_category = breakdowns["categories"][0] if breakdowns["categories"] else None
+    weak_slot = sorted(time_slots.items(), key=lambda item: item[1])[0] if time_slots else None
+
+    if top_day:
+        insights.append(f"{top_day['label']} e il giorno con ricavi piu alti nel periodo.")
+    if top_category:
+        insights.append(f"{top_category['label']} guida il fatturato: valuta disponibilita dedicate.")
+    if weak_slot:
+        insights.append(f"{weak_slot[0]} genera meno ricavi: considera promozioni o lista attesa mirata.")
+    if no_show_losses > 0:
+        insights.append(f"I no-show hanno generato {format_eur(no_show_losses)} di perdite stimate.")
+    if not insights:
+        insights.append("Dati ancora limitati: completa piu appuntamenti per leggere trend affidabili.")
+
+    repeated_no_show_clients = sorted(
+        no_show_clients.values(),
+        key=lambda item: (item["count"], item["value"]),
+        reverse=True,
+    )[:5]
+
+    return {
+        "period": {
+            "key": normalized_period,
+            "label": period_label,
+            "start": start.date().isoformat(),
+            "end": (end - timedelta(days=1)).date().isoformat(),
+        },
+        "kpis": {
+            "expected_revenue": round(expected_revenue, 2),
+            "confirmed_revenue": round(confirmed_revenue, 2),
+            "no_show_losses": round(no_show_losses, 2),
+        },
+        "breakdowns": breakdowns,
+        "insights": insights[:4],
+        "no_show_report": {
+            "deleted": no_show_report_deleted,
+            "deleted_at": no_show_deletion.get("deleted_at") if no_show_deletion else None,
+            "total_losses": round(no_show_losses, 2),
+            "repeated_clients": repeated_no_show_clients,
+            "worst_time_slots": sorted_breakdown(no_show_slots),
+            "affected_services": sorted_breakdown(no_show_services),
+        },
+    }
+
+
+def make_pdf_document(lines: list[str]):
+    def clean(value: str):
+        return value.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)").encode("latin-1", "replace").decode("latin-1")
+
+    content_lines = ["BT", "/F1 11 Tf", "50 790 Td", "14 TL"]
+    for line in lines:
+        content_lines.append(f"({clean(line)}) Tj")
+        content_lines.append("T*")
+    content_lines.append("ET")
+    stream = "\n".join(content_lines).encode("latin-1")
+
+    objects = [
+        b"<< /Type /Catalog /Pages 2 0 R >>",
+        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>",
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+        b"<< /Length " + str(len(stream)).encode("ascii") + b" >>\nstream\n" + stream + b"\nendstream",
+    ]
+    pdf = bytearray(b"%PDF-1.4\n")
+    offsets = [0]
+    for index, obj in enumerate(objects, start=1):
+        offsets.append(len(pdf))
+        pdf.extend(f"{index} 0 obj\n".encode("ascii"))
+        pdf.extend(obj)
+        pdf.extend(b"\nendobj\n")
+    xref = len(pdf)
+    pdf.extend(f"xref\n0 {len(objects) + 1}\n0000000000 65535 f \n".encode("ascii"))
+    for offset in offsets[1:]:
+        pdf.extend(f"{offset:010d} 00000 n \n".encode("ascii"))
+    pdf.extend(f"trailer << /Size {len(objects) + 1} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF".encode("ascii"))
+    return bytes(pdf)
 
 
 def build_activation_status(document):
@@ -1438,6 +1670,133 @@ def mark_notifications_read(payload: NotificationReadPayload):
         {"$set": {"is_read": True, "updated_at": datetime.now(UTC)}},
     )
     return {"updated": result.modified_count}
+
+
+@app.get("/api/centers/{center_id}/business-insights")
+def get_center_business_insights(center_id: str, period: str = Query(default="month")):
+    object_id = parse_object_id(center_id, "center id")
+    center = db.centers.find_one({"_id": object_id})
+    if not center:
+        raise HTTPException(status_code=404, detail="Center not found.")
+    return build_business_insights(center, period)
+
+
+@app.get("/api/centers/{center_id}/business-insights/report.pdf")
+def export_center_business_report(center_id: str, period: str = Query(default="month")):
+    object_id = parse_object_id(center_id, "center id")
+    center = db.centers.find_one({"_id": object_id})
+    if not center:
+        raise HTTPException(status_code=404, detail="Center not found.")
+
+    report = build_business_insights(center, period)
+    lines = [
+        center.get("name", "Beauty Center"),
+        f"Business Report - {report['period']['label']}",
+        f"Periodo: {report['period']['start']} / {report['period']['end']}",
+        "",
+        "Main KPIs",
+        f"Expected Revenue: {format_eur(report['kpis']['expected_revenue'])}",
+        f"Confirmed Revenue: {format_eur(report['kpis']['confirmed_revenue'])}",
+        f"No-show Losses: {format_eur(report['kpis']['no_show_losses'])}",
+        "",
+        "Top Categories",
+        *[f"- {item['label']}: {format_eur(item['value'])}" for item in report["breakdowns"]["categories"][:4]],
+        "",
+        "Top Staff",
+        *[f"- {item['label']}: {format_eur(item['value'])}" for item in report["breakdowns"]["staff"][:4]],
+        "",
+        "Best Performing Days",
+        *[f"- {item['label']}: {format_eur(item['value'])}" for item in report["breakdowns"]["weekdays"][:4]],
+        "",
+        "Strongest Time Slots",
+        *[f"- {item['label']}: {format_eur(item['value'])}" for item in report["breakdowns"]["time_slots"][:4]],
+        "",
+        "Smart Insights",
+        *[f"- {insight}" for insight in report["insights"]],
+    ]
+    filename = f"business-report-{report['period']['key']}.pdf"
+    return Response(
+        content=make_pdf_document(lines),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@app.get("/api/centers/{center_id}/business-insights/no-show-report.pdf")
+def export_center_no_show_report(center_id: str, period: str = Query(default="month")):
+    object_id = parse_object_id(center_id, "center id")
+    center = db.centers.find_one({"_id": object_id})
+    if not center:
+        raise HTTPException(status_code=404, detail="Center not found.")
+
+    report = build_business_insights(center, period)
+    no_show = report["no_show_report"]
+    lines = [
+        center.get("name", "Beauty Center"),
+        f"No-show Losses Report - {report['period']['label']}",
+        f"Periodo: {report['period']['start']} / {report['period']['end']}",
+        "",
+        f"Total Estimated Losses: {format_eur(no_show['total_losses'])}",
+        "",
+        "Repeated No-show Clients",
+        *[f"- {item['label']}: {item['count']} no-show / {format_eur(item['value'])}" for item in no_show["repeated_clients"]],
+        "",
+        "Worst Time Slots",
+        *[f"- {item['label']}: {format_eur(item['value'])}" for item in no_show["worst_time_slots"][:4]],
+        "",
+        "Most Affected Services",
+        *[f"- {item['label']}: {format_eur(item['value'])}" for item in no_show["affected_services"][:4]],
+    ]
+    filename = f"no-show-report-{report['period']['key']}.pdf"
+    return Response(
+        content=make_pdf_document(lines),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@app.delete("/api/centers/{center_id}/business-insights/no-show-report")
+def delete_center_monthly_no_show_report(center_id: str, period: str = Query(default="month")):
+    object_id = parse_object_id(center_id, "center id")
+    center = db.centers.find_one({"_id": object_id})
+    if not center:
+        raise HTTPException(status_code=404, detail="Center not found.")
+
+    normalized_period, start, end, period_label = parse_report_period(period)
+    if normalized_period != "month":
+        raise HTTPException(status_code=400, detail="Only monthly no-show reports can be deleted.")
+
+    now = datetime.now(UTC)
+    db.no_show_report_deletions.update_one(
+        {
+            "center_id": object_id,
+            "period_key": normalized_period,
+            "period_start": start,
+            "period_end": end,
+        },
+        {
+            "$set": {
+                "center_id": object_id,
+                "period_key": normalized_period,
+                "period_label": period_label,
+                "period_start": start,
+                "period_end": end,
+                "deleted_at": now,
+                "updated_at": now,
+            },
+            "$setOnInsert": {"created_at": now},
+        },
+        upsert=True,
+    )
+    return {
+        "deleted": True,
+        "period": {
+            "key": normalized_period,
+            "label": period_label,
+            "start": start.date().isoformat(),
+            "end": (end - timedelta(days=1)).date().isoformat(),
+        },
+    }
 
 
 @app.get("/api/centers/{center_id}/dashboard")

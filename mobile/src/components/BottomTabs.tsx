@@ -11,7 +11,8 @@ type TabIcon =
   | "profile"
   | "appointments"
   | "clients"
-  | "settings";
+  | "settings"
+  | "insights";
 
 type TabItem = {
   key: string;
@@ -36,12 +37,16 @@ export function BottomTabs({ activeKey, items, onChange }: BottomTabsProps) {
             <Pressable
               key={item.key}
               onPress={() => onChange(item.key)}
-              style={[styles.item, active ? styles.itemActive : null]}
+              style={({ pressed }) => [
+                styles.item,
+                active ? styles.itemActive : null,
+                pressed ? styles.itemPressed : null,
+              ]}
             >
               <Ionicons
                 color={active ? colors.brandInk : colors.textSoft}
                 name={iconNameMap[item.icon][active ? "active" : "default"]}
-                size={active ? 24 : 22}
+                size={active ? 22 : 20}
               />
               <Text style={[styles.label, active ? styles.labelActive : null]}>
                 {item.label}
@@ -83,12 +88,16 @@ const iconNameMap = {
     active: "settings",
     default: "settings-outline",
   },
+  insights: {
+    active: "stats-chart",
+    default: "stats-chart-outline",
+  },
 } as const;
 
 const styles = StyleSheet.create({
   outer: {
     backgroundColor: "transparent",
-    paddingBottom: spacing.lg,
+    paddingBottom: spacing.md,
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.xs,
   },
@@ -99,31 +108,33 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     flexDirection: "row",
     gap: spacing.xs,
-    paddingHorizontal: spacing.xs,
-    paddingVertical: spacing.xs,
+    padding: spacing.xs,
     ...shadows.floating,
   },
   item: {
     alignItems: "center",
     borderRadius: radius.xl,
     flex: 1,
-    gap: 5,
-    minHeight: 58,
+    gap: 4,
+    minHeight: 54,
     justifyContent: "center",
     paddingHorizontal: 4,
-    paddingVertical: 8,
+    paddingVertical: 7,
   },
   itemActive: {
     backgroundColor: colors.surfaceSky,
   },
+  itemPressed: {
+    opacity: 0.76,
+  },
   label: {
     color: colors.textSoft,
     fontSize: 11,
-    fontWeight: "600",
+    fontWeight: "700",
   },
   labelActive: {
     color: colors.brandInk,
-    fontSize: 12,
-    fontWeight: "700",
+    fontSize: 11,
+    fontWeight: "800",
   },
 });

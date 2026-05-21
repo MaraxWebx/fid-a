@@ -1,4 +1,4 @@
-import { Image, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { Image, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { radius, spacing } from "../theme/spacing";
 import { textStyles } from "../theme/typography";
@@ -25,9 +25,9 @@ export function ScreenHeader({
   return (
     <View style={styles.wrap}>
       {onBack && (
-        <TouchableOpacity onPress={onBack} style={{ marginBottom: 16 }}>
-          <Ionicons name="arrow-back" size={24} color={colors.brandInk} />
-        </TouchableOpacity>
+        <Pressable onPress={onBack} style={styles.backButton}>
+          <Ionicons name="arrow-back" size={20} color={colors.brandInk} />
+        </Pressable>
       )}
 
       {eyebrow ? (
@@ -46,11 +46,22 @@ export function ScreenHeader({
 
 const styles = StyleSheet.create({
   wrap: {
-    marginBottom: spacing.xl,
+    marginBottom: spacing.lg,
+  },
+  backButton: {
+    alignItems: "center",
+    backgroundColor: colors.surface,
+    borderColor: colors.overlayBorder,
+    borderRadius: radius.round,
+    borderWidth: 1,
+    height: 40,
+    justifyContent: "center",
+    marginBottom: spacing.md,
+    width: 40,
   },
   eyebrow: {
     ...textStyles.eyebrow,
-    marginBottom: spacing.sm,
+    marginBottom: spacing.xs,
   },
   titleRow: {
     alignItems: "center",
@@ -68,8 +79,9 @@ const styles = StyleSheet.create({
     flexShrink: 1,
   },
   subtitle: {
-    ...textStyles.bodyMuted,
-    marginTop: spacing.sm,
+    ...textStyles.caption,
+    color: colors.textMuted,
+    marginTop: spacing.xs,
     maxWidth: 360,
   },
 });

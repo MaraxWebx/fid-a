@@ -2,50 +2,60 @@
 
 ## Direction
 
-Fidea should feel like premium beauty operations software: calm, warm, organized, and fast. The interface should avoid cold admin-panel patterns, heavy tables, hard outlines, and over-bold typography.
+Fidea should feel like Apple-quality beauty operations software: calm, warm, organized, and fast. The interface should avoid cold admin-panel patterns, heavy tables, hard outlines, playful decoration, and over-bold typography.
 
 ## Color Palette
 
-- Canvas: warm linen `#FBF7F1`
+- Canvas: warm linen `#FBF8F2`
 - Surface: white `#FFFFFF`
-- Soft surfaces: warm clay/linen `#F8F3EC`, `#F1EBE4`
-- Primary text: deep petrol `#173F4A`
-- Body text: muted petrol `#243F46`
-- Accent: petrol teal `#2F7E84`
-- Warm accents: blush `#F8E8EC`, champagne `#FFF3D8`
-- Status: success moss, warning champagne, danger rose
+- Soft surfaces: warm clay/linen `#F7F1E9`, `#EFE8DF`
+- Primary text/action: deep petrol `#183F3D`
+- Body text: warm petrol grey `#253A38`
+- Accent/info: muted teal `#286F70`
+- Warm accents: blush `#F8E8EC`, champagne `#FFF4DE`
+- Status: success moss `#78A98F`, warning amber `#D9AA5F`, danger rose `#BE6A74`
 
-Use color as a quiet signal, not decoration. Prefer small status pills, subtle cover areas, and gentle backgrounds over saturated blocks.
+Use color as a quiet semantic signal, not decoration. Prefer small status dots, subtle cover areas, and gentle backgrounds over saturated blocks.
+
+Semantic roles:
+
+- Primary action: deep petrol
+- Secondary action: soft teal surface
+- Success: moss
+- Warning: muted amber
+- Error: soft rose red
+- Inactive: warm grey
+- Background: ivory / warm white
 
 ## Typography
 
-- Screen titles: 30px, 700
-- Section titles: 21-24px, 600
-- Card titles: 19-24px, 600
+- Screen titles: 28-29px, 700
+- Section titles: 20px, 700
+- Card titles: 18-23px, 700
 - Body: 16px, regular
 - Metadata: 12-13px, 600 only when actionable
-- Eyebrows: 11px uppercase, 600, slight letter spacing
+- Eyebrows: 11px uppercase, 700, no letter spacing
 
-Hierarchy should come from spacing, grouping, and scale. Reserve 700 weight for screen titles, metrics, and primary actions. Avoid 800 unless there is a very specific brand moment.
+Hierarchy should come from spacing, grouping, and scale. Reserve 800 weight for compact operational labels, important metrics, and primary action labels only.
 
 ## Spacing
 
 Token scale: 4, 8, 12, 16, 20, 24, 32, 40.
 
 - Screen horizontal padding: 20
-- Card padding: 16-20
-- Section gap: 24-32
+- Card padding: 16 for most cards, 20 for hero/complex cards
+- Section gap: 20-24
 - Related control gap: 8-12
 - Bottom CTA clearance: at least 96
 
-Mobile layouts should breathe. Prefer fewer denser modules over long repetitive rows.
+Mobile layouts should breathe without wasting screen space. Prefer horizontally scannable modules and bottom sheets over long repetitive management grids.
 
 ## Radius
 
 - Small controls: 8-12
 - Inputs and compact cards: 12-16
-- Main cards: 22
-- Hero/floating cards: 28
+- Main cards: 20
+- Hero/floating cards: 26
 - Pills: 999
 
 ## Shadows
@@ -70,10 +80,10 @@ Cards should not feel like spreadsheet rows. Use badges, metrics, and actions to
 
 ## Buttons
 
-- Primary: petrol teal fill, 52px min height
+- Primary: deep petrol fill, 50px min height
 - Secondary: white or soft surface, light border
 - Danger: rose soft background, not a harsh red block
-- Icon actions: circular 30-36px controls
+- Icon actions: circular 34-44px controls
 - Sticky CTA: bottom anchored for save flows
 - Floating action: thumb-friendly add/create action
 
@@ -87,7 +97,7 @@ Use compact badges and dots:
 - Incomplete: champagne warning
 - Danger/moderation: rose danger
 
-Status copy should be short: `Active`, `Hidden`, `Draft`, `Incomplete`, `Online`.
+Prefer status dots in overview surfaces. Use copy only when it changes the decision.
 
 ## Inputs
 
@@ -103,7 +113,7 @@ Avoid dense forms. Group related numeric fields side by side only when they are 
 
 ## Bottom Navigation
 
-Use a floating rounded container with 5 or fewer primary destinations. Active tab gets a soft teal background and filled Ionicon. Labels stay short and readable.
+Use a floating rounded container with 4-5 primary destinations. Active tab gets a soft teal background, filled Ionicon, and restrained label weight. Labels stay short and readable.
 
 ## Icons
 
@@ -115,5 +125,7 @@ Use Ionicons consistently. Prefer outline icons for inactive/default states and 
 - Use inline editing before modals.
 - Use sticky save bars for multi-field edits.
 - Use segmented controls for small mutually exclusive modes.
-- Use compact cards and status badges for scanning.
+- Use compact cards and status dots for scanning.
 - Avoid table-like layouts and repeated full-width text rows.
+- Prefer bottom sheets for category/detail editing.
+- Keep overview cards quiet; move pricing, validation, and toggles into contextual detail views.

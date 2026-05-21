@@ -7,6 +7,8 @@ import type {
   BookingStatusInput,
   BookingSlot,
   BookingUpdateInput,
+  BusinessInsightPeriod,
+  BusinessInsights,
   Center,
   CenterActivationStatusResponse,
   CenterAvailabilityInput,
@@ -78,6 +80,18 @@ async function patch<TResponse, TPayload>(path: string, payload: TPayload): Prom
   return (await response.json()) as TResponse;
 }
 
+async function del<TResponse>(path: string): Promise<TResponse> {
+  const response = await fetch(`${baseUrl}${path}`, {
+    method: 'DELETE',
+  });
+
+  if (!response.ok) {
+    throw new Error(`Request failed: ${response.status}`);
+  }
+
+  return (await response.json()) as TResponse;
+}
+
 export function getCenters() {
   return request<Center[]>('/api/centers');
 }
@@ -136,6 +150,24 @@ export function toggleFavoriteCenter(email: string, centerId: string) {
 
 export function getCenterDashboard(centerId: string) {
   return request<CenterDashboard>(`/api/centers/${centerId}/dashboard`);
+}
+
+export function getCenterBusinessInsights(centerId: string, period: BusinessInsightPeriod = 'month') {
+  return request<BusinessInsights>(`/api/centers/${centerId}/business-insights?period=${encodeURIComponent(period)}`);
+}
+
+export function getCenterBusinessReportUrl(centerId: string, period: BusinessInsightPeriod = 'month') {
+  return `${baseUrl}/api/centers/${centerId}/business-insights/report.pdf?period=${encodeURIComponent(period)}`;
+}
+
+export function getCenterNoShowReportUrl(centerId: string, period: BusinessInsightPeriod = 'month') {
+  return `${baseUrl}/api/centers/${centerId}/business-insights/no-show-report.pdf?period=${encodeURIComponent(period)}`;
+}
+
+export function deleteCenterMonthlyNoShowReport(centerId: string, period: BusinessInsightPeriod = 'month') {
+  return del<{ deleted: boolean; period: { key: BusinessInsightPeriod; label: string; start: string; end: string } }>(
+    `/api/centers/${centerId}/business-insights/no-show-report?period=${encodeURIComponent(period)}`,
+  );
 }
 
 export function getCenterClients(centerId: string) {

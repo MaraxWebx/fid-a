@@ -20,12 +20,13 @@ export function PrimaryButton({
     <Pressable
       disabled={disabled}
       onPress={onPress}
-      style={[
+      style={({ pressed }) => [
         styles.button,
         variant === "secondary" ? styles.secondary : null,
         variant === "danger" ? styles.danger : null,
         variant === "primary" ? styles.primary : null,
         disabled ? styles.disabled : null,
+        pressed && !disabled ? styles.pressed : null,
       ]}
     >
       <Text
@@ -45,13 +46,13 @@ export function PrimaryButton({
 const styles = StyleSheet.create({
   button: {
     alignItems: "center",
-    borderRadius: radius.lg,
+    borderRadius: radius.round,
     justifyContent: "center",
-    minHeight: 52,
+    minHeight: 50,
     paddingHorizontal: spacing.lg,
   },
   primary: {
-    backgroundColor: colors.brandDark,
+    backgroundColor: colors.brandInk,
     ...shadows.card,
   },
   secondary: {
@@ -67,9 +68,13 @@ const styles = StyleSheet.create({
   disabled: {
     opacity: 0.5,
   },
+  pressed: {
+    opacity: 0.82,
+    transform: [{ scale: 0.99 }],
+  },
   label: {
-    fontSize: 15,
-    fontWeight: "600",
+    fontSize: 14,
+    fontWeight: "800",
   },
   primaryLabel: {
     color: colors.surface,

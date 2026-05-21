@@ -220,6 +220,43 @@ export type CenterDashboard = {
   clients: DashboardClient[];
 };
 
+export type BusinessInsightPeriod = 'week' | 'month' | 'quarter';
+
+export type BusinessBreakdownItem = {
+  label: string;
+  value: number;
+  percent: number;
+};
+
+export type BusinessInsights = {
+  period: {
+    key: BusinessInsightPeriod;
+    label: string;
+    start: string;
+    end: string;
+  };
+  kpis: {
+    expected_revenue: number;
+    confirmed_revenue: number;
+    no_show_losses: number;
+  };
+  breakdowns: {
+    categories: BusinessBreakdownItem[];
+    staff: BusinessBreakdownItem[];
+    weekdays: BusinessBreakdownItem[];
+    time_slots: BusinessBreakdownItem[];
+  };
+  insights: string[];
+  no_show_report: {
+    deleted?: boolean;
+    deleted_at?: string | null;
+    total_losses: number;
+    repeated_clients: Array<{ label: string; count: number; value: number }>;
+    worst_time_slots: BusinessBreakdownItem[];
+    affected_services: BusinessBreakdownItem[];
+  };
+};
+
 export type CenterClient = {
   id: string;
   name: string;

@@ -714,7 +714,7 @@ export function CenterCalendarScreen({ center, onCenterUpdated }: CenterCalendar
           ))}
         </View>
 
-        <ResourceRail
+        <AgendaResourcesPanel
           resources={resources}
           selectedResourceId={selectedResourceId}
           onSelect={(resource) => setSelectedResourceId(resource.id)}
@@ -790,7 +790,7 @@ export function CenterCalendarScreen({ center, onCenterUpdated }: CenterCalendar
 
       <Pressable onPress={() => handleNewAppointment()} style={styles.fab}>
         <Ionicons color={colors.surface} name="add" size={26} />
-        <Text style={styles.fabText}>Nuovo</Text>
+        <Text style={styles.fabText}>Nuovo appunt.</Text>
       </Pressable>
 
       <DayOperationsPanel
@@ -847,7 +847,7 @@ function MetricPill({ icon, label }: { icon: string; label: string }) {
   );
 }
 
-function ResourceRail({
+function AgendaResourcesPanel({
   bookings,
   dateKey,
   onSelect,
@@ -860,19 +860,83 @@ function ResourceRail({
   resources: AgendaResource[];
   selectedResourceId: string;
 }) {
+  const globalResource = resources.find((resource) => resource.id === "global");
+  const staffResources = resources.filter((resource) => resource.type === "operator");
+  const roomResources = resources.filter((resource) => resource.type === "room");
+
   return (
-    <ScrollView contentContainerStyle={styles.resourceRail} horizontal showsHorizontalScrollIndicator={false}>
-      {resources.map((resource) => {
-        const activeBookings = getDailyBookings(bookings, dateKey, resource.id).filter(isActiveBooking);
-        const selected = selectedResourceId === resource.id;
-        return (
-          <Pressable key={resource.id} onPress={() => onSelect(resource)} style={[styles.resourceChip, selected ? styles.resourceChipActive : null]}>
-            <Text style={[styles.resourceName, selected ? styles.resourceNameActive : null]}>{resource.name}</Text>
-            <Text style={styles.resourceMeta}>{activeBookings.length} app.</Text>
-          </Pressable>
-        );
-      })}
-    </ScrollView>
+    <View style={styles.resourcePanel}>
+      {globalResource ? (
+        <Pressable
+          onPress={() => onSelect(globalResource)}
+          style={[styles.globalResourceCard, selectedResourceId === "global" ? styles.globalResourceCardActive : null]}
+        >
+          <View>
+            <Text style={styles.resourceSectionLabel}>Vista</Text>
+            <Text style={styles.globalResourceTitle}>Tutto il centro</Text>
+          </View>
+          <Text style={styles.globalResourceCount}>
+            {getDailyBookings(bookings, dateKey, "global").filter(isActiveBooking).length} app.
+          </Text>
+        </Pressable>
+      ) : null}
+
+      <View style={styles.resourceSection}>
+        <Text style={styles.resourceSectionLabel}>Staff</Text>
+        <ScrollView contentContainerStyle={styles.staffRail} horizontal showsHorizontalScrollIndicator={false}>
+          {staffResources.map((resource) => {
+            const activeBookings = getDailyBookings(bookings, dateKey, resource.id).filter(isActiveBooking);
+            const selected = selectedResourceId === resource.id;
+            return (
+              <Pressable
+                key={resource.id}
+                onPress={() => onSelect(resource)}
+                style={[styles.staffCard, selected ? styles.staffCardActive : null]}
+              >
+                <View style={styles.staffAvatar}>
+                  <Text style={styles.staffAvatarText}>{resource.name.slice(0, 1).toUpperCase()}</Text>
+                </View>
+                <View style={styles.staffCopy}>
+                  <Text numberOfLines={1} style={[styles.staffName, selected ? styles.staffNameActive : null]}>
+                    {resource.name}
+                  </Text>
+                  <Text style={[styles.staffMeta, selected ? styles.staffMetaActive : null]}>
+                    {activeBookings.length} app.
+                  </Text>
+                </View>
+                <View style={[styles.availabilityDot, activeBookings.length >= 4 ? styles.availabilityBusy : null]} />
+              </Pressable>
+            );
+          })}
+          {staffResources.length === 0 ? <Text style={styles.resourceEmpty}>Nessun operatore assegnato.</Text> : null}
+        </ScrollView>
+      </View>
+
+      <View style={styles.resourceSection}>
+        <Text style={styles.resourceSectionLabel}>Cabine / rooms</Text>
+        <ScrollView contentContainerStyle={styles.roomRail} horizontal showsHorizontalScrollIndicator={false}>
+          {roomResources.map((resource) => {
+            const activeBookings = getDailyBookings(bookings, dateKey, resource.id).filter(isActiveBooking);
+            const selected = selectedResourceId === resource.id;
+            const occupancyLabel = activeBookings.length >= 4 ? "Piena" : activeBookings.length > 0 ? "In uso" : "Libera";
+            return (
+              <Pressable
+                key={resource.id}
+                onPress={() => onSelect(resource)}
+                style={[styles.roomCard, selected ? styles.roomCardActive : null]}
+              >
+                <View style={styles.roomCardTop}>
+                  <Text numberOfLines={1} style={styles.roomName}>{resource.name}</Text>
+                  <View style={[styles.roomStatusDot, activeBookings.length > 0 ? styles.roomStatusBusy : null]} />
+                </View>
+                <Text style={styles.roomMeta}>{occupancyLabel}</Text>
+                <Text style={styles.roomCount}>{activeBookings.length} appuntamenti</Text>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+      </View>
+    </View>
   );
 }
 
@@ -1341,7 +1405,6 @@ function DayOperationsPanel({
             </View>
 
             <View style={styles.quickGrid}>
-              <QuickAction icon="add-circle-outline" label="Nuovo appuntamento" onPress={onNewAppointment} />
               <QuickAction icon="ban-outline" label="Blocca slot" onPress={onBlockDay} />
               <QuickAction icon="cafe-outline" label="Aggiungi pausa" onPress={() => onSetDraftNote("Pausa extra")} />
               <QuickAction icon="copy-outline" label="Copia orari" onPress={() => onSetDraftNote("Orari copiati da giorno tipo")} />
@@ -1627,36 +1690,160 @@ const styles = StyleSheet.create({
   viewSwitcherTextActive: {
     color: colors.brandInk,
   },
-  resourceRail: {
-    gap: spacing.xs,
-    paddingBottom: spacing.md,
+  resourcePanel: {
+    gap: spacing.sm,
+    marginBottom: spacing.md,
   },
-  resourceChip: {
+  globalResourceCard: {
+    alignItems: "center",
+    backgroundColor: colors.surface,
+    borderColor: "rgba(23,63,74,0.07)",
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    minHeight: 56,
+    padding: spacing.md,
+  },
+  globalResourceCardActive: {
+    backgroundColor: colors.surfaceSky,
+    borderColor: colors.overlayBorder,
+  },
+  globalResourceTitle: {
+    color: colors.brandInk,
+    fontSize: 15,
+    fontWeight: "800",
+  },
+  globalResourceCount: {
+    color: colors.brandDark,
+    fontSize: 13,
+    fontWeight: "800",
+  },
+  resourceSection: {
+    gap: spacing.xs,
+  },
+  resourceSectionLabel: {
+    color: colors.textMuted,
+    fontSize: 11,
+    fontWeight: "800",
+    textTransform: "uppercase",
+  },
+  staffRail: {
+    gap: spacing.xs,
+    paddingRight: spacing.lg,
+  },
+  staffCard: {
+    alignItems: "center",
     backgroundColor: colors.surface,
     borderColor: "rgba(23,63,74,0.07)",
     borderRadius: radius.xl,
     borderWidth: 1,
-    minWidth: 116,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    flexDirection: "row",
+    gap: spacing.xs,
+    minHeight: 64,
+    minWidth: 154,
+    paddingHorizontal: spacing.sm,
   },
-  resourceChipActive: {
+  staffCardActive: {
     backgroundColor: colors.brandInk,
     borderColor: colors.brandInk,
   },
-  resourceName: {
-    color: colors.text,
+  staffAvatar: {
+    alignItems: "center",
+    backgroundColor: colors.surfaceLavender,
+    borderRadius: radius.round,
+    height: 38,
+    justifyContent: "center",
+    width: 38,
+  },
+  staffAvatarText: {
+    color: colors.brandInk,
+    fontSize: 15,
+    fontWeight: "800",
+  },
+  staffCopy: {
+    flex: 1,
+  },
+  staffName: {
+    color: colors.brandInk,
     fontSize: 13,
     fontWeight: "800",
   },
-  resourceNameActive: {
+  staffNameActive: {
     color: colors.surface,
   },
-  resourceMeta: {
+  staffMeta: {
     color: colors.textMuted,
     fontSize: 11,
     fontWeight: "700",
-    marginTop: 3,
+    marginTop: 2,
+  },
+  staffMetaActive: {
+    color: "rgba(255,255,255,0.76)",
+  },
+  availabilityDot: {
+    backgroundColor: colors.success,
+    borderRadius: radius.round,
+    height: 8,
+    width: 8,
+  },
+  availabilityBusy: {
+    backgroundColor: colors.warning,
+  },
+  roomRail: {
+    gap: spacing.xs,
+    paddingRight: spacing.lg,
+  },
+  roomCard: {
+    backgroundColor: colors.surfaceSoft,
+    borderColor: "rgba(23,63,74,0.06)",
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    minHeight: 82,
+    minWidth: 142,
+    padding: spacing.md,
+  },
+  roomCardActive: {
+    backgroundColor: colors.surfaceSky,
+    borderColor: colors.overlayBorder,
+  },
+  roomCardTop: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: spacing.xs,
+    justifyContent: "space-between",
+  },
+  roomName: {
+    color: colors.brandInk,
+    flex: 1,
+    fontSize: 14,
+    fontWeight: "800",
+  },
+  roomStatusDot: {
+    backgroundColor: colors.success,
+    borderRadius: radius.round,
+    height: 8,
+    width: 8,
+  },
+  roomStatusBusy: {
+    backgroundColor: colors.warning,
+  },
+  roomMeta: {
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: "800",
+    marginTop: spacing.xs,
+  },
+  roomCount: {
+    color: colors.textMuted,
+    fontSize: 11,
+    fontWeight: "700",
+    marginTop: 2,
+  },
+  resourceEmpty: {
+    color: colors.textMuted,
+    fontSize: 13,
+    paddingVertical: spacing.sm,
   },
   surface: {
     backgroundColor: "rgba(255,255,255,0.88)",
@@ -2117,9 +2304,9 @@ const styles = StyleSheet.create({
     borderRadius: radius.round,
     bottom: spacing.xxl,
     flexDirection: "row",
-    gap: 4,
+    gap: spacing.xs,
     minHeight: 58,
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: spacing.xl,
     position: "absolute",
     right: spacing.lg,
     ...shadows.floating,

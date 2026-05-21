@@ -761,6 +761,14 @@ export function CenterSettingsScreen({
     [center, schedule],
   );
   const businessStatusTone: StatusTone = activation.is_listable ? 'success' : 'warning';
+  const topServiceLabel =
+    center.primary_services?.[0] ??
+    configuredServices[0]?.name ??
+    'Da definire';
+  const centerCreatedAt = center.created_at ? new Date(center.created_at) : null;
+  const sinceLabel = centerCreatedAt && !Number.isNaN(centerCreatedAt.getTime())
+    ? new Intl.DateTimeFormat('it-IT', { year: 'numeric' }).format(centerCreatedAt)
+    : null;
   const serviceCategoriesCount = new Set(configuredServices.map((service) => service.category)).size;
   const completedServiceDetails = configuredServices.filter(
     (service) => service.price !== null && service.duration !== null,
@@ -1340,47 +1348,57 @@ export function CenterSettingsScreen({
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.heroCard}>
-          {center.branding.logo ? (
-            <Image source={{ uri: center.branding.logo }} style={styles.heroLogo} />
-          ) : (
-            <View style={styles.heroLogoFallback}>
-              <Text style={styles.heroLogoText}>{center.name.slice(0, 2).toUpperCase()}</Text>
+          <Pressable
+            accessibilityLabel="Modifica logo centro estetico"
+            onPress={() => setIsProfileModalOpen(true)}
+            style={styles.heroLogoButton}
+          >
+            {center.branding.logo ? (
+              <Image source={{ uri: center.branding.logo }} style={styles.heroLogo} />
+            ) : (
+              <View style={styles.heroLogoFallback}>
+                <Text style={styles.heroLogoText}>{center.name.slice(0, 2).toUpperCase()}</Text>
+              </View>
+            )}
+            <View style={styles.heroLogoEditBadge}>
+              <Ionicons color={colors.surface} name="camera-outline" size={15} />
             </View>
-          )}
+          </Pressable>
           <Text style={styles.heroTitle}>{center.name}</Text>
           <Text numberOfLines={2} style={styles.heroSubtitle}>
             {center.branding.description ||
               'Configura profilo, operativita e catalogo del tuo beauty center.'}
           </Text>
-          <Pressable onPress={() => setIsProfileModalOpen(true)} style={styles.logoUploadButton}>
-            <Text style={styles.logoUploadText}>Upload Center Logo</Text>
-          </Pressable>
-          <View style={styles.heroStatusWrap}>
+          <View style={styles.heroTrustRow}>
+            <View style={styles.heroRatingPill}>
+              <Ionicons color={colors.warning} name="star" size={15} />
+              <Text style={styles.heroRatingText}>
+                {ratingAverage !== null ? ratingAverage.toFixed(1) : '-'} ({reviewsCount} recensioni)
+              </Text>
+            </View>
             <StatusPill
-              label={activation.is_listable ? 'Online' : 'Da completare'}
+              label={activation.is_listable ? 'Verified Center' : 'Da completare'}
               tone={businessStatusTone}
             />
           </View>
 
-          <View style={styles.heroMetrics}>
-            <MetricCard
-              icon="sparkles-outline"
-              label="trattamenti attivi"
-              tone={configuredServices.length > 0 ? 'success' : 'warning'}
-              value={String(configuredServices.length)}
-            />
-            <MetricCard
-              icon="calendar-outline"
-              label="giorni aperti"
-              tone={activeDays.length > 0 ? 'success' : 'warning'}
-              value={`${activeDays.length}/7`}
-            />
-            <MetricCard
-              icon="star-outline"
-              label="rating clienti"
-              tone={ratingAverage !== null ? 'success' : 'neutral'}
-              value={ratingAverage !== null ? ratingAverage.toFixed(1) : '-'}
-            />
+          <View style={styles.heroIdentityGrid}>
+            <View style={styles.heroIdentityBadge}>
+              <Ionicons color={colors.brandInk} name="sparkles-outline" size={16} />
+              <View style={styles.heroIdentityCopy}>
+                <Text style={styles.heroIdentityLabel}>Top service</Text>
+                <Text numberOfLines={1} style={styles.heroIdentityValue}>{topServiceLabel}</Text>
+              </View>
+            </View>
+            {sinceLabel ? (
+              <View style={styles.heroIdentityBadge}>
+                <Ionicons color={colors.brandInk} name="ribbon-outline" size={16} />
+                <View style={styles.heroIdentityCopy}>
+                  <Text style={styles.heroIdentityLabel}>Since</Text>
+                  <Text style={styles.heroIdentityValue}>{sinceLabel}</Text>
+                </View>
+              </View>
+            ) : null}
           </View>
         </View>
 
@@ -1669,32 +1687,6 @@ export function CenterSettingsScreen({
           title="Catalogo e listino"
           subtitle="Categorie, prezzi, durate e visibilita online."
         >
-          <View style={styles.serviceSummary}>
-            <View style={styles.serviceSummaryItem}>
-              <Text style={styles.serviceSummaryValue}>{serviceCategoriesCount}</Text>
-              <Text style={styles.serviceSummaryLabel}>categorie</Text>
-            </View>
-            <View style={styles.serviceSummaryItem}>
-              <Text style={styles.serviceSummaryValue}>{completedServiceDetails}</Text>
-              <Text style={styles.serviceSummaryLabel}>con prezzo e durata</Text>
-            </View>
-            <View style={styles.onlineToggle}>
-              <View style={styles.onlineCopy}>
-                <Text style={styles.onlineTitle}>Online visibility</Text>
-                <Text style={styles.onlineMeta}>
-                  {activation.is_listable ? 'Prenotabile dai clienti' : 'Completa i requisiti'}
-                </Text>
-              </View>
-              <Switch
-                disabled={!activation.is_listable}
-                onValueChange={setOnlineBookingEnabled}
-                thumbColor={colors.surface}
-                trackColor={{ false: colors.border, true: colors.success }}
-                value={onlineBookingEnabled}
-              />
-            </View>
-          </View>
-
           {loadingServices ? <ActivityIndicator color={colors.brand} /> : null}
           <ServiceCatalogPicker
             catalog={treatmentCatalog}
@@ -1707,152 +1699,6 @@ export function CenterSettingsScreen({
             isBusy={savingService}
             onSaveTreatment={handleSaveTreatment}
           />
-
-          <View style={styles.serviceList}>
-            <View style={styles.serviceListHeader}>
-              <View>
-                <Text style={styles.cardMiniTitle}>Service list</Text>
-                <Text style={styles.cardHint}>
-                  {services.length} servizi configurati
-                </Text>
-              </View>
-            </View>
-            {managedServices.length === 0 ? (
-              <Text style={styles.emptyText}>
-                Aggiungi il primo trattamento dal catalogo per pubblicare il listino.
-              </Text>
-            ) : (
-              managedServices.map((service, index) => {
-                const serviceStatus = getServiceStatus(service);
-                const isPopular =
-                  service.price !== null &&
-                  service.price >=
-                    Math.max(
-                      ...managedServices
-                        .map((item) => item.price)
-                        .filter((price): price is number => typeof price === 'number'),
-                      0,
-                    );
-
-                return (
-                  <View
-                    key={service.id}
-                    style={[
-                      styles.serviceCard,
-                      service.visibility === 'hidden' ? styles.serviceCardHidden : null,
-                      serviceStatus.tone === 'warning' ? styles.serviceCardDraft : null,
-                    ]}
-                  >
-                    <View style={styles.serviceCardTop}>
-                      <View style={styles.serviceCardMain}>
-                        <View style={styles.serviceTitleRow}>
-                          <Text numberOfLines={2} style={styles.serviceName}>
-                            {service.name}
-                          </Text>
-                          {isPopular ? (
-                            <View style={styles.popularityPill}>
-                              <Ionicons color={colors.brandInk} name="trending-up-outline" size={12} />
-                              <Text style={styles.popularityText}>Popular</Text>
-                            </View>
-                          ) : null}
-                        </View>
-                        <View style={styles.serviceBadges}>
-                          <View style={styles.categoryBadge}>
-                            <Text numberOfLines={1} style={styles.categoryBadgeText}>
-                              {service.category}
-                            </Text>
-                          </View>
-                          {serviceStatus.tone === 'warning' ? <View style={styles.subtleWarningDot} /> : null}
-                        </View>
-                      </View>
-                      <Switch
-                        disabled={savingService}
-                        onValueChange={() => {
-                          void handleToggleServiceVisibility(service);
-                        }}
-                        thumbColor={colors.surface}
-                        trackColor={{ false: colors.border, true: colors.success }}
-                        value={service.visibility === 'active'}
-                      />
-                    </View>
-
-                    <View style={styles.serviceMetricRow}>
-                      <View style={styles.serviceMetric}>
-                        <Ionicons color={colors.textMuted} name="time-outline" size={14} />
-                        <Text style={styles.serviceMetricText}>
-                          {service.duration !== null ? `${service.duration} min` : 'durata mancante'}
-                        </Text>
-                      </View>
-                      <View style={styles.serviceMetric}>
-                        <Ionicons color={colors.textMuted} name="card-outline" size={14} />
-                        <Text style={styles.serviceMetricText}>
-                          {service.price !== null ? `EUR ${service.price}` : 'prezzo mancante'}
-                        </Text>
-                      </View>
-                      <View style={styles.serviceMetric}>
-                        <Ionicons
-                          color={colors.textMuted}
-                          name={service.visibility === 'active' ? 'globe-outline' : 'eye-off-outline'}
-                          size={14}
-                        />
-                        <Text style={styles.serviceMetricText}>
-                          {service.visibility === 'active' ? 'online' : 'offline'}
-                        </Text>
-                      </View>
-                    </View>
-
-                    <View style={styles.serviceActionRail}>
-                      <Pressable onPress={() => openServiceEditor(service)} style={styles.serviceAction}>
-                        <Ionicons color={colors.brandInk} name="create-outline" size={15} />
-                        <Text style={styles.serviceActionText}>Edit</Text>
-                      </Pressable>
-                      <Pressable
-                        disabled={savingService}
-                        onPress={() => {
-                          void handleDuplicateService(service);
-                        }}
-                        style={styles.serviceAction}
-                      >
-                        <Ionicons color={colors.brandInk} name="copy-outline" size={15} />
-                        <Text style={styles.serviceActionText}>Duplicate</Text>
-                      </Pressable>
-                      <Pressable
-                        disabled={savingService}
-                        onPress={() => {
-                          void handleArchiveService(service);
-                        }}
-                        style={[styles.serviceAction, styles.serviceActionDanger]}
-                      >
-                        <Ionicons color={colors.danger} name="archive-outline" size={15} />
-                        <Text style={[styles.serviceActionText, styles.serviceActionDangerText]}>
-                          Archive
-                        </Text>
-                      </Pressable>
-                      <View style={styles.serviceReorder}>
-                        <Pressable
-                          disabled={index === 0}
-                          onPress={() => moveService(service.id, -1)}
-                          style={[styles.serviceReorderButton, index === 0 ? styles.serviceReorderDisabled : null]}
-                        >
-                          <Ionicons color={colors.brandInk} name="chevron-up" size={14} />
-                        </Pressable>
-                        <Pressable
-                          disabled={index === managedServices.length - 1}
-                          onPress={() => moveService(service.id, 1)}
-                          style={[
-                            styles.serviceReorderButton,
-                            index === managedServices.length - 1 ? styles.serviceReorderDisabled : null,
-                          ]}
-                        >
-                          <Ionicons color={colors.brandInk} name="chevron-down" size={14} />
-                        </Pressable>
-                      </View>
-                    </View>
-                  </View>
-                );
-              })
-            )}
-          </View>
 
           <PackagesManagement
             onAdd={addPackage}
@@ -2269,6 +2115,10 @@ const styles = StyleSheet.create({
     height: 96,
     width: 96,
   },
+  heroLogoButton: {
+    borderRadius: 34,
+    position: 'relative',
+  },
   heroLogoFallback: {
     alignItems: 'center',
     backgroundColor: colors.surfaceLavender,
@@ -2282,10 +2132,23 @@ const styles = StyleSheet.create({
     fontSize: 28,
     fontWeight: '700',
   },
+  heroLogoEditBadge: {
+    alignItems: 'center',
+    backgroundColor: colors.brandInk,
+    borderColor: colors.surface,
+    borderRadius: radius.round,
+    borderWidth: 2,
+    bottom: 2,
+    height: 30,
+    justifyContent: 'center',
+    position: 'absolute',
+    right: 2,
+    width: 30,
+  },
   heroEyebrow: {
     ...textStyles.eyebrow,
     color: colors.rose,
-    letterSpacing: 0.8,
+    letterSpacing: 0,
   },
   heroTitle: {
     color: colors.brandInk,
@@ -2302,21 +2165,66 @@ const styles = StyleSheet.create({
     marginTop: spacing.xs,
     textAlign: 'center',
   },
-  logoUploadButton: {
-    backgroundColor: colors.surfaceSky,
-    borderRadius: radius.round,
+  heroTrustRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
     justifyContent: 'center',
     marginTop: spacing.md,
-    minHeight: 38,
-    paddingHorizontal: spacing.lg,
   },
-  logoUploadText: {
+  heroRatingPill: {
+    alignItems: 'center',
+    backgroundColor: '#FFF8EA',
+    borderColor: 'rgba(210, 151, 52, 0.12)',
+    borderRadius: radius.round,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 5,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 7,
+  },
+  heroRatingText: {
     color: colors.brandInk,
-    fontSize: 13,
-    fontWeight: '800',
+    fontSize: 12,
+    fontWeight: '700',
   },
-  heroStatusWrap: {
-    marginTop: spacing.sm,
+  heroIdentityGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+    justifyContent: 'center',
+    marginTop: spacing.md,
+    width: '100%',
+  },
+  heroIdentityBadge: {
+    alignItems: 'center',
+    backgroundColor: '#F8FCFB',
+    borderColor: 'rgba(33, 77, 99, 0.06)',
+    borderRadius: 18,
+    borderWidth: 1,
+    flexBasis: '47%',
+    flexDirection: 'row',
+    flexGrow: 1,
+    gap: spacing.xs,
+    minHeight: 58,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+  },
+  heroIdentityCopy: {
+    flex: 1,
+  },
+  heroIdentityLabel: {
+    color: colors.textMuted,
+    fontSize: 11,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+  },
+  heroIdentityValue: {
+    color: colors.brandInk,
+    fontSize: 14,
+    fontWeight: '700',
+    marginTop: 2,
   },
   heroMetrics: {
     flexDirection: 'row',
@@ -2365,7 +2273,7 @@ const styles = StyleSheet.create({
     color: colors.rose,
     fontSize: 11,
     fontWeight: '700',
-    letterSpacing: 0.9,
+    letterSpacing: 0,
     textTransform: 'uppercase',
   },
   sectionTitle: {

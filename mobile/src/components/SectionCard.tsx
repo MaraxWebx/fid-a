@@ -40,8 +40,8 @@ const styles = StyleSheet.create({
     borderColor: "rgba(23,63,74,0.06)",
     borderRadius: radius.xl,
     borderWidth: 1,
-    marginBottom: spacing.lg,
-    padding: spacing.lg,
+    marginBottom: spacing.md,
+    padding: spacing.md,
     ...shadows.soft,
   },
   cardSky: {
@@ -63,9 +63,9 @@ const styles = StyleSheet.create({
     marginBottom: spacing.xs,
   },
   title: {
-    ...textStyles.cardTitle,
+    ...textStyles.sectionTitle,
   },
   content: {
-    marginTop: spacing.md,
+    marginTop: spacing.sm,
   },
 });

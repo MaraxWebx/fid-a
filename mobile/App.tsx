@@ -27,6 +27,7 @@ import { ClientHomeScreen } from "./src/screens/ClientHomeScreen";
 import { ClientProfileScreen } from "./src/screens/ClientProfileScreen";
 import { ClientRegistrationScreen } from "./src/screens/ClientRegistrationScreen";
 import { CenterCalendarScreen } from "./src/screens/CenterCalendarScreen";
+import { CenterBusinessInsightsScreen } from "./src/screens/CenterBusinessInsightsScreen";
 import { CenterClientDetailScreen } from "./src/screens/CenterClientDetailScreen";
 import { CenterClientsScreen } from "./src/screens/CenterClientsScreen";
 import { CenterDashboardScreen } from "./src/screens/CenterDashboardScreen";
@@ -57,6 +58,7 @@ type ClientTab =
 type CenterTab =
   | "home"
   | "calendar"
+  | "insights"
   | "clients"
   | "settings"
   | "onboarding"
@@ -567,6 +569,9 @@ export default function App() {
               onCenterUpdated={handleCenterSessionUpdated}
             />
           ) : null}
+          {centerTab === "insights" ? (
+            <CenterBusinessInsightsScreen center={session.center} />
+          ) : null}
           {centerTab === "clients" ? (
             <CenterClientsScreen
               center={session.center}
@@ -591,6 +596,7 @@ export default function App() {
           <BottomTabs
             items={[
               { key: "calendar", label: "Agenda", icon: "calendar" },
+              { key: "insights", label: "Insights", icon: "insights" },
               { key: "clients", label: "Clienti", icon: "clients" },
               { key: "home", label: "Dashboard", icon: "home" },
               { key: "settings", label: "Config", icon: "settings" },

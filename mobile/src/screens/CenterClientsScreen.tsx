@@ -43,11 +43,11 @@ export function CenterClientsScreen({ center, onOpenClient }: CenterClientsScree
     <ScrollView contentContainerStyle={styles.content} style={styles.container}>
       <ScreenHeader
         eyebrow="Clienti"
-        title={`CRM ${center.name}`}
-        subtitle="Schede clienti reali aggregate dalle prenotazioni presenti nel database."
+        title="Clienti"
+        subtitle="Anagrafica essenziale e storico appuntamenti."
       />
 
-      <SectionCard eyebrow="Anagrafica" title={`${clients.length} clienti reali`}>
+      <SectionCard eyebrow="Anagrafica" title={`${clients.length} clienti`}>
         {loading ? <ActivityIndicator color={colors.brand} /> : null}
         {error ? <Text style={styles.clientMeta}>{error}</Text> : null}
         {!loading && !error && clients.length === 0 ? (
@@ -62,10 +62,8 @@ export function CenterClientsScreen({ center, onOpenClient }: CenterClientsScree
             <View style={styles.clientMain}>
               <Text style={styles.clientName}>{client.name || 'Cliente senza nome'}</Text>
               <Text style={styles.clientMeta}>{client.phone || 'Telefono non disponibile'}</Text>
-              <Text style={styles.clientMeta}>{client.email ?? 'Email non disponibile'}</Text>
-              <Text style={styles.clientBookings}>{client.bookings ?? 0} prenotazioni totali</Text>
               <Text style={styles.clientMeta}>
-                Ultima visita: {client.last_visit ?? 'non disponibile'}
+                {client.bookings ?? 0} prenotazioni · ultima visita {client.last_visit ?? 'n/d'}
               </Text>
             </View>
             <Ionicons color={colors.textMuted} name="chevron-forward" size={18} />
@@ -89,24 +87,25 @@ const styles = StyleSheet.create({
   clientCard: {
     alignItems: 'center',
     backgroundColor: colors.surfaceSoft,
-    borderRadius: 16,
+    borderRadius: 18,
     flexDirection: 'row',
     gap: spacing.sm,
     marginBottom: spacing.sm,
-    padding: spacing.sm,
+    minHeight: 72,
+    padding: spacing.md,
   },
   clientMain: {
     flex: 1,
   },
   clientName: {
-    color: colors.text,
+    color: colors.brandInk,
     fontSize: 16,
     fontWeight: '800',
   },
   clientMeta: {
     color: colors.textMuted,
     fontSize: 14,
-    marginTop: spacing.xs,
+    marginTop: 3,
   },
   clientBookings: {
     color: colors.brandInk,

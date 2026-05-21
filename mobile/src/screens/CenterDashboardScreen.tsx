@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Animated,
@@ -18,14 +18,11 @@ import { getCenterDashboard, getCenterReviews, updateBookingStatus } from "../li
 import {
   AppointmentState,
   AppointmentStatus,
-  AppointmentStatusAction,
   AppointmentTemporalState,
   getAppointmentTemporalState,
   getAppointmentStatusCounts,
   getAppointmentStatusMeta,
   getNextAppointment,
-  getPrimaryAppointmentAction,
-  getSecondaryAppointmentActions,
   isAppointmentActive,
   normalizeAppointmentState,
   toApiBookingState,
@@ -35,7 +32,6 @@ import type {
   Center,
   CenterDashboard,
   DashboardAgendaItem,
-  DashboardClient,
   Review,
 } from "../types/api";
 import { colors } from "../theme/colors";
@@ -155,75 +151,6 @@ const demoAgenda: DashboardAgendaItem[] = [
   },
 ];
 
-const demoClients: DashboardClient[] = [
-  {
-    id: "demo-client-1",
-    name: "Giulia Rossi",
-    phone: "+39 333 128 4455",
-    last_visit: "28 apr",
-    history: [
-      {
-        id: "demo-history-1",
-        date_label: "28 apr",
-        service_name: "Pulizia viso luxury",
-        status: "confirmed",
-        time_label: "10:00",
-      },
-      {
-        id: "demo-history-2",
-        date_label: "12 mar",
-        service_name: "Massaggio viso",
-        status: "confirmed",
-        time_label: "17:30",
-      },
-      {
-        id: "demo-history-3",
-        date_label: "03 feb",
-        service_name: "Trattamento glow",
-        status: "confirmed",
-        time_label: "16:00",
-      },
-    ],
-  },
-  {
-    id: "demo-client-2",
-    name: "Elena Bianchi",
-    phone: "+39 349 762 1800",
-    last_visit: "02 mag",
-    history: [
-      {
-        id: "demo-history-4",
-        date_label: "02 mag",
-        service_name: "Manicure semipermanente",
-        status: "confirmed",
-        time_label: "12:00",
-      },
-      {
-        id: "demo-history-5",
-        date_label: "18 apr",
-        service_name: "Pedicure spa",
-        status: "confirmed",
-        time_label: "11:30",
-      },
-    ],
-  },
-  {
-    id: "demo-client-3",
-    name: "Sara Lombardi",
-    phone: "+39 340 554 0921",
-    last_visit: "15 apr",
-    history: [
-      {
-        id: "demo-history-6",
-        date_label: "15 apr",
-        service_name: "Massaggio rilassante",
-        status: "confirmed",
-        time_label: "18:00",
-      },
-    ],
-  },
-];
-
 const demoReview: Review = {
   booking_id: "demo-review-booking",
   center_id: "demo-center",
@@ -258,48 +185,6 @@ const demoAlerts = [
     tone: treatmentTones.massaggi,
   },
 ];
-
-function getClientDedupKey(client: DashboardClient) {
-  const phone = client.phone?.replace(/\D/g, "");
-  if (phone && phone !== "0") return `phone:${phone}`;
-
-  const name = client.name.trim().toLowerCase();
-  if (name) return `name:${name}`;
-
-  return `id:${client.id}`;
-}
-
-function dedupeDashboardClients(clients: DashboardClient[]) {
-  const clientsByKey = new Map<string, DashboardClient>();
-
-  clients.forEach((client) => {
-    const key = getClientDedupKey(client);
-    const existingClient = clientsByKey.get(key);
-
-    if (!existingClient) {
-      clientsByKey.set(key, {
-        ...client,
-        history: [...(client.history ?? [])],
-      });
-      return;
-    }
-
-    const historyById = new Map(
-      (existingClient.history ?? []).map((entry) => [entry.id, entry]),
-    );
-    (client.history ?? []).forEach((entry) => {
-      historyById.set(entry.id, entry);
-    });
-
-    clientsByKey.set(key, {
-      ...existingClient,
-      last_visit: existingClient.last_visit ?? client.last_visit,
-      history: Array.from(historyById.values()),
-    });
-  });
-
-  return Array.from(clientsByKey.values());
-}
 
 function getTreatmentTone(service: string) {
   const value = service.toLowerCase();
@@ -353,13 +238,11 @@ function normalizeExternalUrl(url: string) {
 export function CenterDashboardScreen({
   activation,
   center,
-  onOpenClient,
   onOpenNewAppointment,
   onOpenOnboarding,
 }: CenterDashboardScreenProps) {
   const [dashboard, setDashboard] = useState<CenterDashboard | null>(null);
   const [latestReview, setLatestReview] = useState<Review | null>(null);
-  const [expandedClientId, setExpandedClientId] = useState<string | null>(null);
   const [agendaStatuses, setAgendaStatuses] = useState<Record<string, AppointmentState>>({});
   const [cancelDraft, setCancelDraft] = useState<DashboardAgendaItem | null>(null);
   const [cancelReason, setCancelReason] = useState("");
@@ -413,10 +296,6 @@ export function CenterDashboardScreen({
   }, []);
 
   const agenda = dashboard?.agenda && dashboard.agenda.length > 0 ? dashboard.agenda : demoAgenda;
-  const clients = useMemo(() => {
-    const source = dashboard?.clients && dashboard.clients.length > 0 ? dashboard.clients : demoClients;
-    return dedupeDashboardClients(source);
-  }, [dashboard?.clients]);
   const agendaWithStatuses: NormalizedAgendaItem[] = agenda.map((entry) => {
     const appointmentState =
       agendaStatuses[entry.id] ?? normalizeAppointmentState(entry.status_label, entry.is_delayed);
@@ -522,7 +401,8 @@ export function CenterDashboardScreen({
     const currentState = normalizeAppointmentState(entry.status_label, entry.is_delayed);
     if (
       nextState.status === AppointmentStatus.CANCELLED &&
-      currentState.status !== AppointmentStatus.CANCELLED
+      currentState.status !== AppointmentStatus.CANCELLED &&
+      !reason?.trim()
     ) {
       setCancelDraft(entry);
       setCancelReason("");
@@ -597,7 +477,7 @@ export function CenterDashboardScreen({
             <Text style={styles.eyebrow}>Dashboard centro</Text>
             <Text numberOfLines={1} style={styles.centerName}>{center.name}</Text>
             <Text numberOfLines={1} style={styles.centerDescription}>
-              {dateLabel} Â· {timeLabel}
+              {dateLabel} - {timeLabel}
             </Text>
           </View>
 
@@ -660,31 +540,10 @@ export function CenterDashboardScreen({
           ))}
         </View>
 
-        <View style={styles.issueStrip}>
-          <IssueItem
-            icon="alert-circle-outline"
-            label="app. urgente"
-            tone={activeIssues > 0 ? "warning" : "calm"}
-            value={String(activeIssues)}
-          />
-          <IssueItem
-            icon="time-outline"
-            label="in ritardo"
-            tone={lateAppointments > 0 ? "warning" : "calm"}
-            value={String(lateAppointments)}
-          />
-          <IssueItem
-            icon="checkmark-circle-outline"
-            label="arrivata"
-            tone="success"
-            value={String(arrivedClients)}
-          />
-        </View>
-
         <View style={styles.quickActions}>
           <QuickAction
             icon="add-circle-outline"
-            label="Nuovo appunt."
+            label="Nuovo appuntamento"
             onPress={onOpenNewAppointment}
             variant="primary"
           />
@@ -709,7 +568,7 @@ export function CenterDashboardScreen({
               key={entry.id}
               entry={entry}
               isLast={index === schedulePreview.length - 1}
-              onChangeStatus={(nextState) => void handleChangeStatus(entry, nextState)}
+              onChangeStatus={(nextState, reason) => void handleChangeStatus(entry, nextState, reason)}
               saving={statusSavingId === entry.id}
               status={entry.appointmentState}
             />
@@ -718,7 +577,7 @@ export function CenterDashboardScreen({
 
         <View style={styles.sectionHeader}>
           <View>
-            <Text style={styles.sectionKicker}>Alert intelligenti</Text>
+            <Text style={styles.sectionKicker}>Promemoria</Text>
             <Text style={styles.sectionTitle}>Da non perdere</Text>
           </View>
         </View>
@@ -735,93 +594,39 @@ export function CenterDashboardScreen({
           ))}
         </View>
 
-        <View style={styles.sectionHeader}>
-          <View>
-            <Text style={styles.sectionKicker}>Relazioni attive</Text>
-            <Text style={styles.sectionTitle}>Clienti recenti</Text>
-          </View>
-        </View>
-
-        <View style={styles.clientList}>
-          {clients.slice(0, 3).map((client) => {
-            const history = client.history ?? [];
-            const visits = Math.max(history.length, 1);
-            const isVip = visits >= 3;
-            const isExpanded = expandedClientId === client.id;
-
-            return (
-              <View key={client.id} style={styles.clientCard}>
-                <Pressable
-                  onPress={() => setExpandedClientId(isExpanded ? null : client.id)}
-                  style={styles.clientRow}
-                >
-                  <View style={styles.clientAvatar}>
-                    <Text style={styles.clientAvatarText}>
-                      {client.name.slice(0, 2).toUpperCase()}
-                    </Text>
-                  </View>
-                  <View style={styles.clientMain}>
-                    <Text style={styles.clientName}>{client.name}</Text>
-                    <Text style={styles.clientMeta}>
-                      {visits} visite · ultimo trattamento {client.last_visit ?? "n/a"}
-                    </Text>
-                  </View>
-                  <View style={[styles.loyaltyBadge, isVip ? styles.vipBadge : null]}>
-                    <Text style={styles.loyaltyText}>{isVip ? "VIP" : "Loyal"}</Text>
-                  </View>
-                </Pressable>
-
-                {isExpanded ? (
-                  <View style={styles.clientHistory}>
-                    {history.slice(0, 3).map((entry) => (
-                      <View key={entry.id} style={styles.historyRow}>
-                        <View style={styles.historyDot} />
-                        <Text style={styles.historyText}>
-                          {entry.service_name} · {entry.date_label}
-                        </Text>
-                      </View>
-                    ))}
-                    <Pressable onPress={() => onOpenClient(client.id)} style={styles.openClientButton}>
-                      <Text style={styles.openClientText}>Apri scheda cliente</Text>
-                      <Ionicons color={colors.brandInk} name="chevron-forward" size={15} />
-                    </Pressable>
-                  </View>
-                ) : null}
-              </View>
-            );
-          })}
-        </View>
 
         <View style={styles.sectionHeader}>
           <View>
-            <Text style={styles.sectionKicker}>Qualita servizio</Text>
-            <Text style={styles.sectionTitle}>Insight finale</Text>
+            <Text style={styles.sectionKicker}>Recensioni</Text>
+            <Text style={styles.sectionTitle}>Latest Reviews</Text>
           </View>
         </View>
 
         <View style={styles.alertList}>
           <View style={styles.reviewCard}>
             <View style={styles.reviewHeader}>
-              <Ionicons color={colors.brandInk} name="star-outline" size={18} />
-              <Text style={styles.reviewTitle}>Ultima recensione</Text>
+              <View style={styles.reviewIdentity}>
+                <Text style={styles.reviewTitle}>{review.user_name ?? "Cliente"}</Text>
+                <Text style={styles.reviewMeta}>{review.service_name ?? "Trattamento"}</Text>
+              </View>
+              <Text style={styles.reviewStars}>{"★".repeat(review.rating)}</Text>
             </View>
-            <Text style={styles.reviewStars}>{"★".repeat(review.rating)}</Text>
             <Text style={styles.reviewComment}>{review.comment}</Text>
-            <Text style={styles.reviewMeta}>
-              {review.user_name ?? "Cliente"} · {review.service_name ?? "Trattamento"}
-            </Text>
+            <Pressable style={styles.reviewReplyAction}>
+              <Text style={styles.reviewReplyText}>Risposta rapida</Text>
+              <Ionicons color={colors.brandInk} name="return-up-forward-outline" size={14} />
+            </Pressable>
           </View>
         </View>
 
         <View style={styles.aiCard}>
           <View style={styles.aiIcon}>
-            <Ionicons color={colors.brandInk} name="sparkles" size={18} />
+            <Ionicons color={colors.brandInk} name="sparkles-outline" size={18} />
           </View>
           <View style={styles.aiMain}>
-            <Text style={styles.aiTitle}>Suggerimento AI</Text>
+            <Text style={styles.aiTitle}>AI Suggestions</Text>
             <Text style={styles.aiText}>
-              Proponi un siero lenitivo post-trattamento alle clienti viso di oggi.
-              Upsell stimato: +EUR 36.
+              Spazio pronto per suggerimenti operativi su agenda, ricavi e follow-up.
             </Text>
           </View>
         </View>
@@ -879,41 +684,12 @@ function SmartAlert({
   text: string;
   tone: TreatmentTone;
 }) {
-  const glowValue = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    const animation = Animated.loop(
-      Animated.sequence([
-        Animated.timing(glowValue, {
-          duration: 1800,
-          toValue: 1,
-          useNativeDriver: true,
-        }),
-        Animated.timing(glowValue, {
-          duration: 1800,
-          toValue: 0,
-          useNativeDriver: true,
-        }),
-      ]),
-    );
-    animation.start();
-    return () => animation.stop();
-  }, [glowValue]);
-
   return (
-    <Animated.View
+    <View
       style={[
         styles.smartAlert,
         {
           backgroundColor: tone.background,
-          transform: [
-            {
-              scale: glowValue.interpolate({
-                inputRange: [0, 1],
-                outputRange: [1, 1.01],
-              }),
-            },
-          ],
         },
       ]}
     >
@@ -924,7 +700,7 @@ function SmartAlert({
         <Text style={[styles.smartAlertLabel, { color: tone.text }]}>{label}</Text>
         <Text style={styles.smartAlertText}>{text}</Text>
       </View>
-    </Animated.View>
+    </View>
   );
 }
 
@@ -1037,38 +813,14 @@ function PrimaryKpiCard({
           <Text style={styles.nextAppointmentLabel}>Prossimo appuntamento</Text>
           <Text numberOfLines={1} style={styles.nextAppointmentText}>
             {nextAppointment
-              ? `${nextAppointment.time_label} Â· ${nextAppointment.client_name} Â· ${nextAppointment.service}`
+              ? `${nextAppointment.time_label} - ${nextAppointment.client_name} - ${nextAppointment.service}`
               : "Nessun appuntamento attivo"}
           </Text>
         </View>
       </View>
       <Text style={styles.primaryKpiMeta}>
-        {completedCount} completati · previsione {predictedRevenue}
+        {completedCount} completati - previsione {predictedRevenue}
       </Text>
-    </View>
-  );
-}
-
-function IssueItem({
-  icon,
-  label,
-  tone,
-  value,
-}: {
-  icon: React.ComponentProps<typeof Ionicons>["name"];
-  label: string;
-  tone: "calm" | "success" | "warning";
-  value: string;
-}) {
-  const color = tone === "warning" ? "#A15C12" : tone === "success" ? "#28745D" : colors.brandInk;
-  const background =
-    tone === "warning" ? "#FFF4E7" : tone === "success" ? "#EAF9F3" : colors.surface;
-
-  return (
-    <View style={[styles.issueItem, { backgroundColor: background }]}>
-      <Ionicons color={color} name={icon} size={15} />
-      <Text style={[styles.issueValue, { color }]}>{value}</Text>
-      <Text style={styles.issueLabel}>{label}</Text>
     </View>
   );
 }
@@ -1085,11 +837,13 @@ function KpiCard({
 }) {
   return (
     <View style={styles.kpiCard}>
-      <View style={styles.kpiIcon}>
-        <Ionicons color={colors.brandInk} name={icon} size={17} />
+      <View style={styles.kpiHeader}>
+        <View style={styles.kpiIcon}>
+          <Ionicons color={colors.brandInk} name={icon} size={17} />
+        </View>
+        <Text style={styles.kpiLabel}>{label}</Text>
       </View>
       <Text style={styles.kpiValue}>{value}</Text>
-      <Text style={styles.kpiLabel}>{label}</Text>
     </View>
   );
 }
@@ -1103,19 +857,48 @@ function AgendaRow({
 }: {
   entry: NormalizedAgendaItem;
   isLast: boolean;
-  onChangeStatus: (state: AppointmentState) => void;
+  onChangeStatus: (state: AppointmentState, reason?: string) => void;
   saving: boolean;
   status: AppointmentState;
 }) {
   const tone = getTreatmentTone(entry.service);
   const statusTone = getAppointmentStatusMeta(status);
-  const primaryAction = getPrimaryAppointmentAction(status);
-  const secondaryActions = getSecondaryAppointmentActions(status);
   const pressScale = useRef(new Animated.Value(1)).current;
-  const [moreOpen, setMoreOpen] = useState(false);
+  const quickActions = [
+    {
+      icon: "person-circle-outline" as const,
+      key: "arrived",
+      label: "Arrivata",
+      nextState: { status: AppointmentStatus.ARRIVED, isDelayed: false },
+      variant: "neutral" as const,
+    },
+    {
+      icon: "time-outline" as const,
+      key: "delayed",
+      label: "Ritardo",
+      nextState: { status: AppointmentStatus.CONFIRMED, isDelayed: true },
+      variant: "neutral" as const,
+    },
+    {
+      icon: "alert-circle-outline" as const,
+      key: "no-show",
+      label: "No-show",
+      nextState: { status: AppointmentStatus.NO_SHOW, isDelayed: false },
+      variant: "neutral" as const,
+    },
+    {
+      icon: "close-circle-outline" as const,
+      key: "cancelled",
+      label: "Annulla",
+      nextState: { status: AppointmentStatus.CANCELLED, isDelayed: false },
+      reason: "Dashboard quick action",
+      variant: "danger" as const,
+    },
+  ];
+  const canUseQuickActions = isAppointmentActive(status.status);
 
-  const handleStatusPress = (action: AppointmentStatusAction) => {
-    onChangeStatus(action.nextState);
+  const handleStatusPress = (nextState: AppointmentState, reason?: string) => {
+    onChangeStatus(nextState, reason);
     Animated.sequence([
       Animated.timing(pressScale, {
         duration: 90,
@@ -1186,66 +969,57 @@ function AgendaRow({
             <Ionicons color="#4D7D9B" name="hourglass-outline" size={13} />
             <Text style={styles.durationChipText}>{entry.duration_label ?? "60 min"}</Text>
           </View>
+          <View style={styles.durationChip}>
+            <Ionicons color="#4D7D9B" name="person-outline" size={13} />
+            <Text style={styles.durationChipText}>{entry.operator_name}</Text>
+          </View>
         </View>
         <View style={styles.statusActions}>
-          {primaryAction ? (
-            <Pressable
-              disabled={saving || !primaryAction}
-              onPress={() => handleStatusPress(primaryAction)}
-              style={[
-                styles.statusPrimaryAction,
-                !primaryAction ? styles.statusPrimaryActionDisabled : null,
-              ]}
-            >
-              <Ionicons
-                color={colors.surface}
-                name={getAppointmentStatusMeta(primaryAction.nextState).icon}
-                size={16}
-              />
-              <Text style={styles.statusPrimaryActionText}>{primaryAction.label}</Text>
-            </Pressable>
-          ) : (
-            <View style={styles.statusCompleteState}>
-              <Text style={styles.statusCompleteText}>Nessuna azione</Text>
-            </View>
-          )}
-          <Pressable
-            disabled={saving || secondaryActions.length === 0}
-            onPress={() => setMoreOpen((current) => !current)}
-            style={[styles.statusMoreAction, secondaryActions.length === 0 ? styles.statusMoreActionDisabled : null]}
-          >
-            <Ionicons color={colors.brandInk} name="ellipsis-horizontal" size={18} />
-          </Pressable>
-        </View>
-        {moreOpen && secondaryActions.length > 0 ? (
-          <View style={styles.moreActionsPanel}>
-            {secondaryActions.map((action) => {
-              const actionTone = getAppointmentStatusMeta(action.nextState);
+          {canUseQuickActions ? (
+            quickActions.map((action) => {
+              const isSelected =
+                status.status === action.nextState.status &&
+                status.isDelayed === action.nextState.isDelayed;
               return (
                 <Pressable
                   disabled={saving}
-                  key={`${action.nextState.status}-${action.nextState.isDelayed ? "delayed" : "regular"}`}
-                  onPress={() => {
-                    setMoreOpen(false);
-                    handleStatusPress(action);
-                  }}
-                  style={styles.moreAction}
+                  key={action.key}
+                  onPress={() => handleStatusPress(action.nextState, action.reason)}
+                  style={[
+                    styles.statusQuickAction,
+                    isSelected ? styles.statusQuickActionActive : null,
+                    action.variant === "danger" ? styles.statusQuickActionDanger : null,
+                  ]}
                 >
-                  <Ionicons color={actionTone.text} name={actionTone.icon} size={15} />
-                  <Text style={[styles.moreActionText, { color: actionTone.text }]}>
+                  <Ionicons
+                    color={isSelected ? colors.surface : colors.brandInk}
+                    name={action.icon}
+                    size={14}
+                  />
+                  <Text
+                    numberOfLines={1}
+                    style={[
+                      styles.statusQuickActionText,
+                      isSelected ? styles.statusQuickActionTextActive : null,
+                    ]}
+                  >
                     {action.label}
                   </Text>
                 </Pressable>
               );
-            })}
-          </View>
-        ) : null}
+            })
+          ) : (
+            <View style={styles.statusCompleteState}>
+              <Text style={styles.statusCompleteText}>Gestito</Text>
+            </View>
+          )}
+        </View>
         {status.status === AppointmentStatus.CANCELLED ? (
           <View style={styles.cancellationInfo}>
             <Text style={styles.cancellationInfoText}>
               Disdetta cliente
               {entry.client_cancellations_count
-                ? ` · ${entry.client_cancellations_count} totali`
+                ? ` - ${entry.client_cancellations_count} totali`
                 : ""}
             </Text>
             {entry.cancellation_reason ? (
@@ -1328,7 +1102,7 @@ const styles = StyleSheet.create({
     color: colors.brandDark,
     fontSize: 11,
     fontWeight: "800",
-    letterSpacing: 1.1,
+    letterSpacing: 0,
     textTransform: "uppercase",
   },
   centerName: {
@@ -1517,7 +1291,7 @@ const styles = StyleSheet.create({
   quickActions: {
     flexDirection: "row",
     gap: spacing.xs,
-    marginBottom: spacing.md,
+    marginBottom: spacing.lg,
   },
   quickAction: {
     alignItems: "center",
@@ -1554,68 +1328,50 @@ const styles = StyleSheet.create({
   kpiGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: spacing.xs,
-    marginBottom: spacing.xs,
+    gap: spacing.sm,
+    marginBottom: spacing.lg,
   },
   kpiCard: {
     backgroundColor: colors.surface,
-    borderRadius: 14,
+    borderColor: "rgba(23,63,74,0.06)",
+    borderRadius: 18,
+    borderWidth: 1,
     flexBasis: "31.5%",
     flexGrow: 1,
-    minHeight: 78,
-    padding: spacing.sm,
-    shadowColor: "#8EC8EA",
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.025,
-    shadowRadius: 10,
+    minHeight: 104,
+    padding: spacing.md,
+    shadowColor: colors.brandInk,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.035,
+    shadowRadius: 14,
     elevation: 1,
   },
-  issueStrip: {
+  kpiHeader: {
+    alignItems: "center",
     flexDirection: "row",
     gap: spacing.xs,
-    marginBottom: spacing.sm,
-  },
-  issueItem: {
-    alignItems: "center",
-    borderRadius: 12,
-    flex: 1,
-    flexDirection: "row",
-    gap: 5,
-    justifyContent: "center",
-    minHeight: 34,
-    paddingHorizontal: spacing.xs,
-  },
-  issueValue: {
-    fontSize: 14,
-    fontWeight: "800",
-    lineHeight: 18,
-  },
-  issueLabel: {
-    color: colors.text,
-    fontSize: 12,
-    fontWeight: "800",
   },
   kpiIcon: {
     alignItems: "center",
     backgroundColor: colors.surfaceMuted,
     borderRadius: 10,
-    height: 30,
+    height: 32,
     justifyContent: "center",
-    marginBottom: spacing.xs,
-    width: 30,
+    width: 32,
   },
   kpiValue: {
     color: colors.brandInk,
-    fontSize: 28,
+    fontSize: 30,
     fontWeight: "800",
-    lineHeight: 31,
+    lineHeight: 34,
+    marginTop: spacing.md,
   },
   kpiLabel: {
     color: colors.text,
-    fontSize: 12,
-    fontWeight: "800",
+    flex: 1,
+    fontSize: 13,
+    fontWeight: "700",
     lineHeight: 16,
-    marginTop: 2,
   },
   sectionHeader: {
     alignItems: "center",
@@ -1627,7 +1383,7 @@ const styles = StyleSheet.create({
     color: colors.brandDark,
     fontSize: 11,
     fontWeight: "800",
-    letterSpacing: 1,
+    letterSpacing: 0,
     textTransform: "uppercase",
   },
   sectionTitle: {
@@ -1824,8 +1580,35 @@ const styles = StyleSheet.create({
   },
   statusActions: {
     flexDirection: "row",
+    flexWrap: "wrap",
     gap: spacing.xs,
     marginTop: spacing.sm,
+  },
+  statusQuickAction: {
+    alignItems: "center",
+    backgroundColor: colors.surfaceMuted,
+    borderRadius: 13,
+    flexBasis: "48%",
+    flexDirection: "row",
+    flexGrow: 1,
+    gap: 4,
+    justifyContent: "center",
+    minHeight: 36,
+    paddingHorizontal: spacing.xs,
+  },
+  statusQuickActionActive: {
+    backgroundColor: colors.brandDark,
+  },
+  statusQuickActionDanger: {
+    backgroundColor: "#F8EDEE",
+  },
+  statusQuickActionText: {
+    color: colors.brandInk,
+    fontSize: 11,
+    fontWeight: "800",
+  },
+  statusQuickActionTextActive: {
+    color: colors.surface,
   },
   statusPrimaryAction: {
     alignItems: "center",
@@ -2032,17 +1815,19 @@ const styles = StyleSheet.create({
   },
   smartAlert: {
     alignItems: "center",
+    borderColor: "rgba(23, 63, 74, 0.06)",
+    borderWidth: 1,
     borderRadius: 18,
     flexDirection: "row",
-    gap: spacing.md,
-    padding: spacing.md,
+    gap: spacing.sm,
+    padding: spacing.sm,
   },
   smartAlertIcon: {
     alignItems: "center",
-    borderRadius: 14,
-    height: 40,
+    borderRadius: 12,
+    height: 36,
     justifyContent: "center",
-    width: 40,
+    width: 36,
   },
   smartAlertMain: {
     flex: 1,
@@ -2059,65 +1844,88 @@ const styles = StyleSheet.create({
   },
   reviewCard: {
     backgroundColor: "rgba(255, 255, 255, 0.9)",
+    borderColor: "rgba(23, 63, 74, 0.06)",
+    borderWidth: 1,
     borderRadius: 18,
     padding: spacing.md,
   },
   reviewHeader: {
     alignItems: "center",
     flexDirection: "row",
-    gap: spacing.xs,
+    justifyContent: "space-between",
+  },
+  reviewIdentity: {
+    flex: 1,
+    paddingRight: spacing.sm,
   },
   reviewTitle: {
     color: colors.brandInk,
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: "800",
   },
   reviewStars: {
     color: "#5FAEC8",
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: "800",
-    marginTop: spacing.sm,
   },
   reviewComment: {
     color: colors.text,
     fontSize: 15,
     lineHeight: 22,
-    marginTop: spacing.xs,
+    marginTop: spacing.sm,
   },
   reviewMeta: {
     color: colors.textMuted,
-    fontSize: 13,
+    fontSize: 12,
+    marginTop: 2,
+  },
+  reviewReplyAction: {
+    alignItems: "center",
+    alignSelf: "flex-start",
+    backgroundColor: colors.surfaceMuted,
+    borderRadius: 999,
+    flexDirection: "row",
+    gap: 4,
     marginTop: spacing.sm,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 7,
+  },
+  reviewReplyText: {
+    color: colors.brandInk,
+    fontSize: 12,
+    fontWeight: "800",
   },
   aiCard: {
     alignItems: "center",
-    backgroundColor: "#EAF6FF",
-    borderRadius: 22,
+    backgroundColor: colors.surfaceMuted,
+    borderColor: "rgba(23, 63, 74, 0.06)",
+    borderRadius: 18,
+    borderWidth: 1,
     flexDirection: "row",
-    gap: spacing.md,
-    padding: spacing.md,
+    gap: spacing.sm,
+    padding: spacing.sm,
   },
   aiIcon: {
     alignItems: "center",
-    backgroundColor: "#DDF3FF",
-    borderRadius: 16,
-    height: 44,
+    backgroundColor: colors.surface,
+    borderRadius: 14,
+    height: 38,
     justifyContent: "center",
-    width: 44,
+    width: 38,
   },
   aiMain: {
     flex: 1,
   },
   aiTitle: {
     color: colors.brandInk,
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: "800",
   },
   aiText: {
-    color: colors.text,
-    fontSize: 14,
-    lineHeight: 20,
-    marginTop: 4,
+    color: colors.textMuted,
+    fontSize: 13,
+    lineHeight: 18,
+    marginTop: 3,
   },
   cancelBackdrop: {
     alignItems: "center",
