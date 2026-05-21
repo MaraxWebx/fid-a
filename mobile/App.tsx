@@ -546,6 +546,7 @@ export default function App() {
               activation={session.activation}
               center={session.center}
               onOpenClient={(clientId) => handleOpenCenterClient(clientId, "home")}
+              onOpenNewAppointment={() => setCenterTab("calendar")}
               onOpenOnboarding={() => setCenterTab("onboarding")}
             />
           ) : null}

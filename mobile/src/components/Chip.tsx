@@ -1,15 +1,25 @@
 import { Pressable, StyleSheet, Text } from "react-native";
 
-import { colors } from "../theme/colors";
-import { spacing } from "../theme/spacing";
+import { colors, statusColors } from "../theme/colors";
+import { radius, spacing } from "../theme/spacing";
 
 type ChipProps = {
   label: string;
+  tone?: "neutral" | "success" | "warning" | "danger" | "info" | "blush";
 };
 
-export function Chip({ label }: ChipProps) {
+export function Chip({ label, tone = "neutral" }: ChipProps) {
   return (
-    <Pressable style={styles.chip}>
+    <Pressable
+      style={[
+        styles.chip,
+        tone === "success" ? styles.success : null,
+        tone === "warning" ? styles.warning : null,
+        tone === "danger" ? styles.danger : null,
+        tone === "info" ? styles.info : null,
+        tone === "blush" ? styles.blush : null,
+      ]}
+    >
       <Text style={styles.label}>{label}</Text>
     </Pressable>
   );
@@ -17,17 +27,30 @@ export function Chip({ label }: ChipProps) {
 
 const styles = StyleSheet.create({
   chip: {
-    backgroundColor: colors.surface,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: colors.border,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    backgroundColor: colors.surfaceSoft,
+    borderRadius: radius.round,
     marginRight: spacing.sm,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
   },
   label: {
-    color: colors.brandDark,
-    fontSize: 14,
+    color: colors.text,
+    fontSize: 12,
     fontWeight: "600",
+  },
+  success: {
+    backgroundColor: `${statusColors.active}24`,
+  },
+  warning: {
+    backgroundColor: `${statusColors.incomplete}28`,
+  },
+  danger: {
+    backgroundColor: colors.roseSoft,
+  },
+  info: {
+    backgroundColor: colors.surfaceSky,
+  },
+  blush: {
+    backgroundColor: colors.roseSoft,
   },
 });

@@ -265,8 +265,8 @@ const styles = StyleSheet.create({
 
   card: {
     backgroundColor: colors.surface,
-    padding: spacing.xl,
-    borderRadius: 16,
+    padding: spacing.lg,
+    borderRadius: 20,
   },
 
   row: {
@@ -285,7 +285,7 @@ const styles = StyleSheet.create({
 
   input: {
     backgroundColor: colors.surfaceSoft,
-    borderRadius: 12,
+    borderRadius: 14,
     padding: 14,
   },
 
@@ -302,8 +302,8 @@ const styles = StyleSheet.create({
 
   planCard: {
     backgroundColor: colors.surface,
-    padding: spacing.xl,
-    borderRadius: 16,
+    padding: spacing.lg,
+    borderRadius: 20,
   },
 
   planTitle: {
@@ -339,10 +339,10 @@ const styles = StyleSheet.create({
   /* STATUS */
 
   statusCard: {
-    marginTop: spacing.xl,
-    padding: spacing.lg,
+    marginTop: spacing.lg,
+    padding: spacing.md,
     backgroundColor: colors.surfaceSand,
-    borderRadius: 12,
+    borderRadius: 18,
   },
 
   statusTitle: {

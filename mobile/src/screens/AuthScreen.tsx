@@ -159,15 +159,13 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingHorizontal: spacing.lg,
-    paddingTop: spacing.xl,
-    paddingBottom: spacing.xxl,
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.xl,
   },
   card: {
     backgroundColor: colors.surface,
-    borderColor: colors.overlayBorder,
-    borderRadius: 12,
-    borderWidth: 1,
-    padding: spacing.xl,
+    borderRadius: 20,
+    padding: spacing.lg,
   },
   rolePill: {
     alignSelf: "flex-start",
@@ -188,9 +186,7 @@ const styles = StyleSheet.create({
   },
   input: {
     backgroundColor: colors.surfaceSoft,
-    borderColor: colors.border,
-    borderRadius: 12,
-    borderWidth: 1,
+    borderRadius: 14,
     color: colors.text,
     fontSize: 16,
     minHeight: 54,
@@ -207,9 +203,9 @@ const styles = StyleSheet.create({
   },
   footerCard: {
     backgroundColor: colors.surfaceSand,
-    borderRadius: 24,
-    marginTop: spacing.xl,
-    padding: spacing.xl,
+    borderRadius: 20,
+    marginTop: spacing.lg,
+    padding: spacing.lg,
   },
   footerText: {
     ...textStyles.body,

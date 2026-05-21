@@ -10,6 +10,11 @@ import {
 } from "react-native";
 
 import { getCenterBookingDetail } from "../lib/api";
+import {
+  AppointmentStatus,
+  getAppointmentStatusMeta,
+  normalizeAppointmentState,
+} from "../lib/appointmentStatus";
 import { colors } from "../theme/colors";
 import { spacing } from "../theme/spacing";
 import type { BookingDetail } from "../types/api";
@@ -57,6 +62,8 @@ export function CenterBookingDetailModal({
 
   const booking = detail?.booking ?? null;
   const review = detail?.review ?? null;
+  const bookingStatus = normalizeAppointmentState(booking?.status, booking?.is_delayed);
+  const bookingStatusMeta = getAppointmentStatusMeta(bookingStatus);
 
   return (
     <Modal
@@ -91,16 +98,16 @@ export function CenterBookingDetailModal({
                   <Text style={styles.label}>Ora</Text>
                   <Text style={styles.value}>{booking.time_label ?? "n/a"}</Text>
                 </View>
-                {booking.status !== "confirmed" ? (
+                {bookingStatus.status !== AppointmentStatus.CONFIRMED || bookingStatus.isDelayed ? (
                   <View style={styles.summaryBlock}>
                     <Text style={styles.label}>Stato</Text>
                     <Text
                       style={[
                         styles.value,
-                        booking.status === "canceled" ? styles.danger : null,
+                        { color: bookingStatusMeta.text },
                       ]}
                     >
-                      {booking.status}
+                      {bookingStatusMeta.label}
                     </Text>
                   </View>
                 ) : null}
@@ -162,21 +169,21 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(49,94,114,0.28)",
     flex: 1,
     justifyContent: "flex-end",
-    padding: spacing.lg,
+    padding: spacing.md,
   },
   card: {
     backgroundColor: colors.surface,
-    borderRadius: 24,
+    borderRadius: 22,
     maxHeight: "90%",
     maxWidth: 560,
-    padding: spacing.lg,
+    padding: spacing.md,
     width: "100%",
   },
   header: {
     alignItems: "center",
     flexDirection: "row",
     justifyContent: "space-between",
-    marginBottom: spacing.lg,
+    marginBottom: spacing.md,
   },
   headerCopy: {
     flex: 1,
@@ -215,8 +222,8 @@ const styles = StyleSheet.create({
   section: {
     borderTopColor: colors.border,
     borderTopWidth: 1,
-    marginTop: spacing.lg,
-    paddingTop: spacing.lg,
+    marginTop: spacing.md,
+    paddingTop: spacing.md,
   },
   sectionTitle: {
     color: colors.text,
@@ -249,9 +256,7 @@ const styles = StyleSheet.create({
   },
   reviewBox: {
     backgroundColor: colors.surfaceSoft,
-    borderColor: colors.border,
     borderRadius: 14,
-    borderWidth: 1,
     padding: spacing.md,
   },
   rating: {

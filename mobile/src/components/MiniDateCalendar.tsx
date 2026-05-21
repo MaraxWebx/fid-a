@@ -3,7 +3,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import type { CalendarDateOption } from "../lib/date";
 import { colors } from "../theme/colors";
-import { spacing } from "../theme/spacing";
+import { radius, spacing } from "../theme/spacing";
 
 type MiniDateCalendarProps = {
   dates: CalendarDateOption[];
@@ -125,10 +125,8 @@ function buildMonths(dates: CalendarDateOption[]) {
 const styles = StyleSheet.create({
   wrap: {
     backgroundColor: colors.surfaceSoft,
-    borderColor: colors.border,
-    borderRadius: 18,
-    borderWidth: 1,
-    padding: spacing.md,
+    borderRadius: radius.lg,
+    padding: spacing.sm,
   },
   monthHeader: {
     alignItems: "center",
@@ -139,9 +137,7 @@ const styles = StyleSheet.create({
   navButton: {
     alignItems: "center",
     backgroundColor: colors.surface,
-    borderColor: colors.border,
-    borderRadius: 12,
-    borderWidth: 1,
+    borderRadius: radius.md,
     height: 34,
     justifyContent: "center",
     width: 34,
@@ -167,7 +163,7 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
   weekdayLabel: {
-    color: colors.textSoft,
+    color: colors.textMuted,
     fontSize: 12,
     fontWeight: "700",
     textAlign: "center",
@@ -184,17 +180,14 @@ const styles = StyleSheet.create({
   dayCell: {
     alignItems: "center",
     backgroundColor: colors.surface,
-    borderColor: colors.border,
-    borderRadius: 14,
-    borderWidth: 1,
+    borderRadius: radius.md,
     justifyContent: "center",
     marginBottom: spacing.xs,
-    minHeight: 62,
+    minHeight: 54,
     width: "14.285%",
   },
   dayCellActive: {
     backgroundColor: colors.surfaceSky,
-    borderColor: colors.brand,
   },
   dayNumber: {
     color: colors.text,

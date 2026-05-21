@@ -1,3 +1,5 @@
+import type { AppointmentStatus } from '../lib/appointmentStatus';
+
 export type Center = {
   id: string;
   email: string;
@@ -8,7 +10,17 @@ export type Center = {
     logo?: string;
     tiktok_url?: string;
   };
-  opening_hours: Record<string, { start: string | null; end: string | null }>;
+  opening_hours: Record<
+    string,
+    {
+      break_enabled?: boolean;
+      break_end?: string | null;
+      break_start?: string | null;
+      end: string | null;
+      slots?: Array<{ start: string | null; end: string | null }>;
+      start: string | null;
+    }
+  >;
   opening_days?: string[];
   availability_overrides?: Record<
     string,
@@ -56,6 +68,7 @@ export type Booking = {
   operator_name: string;
   client_name?: string;
   client_phone?: string;
+  is_delayed?: boolean | null;
   status: string;
   slot_id?: string;
   start_time?: string;
@@ -123,7 +136,7 @@ export type BookingUpdateInput = {
 export type BookingStatusInput = {
   role: 'center';
   center_id: string;
-  status: string;
+  status: AppointmentStatus | string;
   cancellation_reason?: string | null;
 };
 
@@ -165,10 +178,13 @@ export type DashboardMetric = {
 
 export type DashboardAgendaItem = {
   id: string;
+  start_time?: string | null;
+  end_time?: string | null;
   time_label: string;
   client_name: string;
   operator_name: string;
   service: string;
+  is_delayed?: boolean | null;
   status_label: string;
   duration_label?: string | null;
   canceled_at?: string | null;
@@ -251,7 +267,17 @@ export type CenterRegistrationResponse = {
 export type CenterOnboardingInput = {
   logo_url: string;
   opening_days: string[];
-  opening_hours: Record<string, { start: string | null; end: string | null }>;
+  opening_hours: Record<
+    string,
+    {
+      break_enabled?: boolean;
+      break_end?: string | null;
+      break_start?: string | null;
+      end: string | null;
+      slots?: Array<{ start: string | null; end: string | null }>;
+      start: string | null;
+    }
+  >;
   primary_services: string[];
 };
 

@@ -3,7 +3,7 @@ import { Animated, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { toLocalDateKey } from "../lib/date";
 import { colors } from "../theme/colors";
-import { spacing } from "../theme/spacing";
+import { radius, spacing } from "../theme/spacing";
 
 type CalendarDayStripProps = {
   appointmentCounts?: Record<string, number>;
@@ -139,18 +139,16 @@ function CalendarDay({
 
 const styles = StyleSheet.create({
   outer: {
-    backgroundColor: "rgba(255, 255, 255, 0.74)",
-    borderColor: "rgba(174, 218, 245, 0.58)",
-    borderRadius: 24,
-    borderWidth: 1,
-    marginBottom: spacing.lg,
+    backgroundColor: "rgba(255, 255, 255, 0.86)",
+    borderRadius: radius.xl,
+    marginBottom: spacing.md,
     overflow: "hidden",
-    paddingVertical: spacing.sm,
+    paddingVertical: spacing.xs,
     shadowColor: "#8EC8EA",
     shadowOffset: { width: 0, height: 16 },
-    shadowOpacity: 0.12,
-    shadowRadius: 30,
-    elevation: 4,
+    shadowOpacity: 0.06,
+    shadowRadius: 20,
+    elevation: 2,
   },
   glowLayer: {
     backgroundColor: "rgba(185, 231, 246, 0.28)",
@@ -164,34 +162,30 @@ const styles = StyleSheet.create({
   content: {
     alignItems: "center",
     flexDirection: "row",
-    gap: spacing.sm,
+    gap: spacing.xs,
     justifyContent: "center",
     paddingHorizontal: spacing.sm,
   },
   day: {
     alignItems: "center",
-    backgroundColor: "rgba(244, 251, 255, 0.82)",
-    borderColor: "rgba(174, 218, 245, 0.42)",
-    borderRadius: 18,
-    borderWidth: 1,
-    height: 84,
+    backgroundColor: "rgba(244, 251, 255, 0.74)",
+    borderRadius: radius.lg,
+    height: 74,
     justifyContent: "center",
     paddingVertical: spacing.xs,
-    width: 66,
+    width: 62,
   },
   daySelected: {
     backgroundColor: "#EAF6FF",
-    borderColor: "#A9D8FF",
   },
   dayToday: {
     backgroundColor: "#8DDCFF",
-    borderColor: "#C9F1FF",
-    borderRadius: 22,
+    borderRadius: radius.lg,
     shadowColor: "#5DBFEA",
     shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.32,
-    shadowRadius: 20,
-    elevation: 6,
+    shadowOpacity: 0.22,
+    shadowRadius: 16,
+    elevation: 4,
   },
   dayNumber: {
     color: "#6B91AB",

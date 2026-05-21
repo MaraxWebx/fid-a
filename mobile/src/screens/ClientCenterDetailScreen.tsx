@@ -83,7 +83,9 @@ export function ClientCenterDetailScreen({
           statsResponse,
         ]) => {
           if (!mounted) return;
-          setServices(servicesResponse);
+          setServices(
+            servicesResponse.filter((service) => service.visibility === "active"),
+          );
           setReviews(reviewsResponse);
           setBookings(
             bookingsResponse.filter((booking) => booking.center_id === center.id),
@@ -363,8 +365,8 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingHorizontal: spacing.lg,
-    paddingTop: spacing.xl,
-    paddingBottom: spacing.xxl,
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.xl,
   },
   emptyPage: {
     backgroundColor: colors.canvas,
@@ -389,12 +391,10 @@ const styles = StyleSheet.create({
   header: {
     alignItems: "center",
     backgroundColor: colors.surface,
-    borderColor: colors.overlayBorder,
-    borderRadius: 12,
-    borderWidth: 1,
+    borderRadius: 20,
     flexDirection: "row",
     gap: spacing.md,
-    padding: spacing.lg,
+    padding: spacing.md,
   },
   logo: {
     backgroundColor: colors.surface,
@@ -446,12 +446,10 @@ const styles = StyleSheet.create({
   ratingSummary: {
     alignItems: "center",
     backgroundColor: colors.surfaceSand,
-    borderColor: colors.warning,
-    borderRadius: 12,
-    borderWidth: 1,
+    borderRadius: 18,
     flexDirection: "row",
     gap: spacing.md,
-    marginTop: spacing.lg,
+    marginTop: spacing.md,
     padding: spacing.md,
   },
   ratingIcon: {
@@ -482,9 +480,7 @@ const styles = StyleSheet.create({
   defaultButton: {
     alignItems: "center",
     backgroundColor: colors.warning,
-    borderColor: colors.warning,
-    borderRadius: 12,
-    borderWidth: 1,
+    borderRadius: 14,
     justifyContent: "center",
     minHeight: 52,
     paddingHorizontal: spacing.lg,
@@ -504,11 +500,9 @@ const styles = StyleSheet.create({
   },
   section: {
     backgroundColor: colors.surface,
-    borderColor: colors.overlayBorder,
-    borderRadius: 12,
-    borderWidth: 1,
-    marginTop: spacing.lg,
-    padding: spacing.lg,
+    borderRadius: 20,
+    marginTop: spacing.md,
+    padding: spacing.md,
   },
   sectionTitle: {
     color: colors.text,
@@ -521,9 +515,7 @@ const styles = StyleSheet.create({
   },
   statTile: {
     backgroundColor: colors.surfaceSoft,
-    borderColor: colors.border,
     borderRadius: 14,
-    borderWidth: 1,
     padding: spacing.md,
   },
   statValue: {
@@ -603,9 +595,7 @@ const styles = StyleSheet.create({
   serviceRow: {
     alignItems: "center",
     backgroundColor: colors.surfaceSoft,
-    borderColor: colors.border,
     borderRadius: 14,
-    borderWidth: 1,
     flexDirection: "row",
     gap: spacing.md,
     padding: spacing.md,

@@ -1,7 +1,7 @@
 import { Pressable, StyleSheet, Text } from "react-native";
 
 import { colors } from "../theme/colors";
-import { spacing } from "../theme/spacing";
+import { radius, shadows, spacing } from "../theme/spacing";
 
 type PrimaryButtonProps = {
   disabled?: boolean;
@@ -45,42 +45,34 @@ export function PrimaryButton({
 const styles = StyleSheet.create({
   button: {
     alignItems: "center",
-    borderRadius: 12,
+    borderRadius: radius.lg,
     justifyContent: "center",
     minHeight: 52,
     paddingHorizontal: spacing.lg,
   },
   primary: {
-    backgroundColor: colors.brand,
-    shadowColor: colors.brandDark,
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.14,
-    shadowRadius: 18,
-    elevation: 4,
+    backgroundColor: colors.brandDark,
+    ...shadows.card,
   },
   secondary: {
-    backgroundColor: colors.surfaceSky,
+    backgroundColor: colors.surface,
     borderColor: colors.overlayBorder,
     borderWidth: 1,
   },
   danger: {
-    backgroundColor: colors.rose,
-    shadowColor: colors.danger,
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.14,
-    shadowRadius: 18,
-    elevation: 4,
+    backgroundColor: colors.roseSoft,
+    borderColor: "rgba(200,111,122,0.16)",
+    borderWidth: 1,
   },
   disabled: {
     opacity: 0.5,
   },
   label: {
     fontSize: 15,
-    fontWeight: "700",
-    letterSpacing: 0.2,
+    fontWeight: "600",
   },
   primaryLabel: {
-    color: colors.brandInk,
+    color: colors.surface,
   },
   secondaryLabel: {
     color: colors.brandInk,

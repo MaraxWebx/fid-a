@@ -2,7 +2,7 @@ import Ionicons from "react-native-vector-icons/Ionicons";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { colors } from "../theme/colors";
-import { spacing } from "../theme/spacing";
+import { radius, shadows, spacing } from "../theme/spacing";
 
 type TabIcon =
   | "home"
@@ -39,9 +39,9 @@ export function BottomTabs({ activeKey, items, onChange }: BottomTabsProps) {
               style={[styles.item, active ? styles.itemActive : null]}
             >
               <Ionicons
-                color={active ? colors.brand : colors.textMuted}
+                color={active ? colors.brandInk : colors.textSoft}
                 name={iconNameMap[item.icon][active ? "active" : "default"]}
-                size={20}
+                size={active ? 24 : 22}
               />
               <Text style={[styles.label, active ? styles.labelActive : null]}>
                 {item.label}
@@ -87,41 +87,43 @@ const iconNameMap = {
 
 const styles = StyleSheet.create({
   outer: {
-    backgroundColor: colors.canvas,
-    paddingBottom: spacing.sm,
+    backgroundColor: "transparent",
+    paddingBottom: spacing.lg,
     paddingHorizontal: spacing.lg,
-    paddingTop: spacing.sm,
+    paddingTop: spacing.xs,
   },
   wrap: {
     backgroundColor: colors.surface,
-    borderColor: colors.overlayBorder,
-    borderRadius: 12,
+    borderColor: "rgba(23,63,74,0.07)",
+    borderRadius: radius.xxl,
     borderWidth: 1,
     flexDirection: "row",
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.sm,
-    shadowColor: colors.brandDark,
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.08,
-    shadowRadius: 24,
-    elevation: 4,
+    gap: spacing.xs,
+    paddingHorizontal: spacing.xs,
+    paddingVertical: spacing.xs,
+    ...shadows.floating,
   },
   item: {
     alignItems: "center",
-    borderRadius: 12,
+    borderRadius: radius.xl,
     flex: 1,
-    gap: 6,
+    gap: 5,
+    minHeight: 58,
+    justifyContent: "center",
+    paddingHorizontal: 4,
     paddingVertical: 8,
   },
   itemActive: {
     backgroundColor: colors.surfaceSky,
   },
   label: {
-    color: colors.textMuted,
-    fontSize: 10,
+    color: colors.textSoft,
+    fontSize: 11,
     fontWeight: "600",
   },
   labelActive: {
     color: colors.brandInk,
+    fontSize: 12,
+    fontWeight: "700",
   },
 });

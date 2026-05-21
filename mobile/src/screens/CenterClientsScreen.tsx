@@ -83,25 +83,25 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingHorizontal: spacing.lg,
-    paddingTop: spacing.xl,
-    paddingBottom: spacing.xxl,
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.xl,
   },
   clientCard: {
     alignItems: 'center',
-    backgroundColor: colors.surfaceMuted,
-    borderRadius: 20,
+    backgroundColor: colors.surfaceSoft,
+    borderRadius: 16,
     flexDirection: 'row',
     gap: spacing.sm,
-    marginBottom: spacing.md,
-    padding: spacing.md,
+    marginBottom: spacing.sm,
+    padding: spacing.sm,
   },
   clientMain: {
     flex: 1,
   },
   clientName: {
     color: colors.text,
-    fontSize: 17,
-    fontWeight: '700',
+    fontSize: 16,
+    fontWeight: '800',
   },
   clientMeta: {
     color: colors.textMuted,
@@ -109,7 +109,7 @@ const styles = StyleSheet.create({
     marginTop: spacing.xs,
   },
   clientBookings: {
-    color: colors.brandDark,
+    color: colors.brandInk,
     fontSize: 13,
     fontWeight: '700',
     marginTop: spacing.sm,

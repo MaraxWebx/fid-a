@@ -271,8 +271,8 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingHorizontal: spacing.lg,
-    paddingTop: spacing.xl,
-    paddingBottom: spacing.xxl,
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.xl,
   },
   profileCard: {
     alignItems: 'center',
@@ -280,15 +280,15 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     flexDirection: 'row',
     gap: spacing.md,
-    padding: spacing.lg,
+    padding: spacing.md,
   },
   avatar: {
     alignItems: 'center',
     backgroundColor: colors.brand,
-    borderRadius: 24,
-    height: 64,
+    borderRadius: 20,
+    height: 56,
     justifyContent: 'center',
-    width: 64,
+    width: 56,
   },
   avatarText: {
     color: '#FFFFFF',
@@ -311,9 +311,7 @@ const styles = StyleSheet.create({
   editButton: {
     alignItems: 'center',
     backgroundColor: colors.surface,
-    borderColor: colors.border,
     borderRadius: 14,
-    borderWidth: 1,
     gap: 4,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
@@ -333,9 +331,7 @@ const styles = StyleSheet.create({
   },
   statTile: {
     backgroundColor: colors.surfaceSoft,
-    borderColor: colors.border,
     borderRadius: 14,
-    borderWidth: 1,
     padding: spacing.md,
   },
   statValue: {
@@ -396,20 +392,20 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(49, 94, 114, 0.28)',
     flex: 1,
     justifyContent: 'flex-end',
-    padding: spacing.lg,
+    padding: spacing.md,
   },
   modalCard: {
     backgroundColor: colors.surface,
-    borderRadius: 24,
+    borderRadius: 22,
     maxWidth: 560,
-    padding: spacing.lg,
+    padding: spacing.md,
     width: '100%',
   },
   modalHeader: {
     alignItems: 'center',
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: spacing.lg,
+    marginBottom: spacing.md,
   },
   modalCopy: {
     flex: 1,
@@ -442,9 +438,7 @@ const styles = StyleSheet.create({
   },
   input: {
     backgroundColor: colors.surfaceSoft,
-    borderColor: colors.border,
-    borderRadius: 12,
-    borderWidth: 1,
+    borderRadius: 14,
     color: colors.text,
     fontSize: 16,
     minHeight: 54,

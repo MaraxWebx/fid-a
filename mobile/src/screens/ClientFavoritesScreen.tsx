@@ -139,8 +139,8 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingHorizontal: spacing.lg,
-    paddingTop: spacing.xl,
-    paddingBottom: spacing.xxl,
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.xl,
   },
   list: {
     gap: spacing.sm,
@@ -148,16 +148,13 @@ const styles = StyleSheet.create({
   centerCard: {
     alignItems: "center",
     backgroundColor: colors.surface,
-    borderColor: colors.border,
-    borderRadius: 14,
-    borderWidth: 1,
+    borderRadius: 16,
     flexDirection: "row",
     gap: spacing.md,
     padding: spacing.md,
   },
   centerCardSelected: {
     backgroundColor: colors.surfaceSky,
-    borderColor: colors.brand,
   },
   logo: {
     backgroundColor: "#FFFFFF",

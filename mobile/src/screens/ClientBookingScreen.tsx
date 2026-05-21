@@ -86,8 +86,12 @@ export function ClientBookingScreen({
     getCenterServices(activeCenterId)
       .then((response) => {
         if (!mounted) return;
-        setServices(response);
-        const defaultServiceId = selectedServiceId ?? null;
+        const activeServices = response.filter((service) => service.visibility === "active");
+        setServices(activeServices);
+        const defaultServiceId =
+          activeServices.some((service) => service.id === selectedServiceId)
+            ? selectedServiceId
+            : null;
         setServiceId(defaultServiceId);
         setSlotId(null);
         setBookingError(null);
@@ -473,14 +477,13 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingHorizontal: spacing.lg,
-    paddingTop: spacing.xl,
-    paddingBottom: spacing.xxl,
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.xl,
   },
   row: {
     alignItems: "center",
-    borderColor: colors.border,
-    borderRadius: 12,
-    borderWidth: 1,
+    backgroundColor: colors.surface,
+    borderRadius: 16,
     flexDirection: "row",
     justifyContent: "space-between",
     marginBottom: spacing.sm,
@@ -488,7 +491,6 @@ const styles = StyleSheet.create({
   },
   rowActive: {
     backgroundColor: colors.surfaceMuted,
-    borderColor: colors.brand,
   },
   logo: {
     backgroundColor: colors.surfaceSoft,
@@ -606,16 +608,16 @@ const styles = StyleSheet.create({
   },
   modalCard: {
     backgroundColor: colors.surface,
-    borderRadius: 24,
+    borderRadius: 22,
     maxWidth: 560,
-    padding: spacing.lg,
+    padding: spacing.md,
     width: "100%",
   },
   modalHeader: {
     alignItems: "center",
     flexDirection: "row",
     justifyContent: "space-between",
-    marginBottom: spacing.lg,
+    marginBottom: spacing.md,
   },
   modalEyebrow: {
     color: colors.textMuted,
@@ -644,9 +646,7 @@ const styles = StyleSheet.create({
   slotChip: {
     alignItems: "center",
     backgroundColor: colors.surfaceSoft,
-    borderColor: colors.border,
     borderRadius: 14,
-    borderWidth: 1,
     justifyContent: "center",
     minWidth: 86,
     paddingHorizontal: spacing.md,
@@ -654,7 +654,6 @@ const styles = StyleSheet.create({
   },
   slotChipActive: {
     backgroundColor: colors.surfaceSky,
-    borderColor: colors.brand,
   },
   slotChipText: {
     color: colors.text,

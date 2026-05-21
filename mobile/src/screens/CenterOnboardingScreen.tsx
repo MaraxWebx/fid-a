@@ -139,7 +139,9 @@ export function CenterOnboardingScreen({
     getCenterServices(center.id)
       .then((response) => {
         if (mounted) {
-          setConfiguredServices(response);
+          setConfiguredServices(
+            response.filter((service) => service.visibility !== "archived"),
+          );
         }
       })
       .catch(() => {
@@ -562,23 +564,19 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingHorizontal: spacing.lg,
-    paddingTop: spacing.xl,
-    paddingBottom: spacing.xxl,
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.xl,
   },
   stepCard: {
     backgroundColor: colors.surface,
-    borderColor: colors.overlayBorder,
-    borderRadius: 12,
-    borderWidth: 1,
-    padding: spacing.lg,
+    borderRadius: 20,
+    padding: spacing.md,
   },
   stepIcon: {
     alignItems: "center",
     alignSelf: "center",
     backgroundColor: colors.surfaceSky,
-    borderColor: colors.overlayBorder,
     borderRadius: 14,
-    borderWidth: 1,
     height: 54,
     justifyContent: "center",
     marginBottom: spacing.md,
@@ -607,23 +605,19 @@ const styles = StyleSheet.create({
   },
   input: {
     backgroundColor: colors.surfaceSoft,
-    borderColor: colors.border,
-    borderRadius: 12,
-    borderWidth: 1,
+    borderRadius: 14,
     color: colors.text,
     fontSize: 16,
     minHeight: 54,
     paddingHorizontal: spacing.md,
   },
   dayList: {
-    gap: spacing.md,
+    gap: spacing.sm,
     marginTop: spacing.lg,
   },
   dayCard: {
     backgroundColor: colors.surfaceSoft,
-    borderColor: colors.border,
-    borderRadius: 12,
-    borderWidth: 1,
+    borderRadius: 14,
     padding: spacing.md,
   },
   dayToggle: {
@@ -664,16 +658,16 @@ const styles = StyleSheet.create({
   },
   modalCard: {
     backgroundColor: colors.surface,
-    borderRadius: 12,
+    borderRadius: 22,
     maxWidth: 560,
-    padding: spacing.lg,
+    padding: spacing.md,
     width: "100%",
   },
   modalHeader: {
     alignItems: "center",
     flexDirection: "row",
     justifyContent: "space-between",
-    marginBottom: spacing.lg,
+    marginBottom: spacing.md,
   },
   modalEyebrow: {
     ...textStyles.caption,
@@ -692,14 +686,13 @@ const styles = StyleSheet.create({
   dayModalToggle: {
     alignItems: "center",
     backgroundColor: colors.surfaceSoft,
-    borderRadius: 12,
+    borderRadius: 14,
     flexDirection: "row",
     justifyContent: "space-between",
     padding: spacing.md,
   },
   dayModalToggleActive: {
-    borderColor: colors.brandDark,
-    borderWidth: 1,
+    backgroundColor: colors.surfaceSky,
   },
   meta: {
     ...textStyles.bodyMuted,

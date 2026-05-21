@@ -1,9 +1,19 @@
-import { useMemo, useState } from 'react';
-import { Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useEffect, useMemo, useState } from 'react';
+import {
+  Modal,
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+  type ColorValue,
+  type DimensionValue,
+} from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 
 import { colors } from '../theme/colors';
-import { spacing } from '../theme/spacing';
+import { radius, spacing } from '../theme/spacing';
 import { textStyles } from '../theme/typography';
 import { PrimaryButton } from './PrimaryButton';
 import type { TreatmentCatalogSection } from '../data/treatmentCatalog';
@@ -29,6 +39,33 @@ type ServiceCatalogPickerProps = {
 
 type ModalStep = 'list' | 'config';
 
+const categoryLooks: Array<{
+  accent: string;
+  gradient: readonly [ColorValue, ColorValue, ...ColorValue[]];
+  insightIcon: string;
+}> = [
+  {
+    gradient: ['#FFF8EC', '#F7EEF3'],
+    accent: colors.rose,
+    insightIcon: 'trending-up-outline',
+  },
+  {
+    gradient: ['#F6FBF8', '#EEF7FA'],
+    accent: colors.success,
+    insightIcon: 'star-outline',
+  },
+  {
+    gradient: ['#F7EEF3', '#FFFFFF'],
+    accent: colors.brandDark,
+    insightIcon: 'sparkles-outline',
+  },
+  {
+    gradient: ['#FFF7DE', '#FFFFFF'],
+    accent: colors.warning,
+    insightIcon: 'diamond-outline',
+  },
+];
+
 export function ServiceCatalogPicker({
   catalog,
   configuredServices,
@@ -41,13 +78,115 @@ export function ServiceCatalogPicker({
   const [priceInput, setPriceInput] = useState('');
   const [durationInput, setDurationInput] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [categoryOrder, setCategoryOrder] = useState(() =>
+    catalog.map((section) => section.category),
+  );
 
   const configuredMap = useMemo(
     () => new Map(configuredServices.map((item) => [item.name, item])),
     [configuredServices],
   );
+  const orderedCatalog = useMemo(() => {
+    const byCategory = new Map(catalog.map((section) => [section.category, section]));
+    const ordered = categoryOrder
+      .map((category) => byCategory.get(category))
+      .filter((section): section is TreatmentCatalogSection => Boolean(section));
+    const newSections = catalog.filter((section) => !categoryOrder.includes(section.category));
+
+    return [...ordered, ...newSections];
+  }, [catalog, categoryOrder]);
   const activeSection =
     catalog.find((section) => section.category === selectedCategory) ?? null;
+
+  useEffect(() => {
+    setCategoryOrder((current) => {
+      const available = new Set(catalog.map((section) => section.category));
+      const retained = current.filter((category) => available.has(category));
+      const added = catalog
+        .map((section) => section.category)
+        .filter((category) => !retained.includes(category));
+
+      return [...retained, ...added];
+    });
+  }, [catalog]);
+
+  const categoryInsights = useMemo(() => {
+    const stats = catalog.map((section) => {
+      const configured = section.treatments
+        .map((name) => configuredMap.get(name))
+        .filter((service): service is ConfiguredService => Boolean(service));
+      const prices = configured
+        .map((service) => service.price)
+        .filter((price): price is number => typeof price === 'number');
+      const averagePrice =
+        prices.length > 0
+          ? Math.round(prices.reduce((total, price) => total + price, 0) / prices.length)
+          : null;
+
+      return {
+        averagePrice,
+        category: section.category,
+        configuredCount: configured.length,
+        startingPrice: prices.length > 0 ? Math.min(...prices) : null,
+        totalTreatments: section.treatments.length,
+      };
+    });
+    const mostConfigured = [...stats].sort((a, b) => b.configuredCount - a.configuredCount)[0];
+    const highestRevenue = [...stats]
+      .filter((item) => item.averagePrice !== null)
+      .sort((a, b) => (b.averagePrice ?? 0) - (a.averagePrice ?? 0))[0];
+
+    return new Map(
+      stats.map((item) => {
+        const completion = item.totalTreatments > 0 ? item.configuredCount / item.totalTreatments : 0;
+        let label = 'Hidden online';
+        let tone: 'success' | 'warning' | 'neutral' | 'rose' = 'neutral';
+
+        if (item.configuredCount === 0) {
+          label = 'Hidden online';
+          tone = 'neutral';
+        } else if (completion < 0.5) {
+          label = 'Incomplete setup';
+          tone = 'warning';
+        } else if (highestRevenue?.category === item.category) {
+          label = 'High revenue';
+          tone = 'rose';
+        } else if (mostConfigured?.category === item.category) {
+          label = 'Most booked';
+          tone = 'success';
+        } else {
+          label = 'Online ready';
+          tone = 'success';
+        }
+
+        return [
+          item.category,
+          {
+            ...item,
+            completion,
+            label,
+            tone,
+          },
+        ];
+      }),
+    );
+  }, [catalog, configuredMap]);
+
+  const moveCategory = (category: string, direction: -1 | 1) => {
+    setCategoryOrder((current) => {
+      const index = current.indexOf(category);
+      const targetIndex = index + direction;
+
+      if (index < 0 || targetIndex < 0 || targetIndex >= current.length) {
+        return current;
+      }
+
+      const next = [...current];
+      const [moved] = next.splice(index, 1);
+      next.splice(targetIndex, 0, moved);
+      return next;
+    });
+  };
 
   const openCategory = (category: string) => {
     setSelectedCategory(category);
@@ -133,10 +272,15 @@ export function ServiceCatalogPicker({
   return (
     <View>
       <View style={styles.grid}>
-        {catalog.map((section) => {
-          const configuredCount = section.treatments.filter((name) =>
-            configuredMap.has(name),
-          ).length;
+        {orderedCatalog.map((section, index) => {
+          const insight = categoryInsights.get(section.category);
+          const look = categoryLooks[index % categoryLooks.length];
+          const configuredCount = insight?.configuredCount ?? 0;
+          const totalTreatments = insight?.totalTreatments ?? section.treatments.length;
+          const progressWidth = `${Math.max(
+            8,
+            Math.round((insight?.completion ?? 0) * 100),
+          )}%` as DimensionValue;
 
           return (
             <Pressable
@@ -144,13 +288,93 @@ export function ServiceCatalogPicker({
               onPress={() => openCategory(section.category)}
               style={styles.categoryCard}
             >
-              <View style={styles.iconWrap}>
-                <Ionicons color={colors.brandInk} name={section.icon} size={20} />
+              <LinearGradient colors={look.gradient} style={styles.categoryCover}>
+                <View style={[styles.iconWrap, { backgroundColor: `${look.accent}22` }]}>
+                  <Ionicons color={colors.brandInk} name={section.icon} size={19} />
+                </View>
+                <View style={styles.reorderControls}>
+                  <Ionicons color={colors.textMuted} name="reorder-three-outline" size={18} />
+                  <View style={styles.reorderArrows}>
+                    <Pressable
+                      disabled={index === 0}
+                      onPress={() => moveCategory(section.category, -1)}
+                      style={[styles.reorderButton, index === 0 ? styles.reorderButtonDisabled : null]}
+                    >
+                      <Ionicons color={colors.brandInk} name="chevron-up" size={13} />
+                    </Pressable>
+                    <Pressable
+                      disabled={index === orderedCatalog.length - 1}
+                      onPress={() => moveCategory(section.category, 1)}
+                      style={[
+                        styles.reorderButton,
+                        index === orderedCatalog.length - 1 ? styles.reorderButtonDisabled : null,
+                      ]}
+                    >
+                      <Ionicons color={colors.brandInk} name="chevron-down" size={13} />
+                    </Pressable>
+                  </View>
+                </View>
+              </LinearGradient>
+
+              <View style={styles.categoryBody}>
+                <View style={styles.categoryTitleRow}>
+                  <Text numberOfLines={2} style={styles.categoryTitle}>
+                    {section.category}
+                  </Text>
+                  <View
+                    style={[
+                      styles.statusDot,
+                      insight?.tone === 'success' ? styles.statusSuccess : null,
+                      insight?.tone === 'warning' ? styles.statusWarning : null,
+                      insight?.tone === 'rose' ? styles.statusRose : null,
+                    ]}
+                  />
+                </View>
+
+                <View style={styles.categoryMetrics}>
+                  <Text style={styles.categoryMetric}>
+                    {configuredCount}/{totalTreatments} servizi
+                  </Text>
+                  <Text style={styles.categoryMetricStrong}>
+                    {insight?.startingPrice !== null && insight?.startingPrice !== undefined
+                      ? `da EUR ${insight.startingPrice}`
+                      : 'prezzo da inserire'}
+                  </Text>
+                </View>
+
+                <View style={styles.progressTrack}>
+                  <View
+                    style={[
+                      styles.progressFill,
+                      { backgroundColor: look.accent, width: progressWidth },
+                    ]}
+                  />
+                </View>
+
+                <View style={styles.insightRow}>
+                  <View style={styles.insightPill}>
+                    <Ionicons color={colors.brandInk} name={look.insightIcon} size={13} />
+                    <Text numberOfLines={1} style={styles.insightText}>
+                      {insight?.label ?? 'Hidden online'}
+                    </Text>
+                  </View>
+                </View>
+
+                <Pressable
+                  onPress={() => {
+                    const firstMissing = section.treatments.find((name) => !configuredMap.has(name));
+                    if (firstMissing) {
+                      openTreatmentConfig(section.category, firstMissing);
+                    } else {
+                      openCategory(section.category);
+                    }
+                  }}
+                  style={styles.quickAddButton}
+                >
+                  <Ionicons color={colors.brandInk} name="add" size={15} />
+                  <Text style={styles.quickAddText}>Quick add</Text>
+                </Pressable>
               </View>
-              <Text style={styles.categoryTitle}>{section.category}</Text>
-              <Text style={styles.categoryMeta}>
-                {configuredCount}/{section.treatments.length} configurati
-              </Text>
             </Pressable>
           );
         })}
@@ -278,52 +502,166 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   categoryCard: {
-    backgroundColor: colors.surfaceMuted,
-    borderColor: colors.border,
-    borderRadius: 18,
+    backgroundColor: colors.surface,
+    borderColor: 'rgba(33, 77, 99, 0.07)',
+    borderRadius: radius.xl,
     borderWidth: 1,
-    minHeight: 102,
+    minHeight: 238,
+    overflow: 'hidden',
+    shadowColor: colors.brandInk,
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.05,
+    shadowRadius: 20,
+    width: '48%',
+  },
+  categoryCover: {
+    alignItems: 'flex-start',
+    flexDirection: 'row',
+    height: 74,
+    justifyContent: 'space-between',
     padding: spacing.sm,
-    width: '31%',
   },
   iconWrap: {
     alignItems: 'center',
-    backgroundColor: colors.surface,
-    borderRadius: 14,
-    height: 40,
+    borderRadius: radius.md,
+    height: 38,
     justifyContent: 'center',
-    width: 40,
+    width: 38,
+  },
+  reorderControls: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing.xs,
+  },
+  reorderArrows: {
+    gap: 3,
+  },
+  reorderButton: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.72)',
+    borderRadius: radius.round,
+    height: 20,
+    justifyContent: 'center',
+    width: 20,
+  },
+  reorderButtonDisabled: {
+    opacity: 0.28,
+  },
+  categoryBody: {
+    flex: 1,
+    padding: spacing.sm,
+    paddingTop: spacing.md,
+  },
+  categoryTitleRow: {
+    alignItems: 'flex-start',
+    flexDirection: 'row',
+    gap: spacing.xs,
+    justifyContent: 'space-between',
   },
   categoryTitle: {
-    color: colors.text,
-    fontSize: 12,
-    fontWeight: '800',
+    color: colors.brandInk,
+    flex: 1,
+    fontSize: 15,
+    fontWeight: '700',
+    lineHeight: 19,
+  },
+  statusDot: {
+    backgroundColor: colors.textSoft,
+    borderRadius: radius.round,
+    height: 9,
+    marginTop: 5,
+    width: 9,
+  },
+  statusSuccess: {
+    backgroundColor: colors.success,
+  },
+  statusWarning: {
+    backgroundColor: colors.warning,
+  },
+  statusRose: {
+    backgroundColor: colors.rose,
+  },
+  categoryMetrics: {
+    gap: 3,
     marginTop: spacing.sm,
   },
-  categoryMeta: {
+  categoryMetric: {
     color: colors.textMuted,
+    fontSize: 12,
+    lineHeight: 16,
+  },
+  categoryMetricStrong: {
+    color: colors.brandInk,
+    fontSize: 12,
+    fontWeight: '700',
+    lineHeight: 16,
+  },
+  progressTrack: {
+    backgroundColor: colors.surfaceMuted,
+    borderRadius: radius.round,
+    height: 5,
+    marginTop: spacing.sm,
+    overflow: 'hidden',
+  },
+  progressFill: {
+    borderRadius: radius.round,
+    height: 5,
+  },
+  insightRow: {
+    flexDirection: 'row',
+    marginTop: spacing.sm,
+  },
+  insightPill: {
+    alignItems: 'center',
+    backgroundColor: colors.surfaceSoft,
+    borderRadius: radius.round,
+    flexDirection: 'row',
+    gap: 4,
+    maxWidth: '100%',
+    paddingHorizontal: spacing.xs,
+    paddingVertical: 5,
+  },
+  insightText: {
+    color: colors.brandInk,
+    flexShrink: 1,
     fontSize: 11,
+    fontWeight: '700',
+  },
+  quickAddButton: {
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    backgroundColor: colors.surfaceMuted,
+    borderRadius: radius.round,
+    flexDirection: 'row',
+    gap: 4,
     marginTop: spacing.xs,
+    minHeight: 30,
+    paddingHorizontal: spacing.sm,
+  },
+  quickAddText: {
+    color: colors.brandInk,
+    fontSize: 12,
+    fontWeight: '700',
   },
   modalBackdrop: {
     alignItems: 'center',
     backgroundColor: 'rgba(49, 94, 114, 0.28)',
     flex: 1,
     justifyContent: 'flex-end',
-    padding: spacing.lg,
+    padding: spacing.md,
   },
   modalCard: {
     backgroundColor: colors.surface,
-    borderRadius: 24,
+    borderRadius: 22,
     maxWidth: 560,
-    padding: spacing.lg,
+    padding: spacing.md,
     width: '100%',
   },
   modalHeader: {
     alignItems: 'center',
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: spacing.lg,
+    marginBottom: spacing.md,
   },
   modalHeaderLeft: {
     alignItems: 'center',
@@ -361,10 +699,8 @@ const styles = StyleSheet.create({
   },
   treatmentCard: {
     backgroundColor: colors.surfaceMuted,
-    borderColor: colors.border,
     borderRadius: 14,
-    borderWidth: 1,
-    padding: spacing.md,
+    padding: spacing.sm,
   },
   treatmentCardActive: {
     backgroundColor: colors.surfaceSky,
@@ -389,9 +725,7 @@ const styles = StyleSheet.create({
   },
   input: {
     backgroundColor: colors.surfaceSoft,
-    borderColor: colors.border,
-    borderRadius: 12,
-    borderWidth: 1,
+    borderRadius: 14,
     color: colors.text,
     fontSize: 16,
     minHeight: 54,

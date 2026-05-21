@@ -14,8 +14,22 @@ import {
 } from "react-native";
 import Ionicons from "react-native-vector-icons/Ionicons";
 
-import { CalendarDayStrip } from "../components/CalendarDayStrip";
 import { getCenterDashboard, getCenterReviews, updateBookingStatus } from "../lib/api";
+import {
+  AppointmentState,
+  AppointmentStatus,
+  AppointmentStatusAction,
+  AppointmentTemporalState,
+  getAppointmentTemporalState,
+  getAppointmentStatusCounts,
+  getAppointmentStatusMeta,
+  getNextAppointment,
+  getPrimaryAppointmentAction,
+  getSecondaryAppointmentActions,
+  isAppointmentActive,
+  normalizeAppointmentState,
+  toApiBookingState,
+} from "../lib/appointmentStatus";
 import type {
   ActivationStatus,
   Center,
@@ -31,6 +45,7 @@ type CenterDashboardScreenProps = {
   activation: ActivationStatus;
   center: Center;
   onOpenClient: (clientId: string) => void;
+  onOpenNewAppointment: () => void;
   onOpenOnboarding: () => void;
 };
 
@@ -40,6 +55,12 @@ type TreatmentTone = {
   icon: React.ComponentProps<typeof Ionicons>["name"];
   label: string;
   text: string;
+};
+
+type NormalizedAgendaItem = DashboardAgendaItem & {
+  appointmentState: AppointmentState;
+  appointmentStatus: AppointmentStatus;
+  temporalState: AppointmentTemporalState;
 };
 
 const treatmentTones: Record<string, TreatmentTone> = {
@@ -89,6 +110,8 @@ const treatmentTones: Record<string, TreatmentTone> = {
 
 const demoAgenda: DashboardAgendaItem[] = [
   {
+    start_time: new Date(new Date().setHours(9, 30, 0, 0)).toISOString(),
+    end_time: new Date(new Date().setHours(10, 45, 0, 0)).toISOString(),
     id: "demo-1",
     client_name: "Giulia R.",
     operator_name: "Marta",
@@ -98,6 +121,8 @@ const demoAgenda: DashboardAgendaItem[] = [
     duration_label: "75 min",
   },
   {
+    start_time: new Date(new Date().setHours(11, 0, 0, 0)).toISOString(),
+    end_time: new Date(new Date().setHours(11, 50, 0, 0)).toISOString(),
     id: "demo-2",
     client_name: "Elena B.",
     operator_name: "Sofia",
@@ -107,6 +132,8 @@ const demoAgenda: DashboardAgendaItem[] = [
     duration_label: "50 min",
   },
   {
+    start_time: new Date(new Date().setHours(14, 20, 0, 0)).toISOString(),
+    end_time: new Date(new Date().setHours(15, 5, 0, 0)).toISOString(),
     id: "demo-3",
     client_name: "Chiara M.",
     operator_name: "Alessia",
@@ -116,6 +143,8 @@ const demoAgenda: DashboardAgendaItem[] = [
     duration_label: "45 min",
   },
   {
+    start_time: new Date(new Date().setHours(16, 0, 0, 0)).toISOString(),
+    end_time: new Date(new Date().setHours(17, 0, 0, 0)).toISOString(),
     id: "demo-4",
     client_name: "Sara L.",
     operator_name: "Marta",
@@ -230,20 +259,6 @@ const demoAlerts = [
   },
 ];
 
-const statusActions = ["Confermato", "Arrivata", "In ritardo", "Annullato"] as const;
-const statusActionIconMap = {
-  Confermato: "checkmark-circle-outline",
-  Arrivata: "person-circle-outline",
-  "In ritardo": "time-outline",
-  Annullato: "close-circle-outline",
-} as const;
-const statusActionShortLabelMap = {
-  Confermato: "Conferma",
-  Arrivata: "Arrivata",
-  "In ritardo": "Ritardo",
-  Annullato: "Annulla",
-} as const;
-
 function getClientDedupKey(client: DashboardClient) {
   const phone = client.phone?.replace(/\D/g, "");
   if (phone && phone !== "0") return `phone:${phone}`;
@@ -311,16 +326,6 @@ function getTreatmentTone(service: string) {
   return treatmentTones.default;
 }
 
-function getStatusTone(status: string) {
-  const value = status.toLowerCase();
-  if (value.includes("arriv")) return { background: "#EAF9F3", text: "#4D8B77" };
-  if (value.includes("ritardo")) return { background: "#FFF4E7", text: "#B47A3B" };
-  if (value.includes("cancell") || value.includes("annull") || value.includes("disdet")) {
-    return { background: "#EFF4FA", text: "#74889D" };
-  }
-  return { background: "#DFF3FF", text: "#2F6F8C" };
-}
-
 function formatMoney(value: number) {
   return new Intl.NumberFormat("it-IT", {
     currency: "EUR",
@@ -345,29 +350,17 @@ function normalizeExternalUrl(url: string) {
   return `https://${trimmedUrl}`;
 }
 
-function isCanceledStatus(status: string) {
-  const value = status.toLowerCase();
-  return value.includes("annull") || value.includes("disdet") || value.includes("cancel");
-}
-
-function normalizeStatusLabel(status: string) {
-  if (!status || status === "confirmed") return "Confermato";
-  if (status === "arrived") return "Arrivata";
-  if (status === "late") return "In ritardo";
-  if (status === "canceled") return "Annullato";
-  return status;
-}
-
 export function CenterDashboardScreen({
   activation,
   center,
   onOpenClient,
+  onOpenNewAppointment,
   onOpenOnboarding,
 }: CenterDashboardScreenProps) {
   const [dashboard, setDashboard] = useState<CenterDashboard | null>(null);
   const [latestReview, setLatestReview] = useState<Review | null>(null);
   const [expandedClientId, setExpandedClientId] = useState<string | null>(null);
-  const [agendaStatuses, setAgendaStatuses] = useState<Record<string, string>>({});
+  const [agendaStatuses, setAgendaStatuses] = useState<Record<string, AppointmentState>>({});
   const [cancelDraft, setCancelDraft] = useState<DashboardAgendaItem | null>(null);
   const [cancelReason, setCancelReason] = useState("");
   const [statusSavingId, setStatusSavingId] = useState<string | null>(null);
@@ -424,12 +417,36 @@ export function CenterDashboardScreen({
     const source = dashboard?.clients && dashboard.clients.length > 0 ? dashboard.clients : demoClients;
     return dedupeDashboardClients(source);
   }, [dashboard?.clients]);
-  const agendaWithStatuses = agenda.map((entry) => ({
-    ...entry,
-    status_label: normalizeStatusLabel(agendaStatuses[entry.id] ?? entry.status_label),
-  }));
-  const activeAgenda = agendaWithStatuses.filter((entry) => !isCanceledStatus(entry.status_label));
-  const canceledAgenda = agendaWithStatuses.filter((entry) => isCanceledStatus(entry.status_label));
+  const agendaWithStatuses: NormalizedAgendaItem[] = agenda.map((entry) => {
+    const appointmentState =
+      agendaStatuses[entry.id] ?? normalizeAppointmentState(entry.status_label, entry.is_delayed);
+    const appointmentStatus = appointmentState.status;
+    return {
+      ...entry,
+      appointmentState,
+      appointmentStatus,
+      temporalState: getAppointmentTemporalState(
+        { endTime: entry.end_time, startTime: entry.start_time },
+        now,
+      ),
+      status_label: getAppointmentStatusMeta(appointmentState).label,
+    };
+  });
+  const statusCounts = getAppointmentStatusCounts(
+    agendaWithStatuses.map((entry) => ({
+      endTime: entry.end_time,
+      isDelayed: entry.appointmentState.isDelayed,
+      startTime: entry.start_time,
+      status: entry.appointmentStatus,
+    })),
+    now,
+  );
+  const activeAgenda = agendaWithStatuses.filter((entry) =>
+    isAppointmentActive(entry.appointmentStatus),
+  );
+  const canceledAgenda = agendaWithStatuses.filter(
+    (entry) => entry.appointmentStatus === AppointmentStatus.CANCELLED,
+  );
   const hasLocalAgendaUpdates = Object.keys(agendaStatuses).length > 0;
 
   const review = latestReview ?? demoReview;
@@ -446,7 +463,6 @@ export function CenterDashboardScreen({
     }, 0);
   const predictedRevenue = dailyRevenue + Math.max(activeAgenda.length - 1, 0) * 18;
   const expectedClients = new Set(activeAgenda.map((entry) => entry.client_name)).size;
-  const nextBookings = activeAgenda.length;
   const dateLabel = new Intl.DateTimeFormat("it-IT", {
     day: "2-digit",
     month: "long",
@@ -457,45 +473,57 @@ export function CenterDashboardScreen({
     minute: "2-digit",
   }).format(now);
 
+  const arrivedClients = statusCounts.arrived;
+  const lateAppointments = statusCounts.delayed;
+  const activeIssues = statusCounts.requiringAction;
+  const nextAppointment = getNextAppointment(
+    agendaWithStatuses.map((entry) => ({
+      ...entry,
+      endTime: entry.end_time,
+      isDelayed: entry.appointmentState.isDelayed,
+      startTime: entry.start_time,
+      status: entry.appointmentStatus,
+    })),
+    now,
+  );
+  const schedulePreview = [
+    ...agendaWithStatuses
+      .filter((entry) => entry.temporalState === "current" || entry.temporalState === "upcoming")
+      .slice(0, 4),
+    ...agendaWithStatuses.filter((entry) => entry.temporalState === "past").slice(0, 2),
+  ].slice(0, 5);
+
   const kpis = [
     {
-      icon: "calendar-clear-outline",
-      label: "Appuntamenti oggi",
-      tone: treatmentTones.viso,
-      value: String(activeAgenda.length),
-    },
-    {
       icon: "people-outline",
-      label: "Clienti previsti",
+      label: "Clienti",
       tone: treatmentTones.unghie,
       value: String(expectedClients),
     },
     {
-      icon: "wallet-outline",
-      label: "Incasso previsto",
+      icon: "person-circle-outline",
+      label: "Arrivi",
       tone: treatmentTones.lashes,
-      value: formatMoney(predictedRevenue),
+      value: String(arrivedClients),
     },
     {
-      icon: "time-outline",
-      label: "Prossime prenotazioni",
+      icon: "alert-circle-outline",
+      label: "Urgenze",
       tone: treatmentTones.massaggi,
-      value: String(nextBookings),
-    },
-    {
-      icon: "close-circle-outline",
-      label: "No-show / disdette",
-      tone: treatmentTones.corpo,
-      value: String(canceledAgenda.length),
+      value: String(activeIssues),
     },
   ];
 
   const handleChangeStatus = async (
     entry: DashboardAgendaItem,
-    nextStatus: string,
+    nextState: AppointmentState,
     reason?: string,
   ) => {
-    if (nextStatus === "Annullato" && !isCanceledStatus(entry.status_label)) {
+    const currentState = normalizeAppointmentState(entry.status_label, entry.is_delayed);
+    if (
+      nextState.status === AppointmentStatus.CANCELLED &&
+      currentState.status !== AppointmentStatus.CANCELLED
+    ) {
       setCancelDraft(entry);
       setCancelReason("");
       return;
@@ -503,7 +531,7 @@ export function CenterDashboardScreen({
 
     setAgendaStatuses((current) => ({
       ...current,
-      [entry.id]: nextStatus,
+      [entry.id]: nextState,
     }));
 
     if (entry.id.startsWith("demo-")) return;
@@ -514,7 +542,7 @@ export function CenterDashboardScreen({
         cancellation_reason: reason?.trim() || null,
         center_id: center.id,
         role: "center",
-        status: nextStatus,
+        status: toApiBookingState(nextState),
       });
       await loadDashboard(true);
     } catch {
@@ -530,7 +558,7 @@ export function CenterDashboardScreen({
     setCancelDraft(null);
     await handleChangeStatus(
       { ...draft, status_label: "Annullato" },
-      "Annullato",
+      { status: AppointmentStatus.CANCELLED, isDelayed: false },
       cancelReason,
     );
     setCancelReason("");
@@ -554,57 +582,42 @@ export function CenterDashboardScreen({
           },
         ]}
       >
-        <View style={styles.hero}>
-          <View style={styles.heroTop}>
-            {center.branding.logo ? (
-              <Image source={{ uri: center.branding.logo }} style={styles.logo} />
-            ) : (
-              <View style={styles.logoFallback}>
-                <Text style={styles.logoFallbackText}>
-                  {center.name.slice(0, 2).toUpperCase()}
-                </Text>
-              </View>
-            )}
-
-            <View style={styles.heroIdentity}>
-              <Text style={styles.eyebrow}>Beauty salon management</Text>
-              <Text style={styles.centerName}>{center.name}</Text>
-              <Text numberOfLines={2} style={styles.centerDescription}>
-                {center.branding.description ||
-                  "Buongiorno, il centro e pronto ad accogliere con un'esperienza beauty curata e rilassante."}
+        <View style={styles.topBar}>
+          {center.branding.logo ? (
+            <Image source={{ uri: center.branding.logo }} style={styles.logo} />
+          ) : (
+            <View style={styles.logoFallback}>
+              <Text style={styles.logoFallbackText}>
+                {center.name.slice(0, 2).toUpperCase()}
               </Text>
-              <View style={styles.socialLinks}>
-                {center.branding.instagram_url ? (
-                  <SocialIcon
-                    icon="logo-instagram"
-                    label="Instagram"
-                    url={center.branding.instagram_url}
-                  />
-                ) : null}
-                {center.branding.tiktok_url ? (
-                  <SocialIcon
-                    icon="logo-tiktok"
-                    label="TikTok"
-                    url={center.branding.tiktok_url}
-                  />
-                ) : null}
-              </View>
             </View>
+          )}
+
+          <View style={styles.heroIdentity}>
+            <Text style={styles.eyebrow}>Dashboard centro</Text>
+            <Text numberOfLines={1} style={styles.centerName}>{center.name}</Text>
+            <Text numberOfLines={1} style={styles.centerDescription}>
+              {dateLabel} Â· {timeLabel}
+            </Text>
           </View>
 
-          <View style={styles.revenuePanel}>
-            <View>
-              <Text style={styles.revenueLabel}>Incasso giornaliero</Text>
-              <Text style={styles.revenueValue}>{formatMoney(dailyRevenue)}</Text>
-            </View>
-            <View style={styles.datePanel}>
-              <Text style={styles.dateText}>{dateLabel}</Text>
-              <Text style={styles.timeText}>{timeLabel}</Text>
-            </View>
+          <View style={styles.socialLinks}>
+            {center.branding.instagram_url ? (
+              <SocialIcon
+                icon="logo-instagram"
+                label="Instagram"
+                url={center.branding.instagram_url}
+              />
+            ) : null}
+            {center.branding.tiktok_url ? (
+              <SocialIcon
+                icon="logo-tiktok"
+                label="TikTok"
+                url={center.branding.tiktok_url}
+              />
+            ) : null}
           </View>
         </View>
-
-        <CalendarDayStrip sideDays={1} />
 
         {!activation.onboarding_completed || !activation.is_listable ? (
           <Pressable onPress={onOpenOnboarding} style={styles.onboardingAlert}>
@@ -624,9 +637,15 @@ export function CenterDashboardScreen({
         {loading ? <ActivityIndicator color={colors.brand} style={styles.loader} /> : null}
         {error ? <Text style={styles.demoNote}>{error}</Text> : null}
 
-        <View style={styles.quickActions}>
-          <QuickAction icon="logo-whatsapp" label="WhatsApp" />
-          <QuickAction icon="add-circle-outline" label="Nuovo appunt." />
+        <View style={styles.hero}>
+          <PrimaryKpiCard
+            appointments={String(statusCounts.totalScheduled)}
+            activeCount={statusCounts.active}
+            completedCount={statusCounts.completed}
+            dailyRevenue={formatMoney(dailyRevenue)}
+            nextAppointment={nextAppointment}
+            predictedRevenue={formatMoney(predictedRevenue)}
+          />
         </View>
 
         <View style={styles.kpiGrid}>
@@ -641,27 +660,77 @@ export function CenterDashboardScreen({
           ))}
         </View>
 
+        <View style={styles.issueStrip}>
+          <IssueItem
+            icon="alert-circle-outline"
+            label="app. urgente"
+            tone={activeIssues > 0 ? "warning" : "calm"}
+            value={String(activeIssues)}
+          />
+          <IssueItem
+            icon="time-outline"
+            label="in ritardo"
+            tone={lateAppointments > 0 ? "warning" : "calm"}
+            value={String(lateAppointments)}
+          />
+          <IssueItem
+            icon="checkmark-circle-outline"
+            label="arrivata"
+            tone="success"
+            value={String(arrivedClients)}
+          />
+        </View>
+
+        <View style={styles.quickActions}>
+          <QuickAction
+            icon="add-circle-outline"
+            label="Nuovo appunt."
+            onPress={onOpenNewAppointment}
+            variant="primary"
+          />
+          <QuickAction icon="logo-whatsapp" label="WhatsApp" onPress={() => {}} />
+        </View>
+
         <View style={styles.sectionHeader}>
           <View>
             <Text style={styles.sectionKicker}>Agenda di oggi</Text>
-            <Text style={styles.sectionTitle}>Ritmo della giornata</Text>
+            <Text style={styles.sectionTitle}>Prossimi appuntamenti</Text>
           </View>
           <View style={styles.dragHint}>
             <Ionicons color={colors.textMuted} name="reorder-three-outline" size={18} />
-            <Text style={styles.dragHintText}>priorita</Text>
+            <Text style={styles.dragHintText}>{statusCounts.active} attivi</Text>
           </View>
         </View>
 
         <View style={styles.agendaCard}>
           <View style={styles.timelineLine} />
-          {agendaWithStatuses.map((entry, index) => (
+          {schedulePreview.map((entry, index) => (
             <AgendaRow
               key={entry.id}
               entry={entry}
-              isLast={index === agendaWithStatuses.length - 1}
-              onChangeStatus={(nextStatus) => void handleChangeStatus(entry, nextStatus)}
+              isLast={index === schedulePreview.length - 1}
+              onChangeStatus={(nextState) => void handleChangeStatus(entry, nextState)}
               saving={statusSavingId === entry.id}
-              status={entry.status_label}
+              status={entry.appointmentState}
+            />
+          ))}
+        </View>
+
+        <View style={styles.sectionHeader}>
+          <View>
+            <Text style={styles.sectionKicker}>Alert intelligenti</Text>
+            <Text style={styles.sectionTitle}>Da non perdere</Text>
+          </View>
+        </View>
+
+        <View style={styles.alertList}>
+          {demoAlerts.slice(0, 2).map((alert) => (
+            <SmartAlert
+              key={alert.id}
+              icon={alert.icon as React.ComponentProps<typeof Ionicons>["name"]}
+              label={alert.label}
+              text={alert.text}
+              tone={alert.tone}
             />
           ))}
         </View>
@@ -674,7 +743,7 @@ export function CenterDashboardScreen({
         </View>
 
         <View style={styles.clientList}>
-          {clients.slice(0, 4).map((client) => {
+          {clients.slice(0, 3).map((client) => {
             const history = client.history ?? [];
             const visits = Math.max(history.length, 1);
             const isVip = visits >= 3;
@@ -725,22 +794,12 @@ export function CenterDashboardScreen({
 
         <View style={styles.sectionHeader}>
           <View>
-            <Text style={styles.sectionKicker}>Alert intelligenti</Text>
-            <Text style={styles.sectionTitle}>Da non perdere</Text>
+            <Text style={styles.sectionKicker}>Qualita servizio</Text>
+            <Text style={styles.sectionTitle}>Insight finale</Text>
           </View>
         </View>
 
         <View style={styles.alertList}>
-          {demoAlerts.map((alert) => (
-            <SmartAlert
-              key={alert.id}
-              icon={alert.icon as React.ComponentProps<typeof Ionicons>["name"]}
-              label={alert.label}
-              text={alert.text}
-              tone={alert.tone}
-            />
-          ))}
-
           <View style={styles.reviewCard}>
             <View style={styles.reviewHeader}>
               <Ionicons color={colors.brandInk} name="star-outline" size={18} />
@@ -913,22 +972,110 @@ function SocialIcon({
 function QuickAction({
   icon,
   label,
+  onPress,
+  variant = "secondary",
 }: {
   icon: React.ComponentProps<typeof Ionicons>["name"];
   label: string;
+  onPress: () => void;
+  variant?: "primary" | "secondary";
 }) {
   return (
-    <Pressable style={styles.quickAction}>
-      <Ionicons color={colors.brandInk} name={icon} size={19} />
-      <Text style={styles.quickActionText}>{label}</Text>
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.quickAction,
+        variant === "primary" ? styles.quickActionPrimary : null,
+        pressed ? styles.quickActionPressed : null,
+      ]}
+    >
+      <Ionicons
+        color={variant === "primary" ? colors.surface : colors.brandInk}
+        name={icon}
+        size={19}
+      />
+      <Text style={[styles.quickActionText, variant === "primary" ? styles.quickActionTextPrimary : null]}>
+        {label}
+      </Text>
     </Pressable>
+  );
+}
+
+function PrimaryKpiCard({
+  activeCount,
+  appointments,
+  completedCount,
+  dailyRevenue,
+  nextAppointment,
+  predictedRevenue,
+}: {
+  activeCount: number;
+  appointments: string;
+  completedCount: number;
+  dailyRevenue: string;
+  nextAppointment: NormalizedAgendaItem | null;
+  predictedRevenue: string;
+}) {
+  return (
+    <View style={styles.primaryKpiCard}>
+      <View style={styles.primaryKpiHeader}>
+        <View>
+          <Text style={styles.primaryKpiLabel}>Appuntamenti attivi</Text>
+          <Text style={styles.primaryKpiValue}>{appointments}</Text>
+        </View>
+        <View style={styles.primaryKpiBadge}>
+          <Ionicons color={colors.brandInk} name="wallet-outline" size={15} />
+          <Text style={styles.primaryKpiBadgeText}>{dailyRevenue}</Text>
+        </View>
+      </View>
+
+      <View style={styles.nextAppointmentRow}>
+        <View style={styles.nextAppointmentIcon}>
+          <Ionicons color={colors.brandInk} name="time-outline" size={17} />
+        </View>
+        <View style={styles.nextAppointmentCopy}>
+          <Text style={styles.nextAppointmentLabel}>Prossimo appuntamento</Text>
+          <Text numberOfLines={1} style={styles.nextAppointmentText}>
+            {nextAppointment
+              ? `${nextAppointment.time_label} Â· ${nextAppointment.client_name} Â· ${nextAppointment.service}`
+              : "Nessun appuntamento attivo"}
+          </Text>
+        </View>
+      </View>
+      <Text style={styles.primaryKpiMeta}>
+        {completedCount} completati · previsione {predictedRevenue}
+      </Text>
+    </View>
+  );
+}
+
+function IssueItem({
+  icon,
+  label,
+  tone,
+  value,
+}: {
+  icon: React.ComponentProps<typeof Ionicons>["name"];
+  label: string;
+  tone: "calm" | "success" | "warning";
+  value: string;
+}) {
+  const color = tone === "warning" ? "#A15C12" : tone === "success" ? "#28745D" : colors.brandInk;
+  const background =
+    tone === "warning" ? "#FFF4E7" : tone === "success" ? "#EAF9F3" : colors.surface;
+
+  return (
+    <View style={[styles.issueItem, { backgroundColor: background }]}>
+      <Ionicons color={color} name={icon} size={15} />
+      <Text style={[styles.issueValue, { color }]}>{value}</Text>
+      <Text style={styles.issueLabel}>{label}</Text>
+    </View>
   );
 }
 
 function KpiCard({
   icon,
   label,
-  tone,
   value,
 }: {
   icon: React.ComponentProps<typeof Ionicons>["name"];
@@ -937,9 +1084,9 @@ function KpiCard({
   value: string;
 }) {
   return (
-    <View style={[styles.kpiCard, { backgroundColor: tone.background }]}>
-      <View style={[styles.kpiIcon, { backgroundColor: tone.accent }]}>
-        <Ionicons color={tone.text} name={icon} size={18} />
+    <View style={styles.kpiCard}>
+      <View style={styles.kpiIcon}>
+        <Ionicons color={colors.brandInk} name={icon} size={17} />
       </View>
       <Text style={styles.kpiValue}>{value}</Text>
       <Text style={styles.kpiLabel}>{label}</Text>
@@ -954,18 +1101,21 @@ function AgendaRow({
   saving,
   status,
 }: {
-  entry: DashboardAgendaItem;
+  entry: NormalizedAgendaItem;
   isLast: boolean;
-  onChangeStatus: (status: string) => void;
+  onChangeStatus: (state: AppointmentState) => void;
   saving: boolean;
-  status: string;
+  status: AppointmentState;
 }) {
   const tone = getTreatmentTone(entry.service);
-  const statusTone = getStatusTone(status);
+  const statusTone = getAppointmentStatusMeta(status);
+  const primaryAction = getPrimaryAppointmentAction(status);
+  const secondaryActions = getSecondaryAppointmentActions(status);
   const pressScale = useRef(new Animated.Value(1)).current;
+  const [moreOpen, setMoreOpen] = useState(false);
 
-  const handleStatusPress = (nextStatus: string) => {
-    onChangeStatus(nextStatus);
+  const handleStatusPress = (action: AppointmentStatusAction) => {
+    onChangeStatus(action.nextState);
     Animated.sequence([
       Animated.timing(pressScale, {
         duration: 90,
@@ -986,6 +1136,9 @@ function AgendaRow({
       style={[
         styles.agendaRow,
         isLast ? styles.agendaRowLast : null,
+        entry.temporalState === "past" ? styles.agendaRowPast : null,
+        entry.temporalState === "current" ? styles.agendaRowCurrent : null,
+        status.isDelayed ? styles.agendaRowDelayed : null,
         {
           transform: [{ scale: pressScale }],
         },
@@ -993,6 +1146,15 @@ function AgendaRow({
     >
       <View style={styles.timeColumn}>
         <Text style={styles.agendaTime}>{entry.time_label}</Text>
+        <Text style={styles.temporalLabel}>
+          {entry.temporalState === "current"
+            ? "ora"
+            : entry.temporalState === "past"
+              ? "passato"
+              : entry.temporalState === "upcoming"
+                ? "prossimo"
+                : ""}
+        </Text>
         <View style={[styles.timelineNode, { borderColor: tone.accent }]}>
           <View style={[styles.timelineNodeCore, { backgroundColor: tone.accent }]} />
         </View>
@@ -1003,12 +1165,13 @@ function AgendaRow({
           <View style={styles.agendaClientBlock}>
             <Text style={styles.agendaClient}>{entry.client_name}</Text>
             <Text style={styles.agendaSubMeta}>
-              {entry.duration_label ?? "60 min"} · gestione rapida
+              {entry.duration_label ?? "60 min"}
             </Text>
           </View>
           <View style={[styles.statusPill, { backgroundColor: statusTone.background }]}>
+            <Ionicons color={statusTone.text} name={statusTone.icon} size={13} />
             <Text style={[styles.statusText, { color: statusTone.text }]}>
-              {status}
+              {statusTone.label}
             </Text>
           </View>
         </View>
@@ -1023,49 +1186,61 @@ function AgendaRow({
             <Ionicons color="#4D7D9B" name="hourglass-outline" size={13} />
             <Text style={styles.durationChipText}>{entry.duration_label ?? "60 min"}</Text>
           </View>
-          <View style={[styles.categoryChip, { backgroundColor: tone.background }]}>
-            <Text style={[styles.categoryChipText, { color: tone.text }]}>{tone.label}</Text>
-          </View>
         </View>
         <View style={styles.statusActions}>
-          {statusActions.map((action) => {
-            const active = action === status;
-            const actionTone = getStatusTone(action);
-
-            return (
-              <Pressable
-                disabled={saving}
-                key={action}
-                onPress={() => handleStatusPress(action)}
-                style={[
-                  styles.statusAction,
-                  action === "Annullato" ? styles.cancelStatusAction : null,
-                  active
-                    ? {
-                        backgroundColor: actionTone.background,
-                        borderColor: actionTone.text,
-                      }
-                    : null,
-                ]}
-              >
-                <Ionicons
-                  color={active ? actionTone.text : "#6B91AB"}
-                  name={statusActionIconMap[action]}
-                  size={14}
-                />
-                <Text
-                  style={[
-                    styles.statusActionText,
-                    active ? { color: actionTone.text } : null,
-                  ]}
-                >
-                  {statusActionShortLabelMap[action]}
-                </Text>
-              </Pressable>
-            );
-          })}
+          {primaryAction ? (
+            <Pressable
+              disabled={saving || !primaryAction}
+              onPress={() => handleStatusPress(primaryAction)}
+              style={[
+                styles.statusPrimaryAction,
+                !primaryAction ? styles.statusPrimaryActionDisabled : null,
+              ]}
+            >
+              <Ionicons
+                color={colors.surface}
+                name={getAppointmentStatusMeta(primaryAction.nextState).icon}
+                size={16}
+              />
+              <Text style={styles.statusPrimaryActionText}>{primaryAction.label}</Text>
+            </Pressable>
+          ) : (
+            <View style={styles.statusCompleteState}>
+              <Text style={styles.statusCompleteText}>Nessuna azione</Text>
+            </View>
+          )}
+          <Pressable
+            disabled={saving || secondaryActions.length === 0}
+            onPress={() => setMoreOpen((current) => !current)}
+            style={[styles.statusMoreAction, secondaryActions.length === 0 ? styles.statusMoreActionDisabled : null]}
+          >
+            <Ionicons color={colors.brandInk} name="ellipsis-horizontal" size={18} />
+          </Pressable>
         </View>
-        {isCanceledStatus(status) ? (
+        {moreOpen && secondaryActions.length > 0 ? (
+          <View style={styles.moreActionsPanel}>
+            {secondaryActions.map((action) => {
+              const actionTone = getAppointmentStatusMeta(action.nextState);
+              return (
+                <Pressable
+                  disabled={saving}
+                  key={`${action.nextState.status}-${action.nextState.isDelayed ? "delayed" : "regular"}`}
+                  onPress={() => {
+                    setMoreOpen(false);
+                    handleStatusPress(action);
+                  }}
+                  style={styles.moreAction}
+                >
+                  <Ionicons color={actionTone.text} name={actionTone.icon} size={15} />
+                  <Text style={[styles.moreActionText, { color: actionTone.text }]}>
+                    {action.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        ) : null}
+        {status.status === AppointmentStatus.CANCELLED ? (
           <View style={styles.cancellationInfo}>
             <Text style={styles.cancellationInfoText}>
               Disdetta cliente
@@ -1082,16 +1257,12 @@ function AgendaRow({
         ) : null}
         {entry.status_history && entry.status_history.length > 0 ? (
           <Text numberOfLines={1} style={styles.statusHistoryText}>
-            Ultimo cambio: {normalizeStatusLabel(entry.status_history[entry.status_history.length - 1].status)}
+            Ultimo cambio: {getAppointmentStatusMeta(entry.status_history[entry.status_history.length - 1].status).label}
           </Text>
         ) : null}
       </View>
 
-      {saving ? (
-        <ActivityIndicator color={colors.brand} size="small" />
-      ) : (
-        <Ionicons color={colors.textSoft} name="ellipsis-vertical" size={16} />
-      )}
+      {saving ? <ActivityIndicator color={colors.brand} size="small" /> : null}
     </Animated.View>
   );
 }
@@ -1102,24 +1273,29 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   content: {
-    paddingBottom: spacing.xxl,
+    paddingBottom: spacing.xl,
     paddingHorizontal: spacing.lg,
-    paddingTop: spacing.xl,
+    paddingTop: spacing.lg,
   },
   pageMotion: {
     flex: 1,
   },
+  topBar: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: spacing.sm,
+    marginBottom: spacing.md,
+  },
   hero: {
-    backgroundColor: "rgba(255, 255, 255, 0.82)",
-    borderColor: "rgba(174, 218, 245, 0.55)",
-    borderRadius: 22,
-    borderWidth: 1,
-    padding: spacing.lg,
+    backgroundColor: colors.surface,
+    borderRadius: 18,
+    marginBottom: spacing.sm,
+    padding: spacing.xs,
     shadowColor: "#8EC8EA",
     shadowOffset: { width: 0, height: 14 },
-    shadowOpacity: 0.12,
-    shadowRadius: 28,
-    elevation: 4,
+    shadowOpacity: 0.04,
+    shadowRadius: 16,
+    elevation: 1,
   },
   heroTop: {
     alignItems: "center",
@@ -1128,17 +1304,17 @@ const styles = StyleSheet.create({
   },
   logo: {
     backgroundColor: "#F4FBFF",
-    borderRadius: 24,
-    height: 64,
-    width: 64,
+    borderRadius: 20,
+    height: 56,
+    width: 56,
   },
   logoFallback: {
     alignItems: "center",
     backgroundColor: "#DDF3FF",
-    borderRadius: 24,
-    height: 64,
+    borderRadius: 20,
+    height: 56,
     justifyContent: "center",
-    width: 64,
+    width: 56,
   },
   logoFallbackText: {
     color: "#2F6F8C",
@@ -1149,43 +1325,118 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   eyebrow: {
-    color: "#6F9DB9",
+    color: colors.brandDark,
     fontSize: 11,
     fontWeight: "800",
     letterSpacing: 1.1,
     textTransform: "uppercase",
   },
   centerName: {
-    color: "#1F4F70",
-    fontSize: 26,
+    color: colors.brandInk,
+    fontSize: 24,
     fontWeight: "800",
     lineHeight: 31,
     marginTop: 4,
   },
   centerDescription: {
-    color: "#668CA7",
-    fontSize: 13,
-    lineHeight: 18,
+    color: colors.textMuted,
+    fontSize: 14,
+    lineHeight: 20,
     marginTop: 6,
   },
   socialLinks: {
     flexDirection: "row",
     gap: spacing.xs,
-    marginTop: spacing.sm,
+    marginTop: spacing.xs,
+  },
+  primaryKpiCard: {
+    backgroundColor: colors.surfaceSoft,
+    borderRadius: 16,
+    padding: spacing.sm,
+    borderLeftColor: colors.brandDark,
+    borderLeftWidth: 4,
+  },
+  primaryKpiHeader: {
+    alignItems: "flex-start",
+    flexDirection: "row",
+    gap: spacing.sm,
+    justifyContent: "space-between",
+  },
+  primaryKpiLabel: {
+    color: colors.text,
+    fontSize: 12,
+    fontWeight: "800",
+    textTransform: "uppercase",
+  },
+  primaryKpiValue: {
+    color: colors.brandInk,
+    fontSize: 44,
+    fontWeight: "800",
+    lineHeight: 48,
+    marginTop: 2,
+  },
+  primaryKpiBadge: {
+    alignItems: "center",
+    backgroundColor: colors.surface,
+    borderRadius: 999,
+    flexDirection: "row",
+    gap: 4,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 6,
+  },
+  primaryKpiBadgeText: {
+    color: colors.brandInk,
+    fontSize: 12,
+    fontWeight: "800",
+  },
+  nextAppointmentRow: {
+    alignItems: "center",
+    backgroundColor: colors.surface,
+    borderRadius: 14,
+    flexDirection: "row",
+    gap: spacing.sm,
+    marginTop: spacing.xs,
+    padding: spacing.xs,
+  },
+  nextAppointmentIcon: {
+    alignItems: "center",
+    backgroundColor: "#FFFFFF",
+    borderRadius: 10,
+    height: 30,
+    justifyContent: "center",
+    width: 30,
+  },
+  nextAppointmentCopy: {
+    flex: 1,
+  },
+  nextAppointmentLabel: {
+    color: colors.text,
+    fontSize: 12,
+    fontWeight: "800",
+  },
+  nextAppointmentText: {
+    color: colors.brandInk,
+    fontSize: 14,
+    fontWeight: "800",
+    marginTop: 2,
+  },
+  primaryKpiMeta: {
+    color: colors.textMuted,
+    fontSize: 12,
+    fontWeight: "700",
+    marginTop: spacing.xs,
   },
   socialIconButton: {
     alignItems: "center",
     backgroundColor: "rgba(234, 246, 255, 0.92)",
-    borderColor: "rgba(174, 218, 245, 0.66)",
     borderRadius: 14,
-    borderWidth: 1,
-    height: 38,
+    height: 36,
     justifyContent: "center",
     shadowColor: "#8EC8EA",
     shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.16,
-    shadowRadius: 16,
-    width: 38,
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    width: 36,
   },
   revenuePanel: {
     alignItems: "flex-end",
@@ -1193,17 +1444,17 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     flexDirection: "row",
     justifyContent: "space-between",
-    marginTop: spacing.lg,
-    padding: spacing.md,
+    marginTop: spacing.md,
+    padding: spacing.sm,
   },
   revenueLabel: {
-    color: "#5E8DAC",
+    color: colors.textMuted,
     fontSize: 12,
     fontWeight: "800",
   },
   revenueValue: {
-    color: "#183F5C",
-    fontSize: 32,
+    color: colors.brandInk,
+    fontSize: 34,
     fontWeight: "800",
     lineHeight: 38,
     marginTop: 2,
@@ -1213,13 +1464,13 @@ const styles = StyleSheet.create({
     flexShrink: 1,
   },
   dateText: {
-    color: "#4D7D9B",
+    color: colors.textMuted,
     fontSize: 12,
     fontWeight: "700",
     textTransform: "capitalize",
   },
   timeText: {
-    color: "#1F4F70",
+    color: colors.brandInk,
     fontSize: 20,
     fontWeight: "800",
     marginTop: 2,
@@ -1227,12 +1478,10 @@ const styles = StyleSheet.create({
   onboardingAlert: {
     alignItems: "center",
     backgroundColor: "#EAF6FF",
-    borderColor: "#B9E2FA",
     borderRadius: 18,
-    borderWidth: 1,
     flexDirection: "row",
     gap: spacing.md,
-    marginBottom: spacing.lg,
+    marginBottom: spacing.md,
     padding: spacing.md,
   },
   alertIcon: {
@@ -1247,136 +1496,172 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   alertTitle: {
-    color: "#1F4F70",
+    color: colors.brandInk,
     fontSize: 15,
     fontWeight: "800",
   },
   alertText: {
-    color: "#668CA7",
-    fontSize: 13,
+    color: colors.textMuted,
+    fontSize: 14,
     marginTop: 3,
   },
   loader: {
     marginBottom: spacing.md,
   },
   demoNote: {
-    color: "#668CA7",
-    fontSize: 13,
+    color: colors.textMuted,
+    fontSize: 14,
     marginBottom: spacing.md,
     textAlign: "center",
   },
   quickActions: {
     flexDirection: "row",
-    gap: spacing.sm,
-    marginBottom: spacing.lg,
+    gap: spacing.xs,
+    marginBottom: spacing.md,
   },
   quickAction: {
     alignItems: "center",
-    backgroundColor: "rgba(255, 255, 255, 0.78)",
-    borderColor: "rgba(174, 218, 245, 0.5)",
-    borderRadius: 18,
-    borderWidth: 1,
+    backgroundColor: colors.surfaceMuted,
+    borderRadius: 14,
     flex: 1,
-    gap: 6,
-    minHeight: 68,
+    flexDirection: "row",
+    gap: spacing.xs,
+    minHeight: 44,
     justifyContent: "center",
     paddingHorizontal: spacing.xs,
   },
   quickActionText: {
-    color: "#245A7A",
-    fontSize: 11,
+    color: colors.brandInk,
+    fontSize: 13,
     fontWeight: "800",
     textAlign: "center",
+  },
+  quickActionPrimary: {
+    backgroundColor: colors.brandDark,
+    shadowColor: colors.brandDark,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 2,
+  },
+  quickActionTextPrimary: {
+    color: colors.surface,
+  },
+  quickActionPressed: {
+    opacity: 0.78,
+    transform: [{ scale: 0.98 }],
   },
   kpiGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: spacing.sm,
-    marginBottom: spacing.xl,
+    gap: spacing.xs,
+    marginBottom: spacing.xs,
   },
   kpiCard: {
-    borderColor: "rgba(174, 218, 245, 0.42)",
-    borderRadius: 20,
-    borderWidth: 1,
-    flexBasis: "48%",
-    minHeight: 132,
-    padding: spacing.md,
+    backgroundColor: colors.surface,
+    borderRadius: 14,
+    flexBasis: "31.5%",
+    flexGrow: 1,
+    minHeight: 78,
+    padding: spacing.sm,
     shadowColor: "#8EC8EA",
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.08,
-    shadowRadius: 20,
-    elevation: 2,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.025,
+    shadowRadius: 10,
+    elevation: 1,
+  },
+  issueStrip: {
+    flexDirection: "row",
+    gap: spacing.xs,
+    marginBottom: spacing.sm,
+  },
+  issueItem: {
+    alignItems: "center",
+    borderRadius: 12,
+    flex: 1,
+    flexDirection: "row",
+    gap: 5,
+    justifyContent: "center",
+    minHeight: 34,
+    paddingHorizontal: spacing.xs,
+  },
+  issueValue: {
+    fontSize: 14,
+    fontWeight: "800",
+    lineHeight: 18,
+  },
+  issueLabel: {
+    color: colors.text,
+    fontSize: 12,
+    fontWeight: "800",
   },
   kpiIcon: {
     alignItems: "center",
-    borderRadius: 13,
-    height: 36,
+    backgroundColor: colors.surfaceMuted,
+    borderRadius: 10,
+    height: 30,
     justifyContent: "center",
-    marginBottom: spacing.md,
-    width: 36,
+    marginBottom: spacing.xs,
+    width: 30,
   },
   kpiValue: {
-    color: "#183F5C",
-    fontSize: 24,
+    color: colors.brandInk,
+    fontSize: 28,
     fontWeight: "800",
-    lineHeight: 29,
+    lineHeight: 31,
   },
   kpiLabel: {
-    color: "#5D86A0",
+    color: colors.text,
     fontSize: 12,
-    fontWeight: "700",
+    fontWeight: "800",
     lineHeight: 16,
-    marginTop: 5,
+    marginTop: 2,
   },
   sectionHeader: {
     alignItems: "center",
     flexDirection: "row",
     justifyContent: "space-between",
-    marginBottom: spacing.md,
+    marginBottom: spacing.sm,
   },
   sectionKicker: {
-    color: "#6F9DB9",
+    color: colors.brandDark,
     fontSize: 11,
     fontWeight: "800",
     letterSpacing: 1,
     textTransform: "uppercase",
   },
   sectionTitle: {
-    color: "#1F4F70",
-    fontSize: 22,
+    color: colors.brandInk,
+    fontSize: 20,
     fontWeight: "800",
-    marginTop: 3,
+    marginTop: 1,
   },
   dragHint: {
     alignItems: "center",
-    backgroundColor: "rgba(255, 255, 255, 0.78)",
-    borderColor: "rgba(174, 218, 245, 0.5)",
+    backgroundColor: colors.surfaceMuted,
     borderRadius: 999,
-    borderWidth: 1,
     flexDirection: "row",
     gap: 4,
     paddingHorizontal: spacing.sm,
     paddingVertical: 7,
   },
   dragHintText: {
-    color: "#668CA7",
+    color: colors.textMuted,
     fontSize: 11,
     fontWeight: "800",
   },
   agendaCard: {
-    backgroundColor: "rgba(255, 255, 255, 0.62)",
-    borderColor: "rgba(174, 218, 245, 0.42)",
-    borderRadius: 26,
-    borderWidth: 1,
-    marginBottom: spacing.xl,
+    backgroundColor: "rgba(255, 255, 255, 0.74)",
+    borderRadius: 22,
+    marginBottom: spacing.md,
     overflow: "hidden",
-    padding: spacing.md,
+    padding: spacing.sm,
     position: "relative",
     shadowColor: "#8EC8EA",
     shadowOffset: { width: 0, height: 18 },
-    shadowOpacity: 0.1,
-    shadowRadius: 30,
-    elevation: 3,
+    shadowOpacity: 0.05,
+    shadowRadius: 20,
+    elevation: 1,
   },
   timelineLine: {
     backgroundColor: "rgba(174, 218, 245, 0.46)",
@@ -1390,36 +1675,54 @@ const styles = StyleSheet.create({
   agendaRow: {
     alignItems: "flex-start",
     flexDirection: "row",
-    gap: spacing.md,
-    marginBottom: spacing.md,
-    minHeight: 154,
+    gap: spacing.sm,
+    marginBottom: spacing.sm,
+    minHeight: 104,
   },
   agendaRowLast: {
     marginBottom: 0,
   },
+  agendaRowPast: {
+    opacity: 0.58,
+  },
+  agendaRowCurrent: {
+    backgroundColor: "rgba(221, 243, 250, 0.35)",
+    borderRadius: 18,
+  },
+  agendaRowDelayed: {
+    backgroundColor: "rgba(255, 244, 231, 0.55)",
+    borderRadius: 18,
+  },
   timeColumn: {
     alignItems: "center",
-    paddingTop: spacing.md,
-    width: 62,
+    paddingTop: spacing.sm,
+    width: 52,
   },
   agendaTime: {
-    color: "#1F4F70",
+    color: colors.brandInk,
     fontSize: 14,
     fontWeight: "800",
+  },
+  temporalLabel: {
+    color: colors.textMuted,
+    fontSize: 10,
+    fontWeight: "800",
+    marginTop: 2,
+    textTransform: "uppercase",
   },
   timelineNode: {
     alignItems: "center",
     backgroundColor: "rgba(255, 255, 255, 0.95)",
     borderRadius: 18,
     borderWidth: 2,
-    height: 24,
+    height: 22,
     justifyContent: "center",
     marginTop: spacing.sm,
     shadowColor: "#8EC8EA",
     shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.16,
-    shadowRadius: 16,
-    width: 24,
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    width: 22,
   },
   timelineNodeCore: {
     borderRadius: 7,
@@ -1427,17 +1730,15 @@ const styles = StyleSheet.create({
     width: 10,
   },
   agendaMain: {
-    backgroundColor: "rgba(255, 255, 255, 0.9)",
-    borderColor: "rgba(174, 218, 245, 0.52)",
-    borderRadius: 24,
-    borderWidth: 1,
+    backgroundColor: "rgba(255, 255, 255, 0.92)",
+    borderRadius: 18,
     flex: 1,
-    padding: spacing.md,
+    padding: spacing.sm,
     shadowColor: "#8EC8EA",
     shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.12,
-    shadowRadius: 24,
-    elevation: 3,
+    shadowOpacity: 0.05,
+    shadowRadius: 14,
+    elevation: 1,
   },
   agendaTitleRow: {
     alignItems: "center",
@@ -1446,7 +1747,7 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
   agendaClient: {
-    color: "#183F5C",
+    color: colors.brandInk,
     fontSize: 17,
     fontWeight: "800",
   },
@@ -1455,15 +1756,18 @@ const styles = StyleSheet.create({
     paddingRight: spacing.sm,
   },
   agendaSubMeta: {
-    color: "#8BAEC5",
+    color: colors.textMuted,
     fontSize: 12,
     fontWeight: "700",
     marginTop: 3,
   },
   statusPill: {
+    alignItems: "center",
     borderRadius: 999,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 7,
+    flexDirection: "row",
+    gap: 4,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 5,
   },
   statusText: {
     fontSize: 10,
@@ -1474,7 +1778,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     flexDirection: "row",
     gap: spacing.xs,
-    marginTop: 8,
+    marginTop: spacing.xs,
   },
   serviceIcon: {
     alignItems: "center",
@@ -1484,7 +1788,7 @@ const styles = StyleSheet.create({
     width: 28,
   },
   serviceName: {
-    color: "#4D7D9B",
+    color: colors.text,
     flex: 1,
     fontSize: 15,
     fontWeight: "700",
@@ -1493,28 +1797,26 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
     gap: spacing.xs,
-    marginTop: spacing.sm,
+    marginTop: spacing.xs,
   },
   durationChip: {
     alignItems: "center",
     backgroundColor: "#F4FBFF",
-    borderColor: "rgba(174, 218, 245, 0.62)",
     borderRadius: 999,
-    borderWidth: 1,
     flexDirection: "row",
     gap: 4,
     paddingHorizontal: spacing.sm,
-    paddingVertical: 6,
+    paddingVertical: 5,
   },
   durationChipText: {
-    color: "#4D7D9B",
+    color: colors.textMuted,
     fontSize: 12,
     fontWeight: "800",
   },
   categoryChip: {
     borderRadius: 999,
     paddingHorizontal: spacing.sm,
-    paddingVertical: 6,
+    paddingVertical: 5,
   },
   categoryChipText: {
     fontSize: 12,
@@ -1522,25 +1824,88 @@ const styles = StyleSheet.create({
   },
   statusActions: {
     flexDirection: "row",
-    flexWrap: "wrap",
     gap: spacing.xs,
-    marginTop: spacing.md,
+    marginTop: spacing.sm,
+  },
+  statusPrimaryAction: {
+    alignItems: "center",
+    backgroundColor: colors.brandDark,
+    borderRadius: 14,
+    flex: 1,
+    flexDirection: "row",
+    gap: spacing.xs,
+    minHeight: 36,
+    justifyContent: "center",
+    paddingHorizontal: spacing.md,
+  },
+  statusPrimaryActionText: {
+    color: colors.surface,
+    fontSize: 13,
+    fontWeight: "800",
+  },
+  statusPrimaryActionDisabled: {
+    backgroundColor: colors.surfaceMuted,
+  },
+  statusMoreAction: {
+    alignItems: "center",
+    backgroundColor: colors.surfaceMuted,
+    borderRadius: 14,
+    height: 40,
+    justifyContent: "center",
+    width: 46,
+  },
+  statusMoreActionDisabled: {
+    opacity: 0.42,
+  },
+  statusCompleteState: {
+    alignItems: "center",
+    backgroundColor: colors.surfaceMuted,
+    borderRadius: 14,
+    flex: 1,
+    justifyContent: "center",
+    minHeight: 36,
+  },
+  statusCompleteText: {
+    color: colors.textMuted,
+    fontSize: 12,
+    fontWeight: "800",
+  },
+  moreActionsPanel: {
+    backgroundColor: colors.surfaceMuted,
+    borderRadius: 14,
+    flexDirection: "row",
+    gap: spacing.xs,
+    marginTop: spacing.xs,
+    padding: spacing.xs,
+  },
+  moreAction: {
+    alignItems: "center",
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    flex: 1,
+    flexDirection: "row",
+    gap: 4,
+    justifyContent: "center",
+    minHeight: 36,
+    paddingHorizontal: spacing.xs,
+  },
+  moreActionText: {
+    fontSize: 12,
+    fontWeight: "800",
   },
   statusAction: {
     alignItems: "center",
     backgroundColor: "rgba(244, 251, 255, 0.72)",
-    borderColor: "rgba(174, 218, 245, 0.62)",
     borderRadius: 14,
-    borderWidth: 1,
     flexDirection: "row",
     gap: 4,
-    minHeight: 42,
+    minHeight: 36,
     justifyContent: "center",
     paddingHorizontal: 10,
     shadowColor: "#8EC8EA",
     shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
+    shadowOpacity: 0,
+    shadowRadius: 0,
   },
   cancelStatusAction: {
     borderStyle: "dashed",
@@ -1552,9 +1917,7 @@ const styles = StyleSheet.create({
   },
   cancellationInfo: {
     backgroundColor: "#F5F9FD",
-    borderColor: "rgba(174, 218, 245, 0.42)",
     borderRadius: 14,
-    borderWidth: 1,
     marginTop: spacing.sm,
     padding: spacing.sm,
   },
@@ -1576,14 +1939,12 @@ const styles = StyleSheet.create({
   },
   clientList: {
     gap: spacing.sm,
-    marginBottom: spacing.xl,
+    marginBottom: spacing.lg,
   },
   clientCard: {
-    backgroundColor: "rgba(255, 255, 255, 0.82)",
-    borderColor: "rgba(174, 218, 245, 0.5)",
-    borderRadius: 20,
-    borderWidth: 1,
-    padding: spacing.md,
+    backgroundColor: "rgba(255, 255, 255, 0.9)",
+    borderRadius: 18,
+    padding: spacing.sm,
   },
   clientRow: {
     alignItems: "center",
@@ -1594,9 +1955,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     backgroundColor: "#DDF3FF",
     borderRadius: 18,
-    height: 48,
+    height: 44,
     justifyContent: "center",
-    width: 48,
+    width: 44,
   },
   clientAvatarText: {
     color: "#2F6F8C",
@@ -1607,13 +1968,13 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   clientName: {
-    color: "#183F5C",
+    color: colors.brandInk,
     fontSize: 16,
     fontWeight: "800",
   },
   clientMeta: {
-    color: "#668CA7",
-    fontSize: 12,
+    color: colors.textMuted,
+    fontSize: 13,
     lineHeight: 17,
     marginTop: 4,
   },
@@ -1633,8 +1994,8 @@ const styles = StyleSheet.create({
   },
   clientHistory: {
     gap: spacing.xs,
-    marginLeft: 60,
-    marginTop: spacing.md,
+    marginLeft: 56,
+    marginTop: spacing.sm,
   },
   historyRow: {
     alignItems: "center",
@@ -1648,7 +2009,7 @@ const styles = StyleSheet.create({
     width: 8,
   },
   historyText: {
-    color: "#5D86A0",
+    color: colors.text,
     flex: 1,
     fontSize: 12,
     fontWeight: "700",
@@ -1667,13 +2028,11 @@ const styles = StyleSheet.create({
   },
   alertList: {
     gap: spacing.sm,
-    marginBottom: spacing.xl,
+    marginBottom: spacing.lg,
   },
   smartAlert: {
     alignItems: "center",
-    borderColor: "rgba(174, 218, 245, 0.35)",
     borderRadius: 18,
-    borderWidth: 1,
     flexDirection: "row",
     gap: spacing.md,
     padding: spacing.md,
@@ -1693,16 +2052,14 @@ const styles = StyleSheet.create({
     fontWeight: "800",
   },
   smartAlertText: {
-    color: "#5D86A0",
-    fontSize: 13,
-    lineHeight: 18,
+    color: colors.text,
+    fontSize: 14,
+    lineHeight: 20,
     marginTop: 3,
   },
   reviewCard: {
-    backgroundColor: "rgba(255, 255, 255, 0.82)",
-    borderColor: "rgba(174, 218, 245, 0.5)",
-    borderRadius: 20,
-    borderWidth: 1,
+    backgroundColor: "rgba(255, 255, 255, 0.9)",
+    borderRadius: 18,
     padding: spacing.md,
   },
   reviewHeader: {
@@ -1711,7 +2068,7 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
   },
   reviewTitle: {
-    color: "#1F4F70",
+    color: colors.brandInk,
     fontSize: 14,
     fontWeight: "800",
   },
@@ -1722,22 +2079,20 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
   },
   reviewComment: {
-    color: "#4D7D9B",
-    fontSize: 14,
-    lineHeight: 20,
+    color: colors.text,
+    fontSize: 15,
+    lineHeight: 22,
     marginTop: spacing.xs,
   },
   reviewMeta: {
-    color: "#6F9DB9",
-    fontSize: 12,
+    color: colors.textMuted,
+    fontSize: 13,
     marginTop: spacing.sm,
   },
   aiCard: {
     alignItems: "center",
     backgroundColor: "#EAF6FF",
-    borderColor: "rgba(174, 218, 245, 0.5)",
     borderRadius: 22,
-    borderWidth: 1,
     flexDirection: "row",
     gap: spacing.md,
     padding: spacing.md,
@@ -1754,14 +2109,14 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   aiTitle: {
-    color: "#1F4F70",
+    color: colors.brandInk,
     fontSize: 15,
     fontWeight: "800",
   },
   aiText: {
-    color: "#5D86A0",
-    fontSize: 13,
-    lineHeight: 19,
+    color: colors.text,
+    fontSize: 14,
+    lineHeight: 20,
     marginTop: 4,
   },
   cancelBackdrop: {
@@ -1769,15 +2124,13 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(31, 79, 112, 0.28)",
     flex: 1,
     justifyContent: "center",
-    padding: spacing.lg,
+    padding: spacing.md,
   },
   cancelCard: {
     backgroundColor: "#FFFFFF",
-    borderColor: "rgba(174, 218, 245, 0.58)",
-    borderRadius: 24,
-    borderWidth: 1,
+    borderRadius: 22,
     maxWidth: 520,
-    padding: spacing.lg,
+    padding: spacing.md,
     shadowColor: "#8EC8EA",
     shadowOffset: { width: 0, height: 18 },
     shadowOpacity: 0.2,
@@ -1794,21 +2147,19 @@ const styles = StyleSheet.create({
     width: 48,
   },
   cancelTitle: {
-    color: "#1F4F70",
+    color: colors.brandInk,
     fontSize: 21,
     fontWeight: "800",
   },
   cancelText: {
-    color: "#5D86A0",
-    fontSize: 14,
-    lineHeight: 20,
+    color: colors.text,
+    fontSize: 15,
+    lineHeight: 22,
     marginTop: spacing.xs,
   },
   cancelInput: {
     backgroundColor: "#F4FBFF",
-    borderColor: "rgba(174, 218, 245, 0.7)",
     borderRadius: 16,
-    borderWidth: 1,
     color: "#1F4F70",
     fontSize: 15,
     marginTop: spacing.lg,
@@ -1824,9 +2175,7 @@ const styles = StyleSheet.create({
   cancelSecondary: {
     alignItems: "center",
     backgroundColor: "#F4FBFF",
-    borderColor: "rgba(174, 218, 245, 0.7)",
     borderRadius: 16,
-    borderWidth: 1,
     flex: 1,
     justifyContent: "center",
     minHeight: 48,
@@ -1839,9 +2188,7 @@ const styles = StyleSheet.create({
   cancelPrimary: {
     alignItems: "center",
     backgroundColor: "#DFF3FF",
-    borderColor: "#A9D8FF",
     borderRadius: 16,
-    borderWidth: 1,
     flex: 1,
     justifyContent: "center",
     minHeight: 48,

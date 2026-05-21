@@ -17,6 +17,11 @@ import {
   getUserBookings,
   toggleFavoriteCenter,
 } from "../lib/api";
+import {
+  getAppointmentStatusMeta,
+  isAppointmentActive,
+  normalizeAppointmentState,
+} from "../lib/appointmentStatus";
 import type { Booking, Center } from "../types/api";
 import { PrimaryButton } from "../components/PrimaryButton";
 import { ScreenHeader } from "../components/ScreenHeader";
@@ -87,7 +92,7 @@ export function ClientHomeScreen({
 
   const nextAppointment = sortedAppointments.find((a) => {
     const time = a.start_time ? new Date(a.start_time).getTime() : Number.NaN;
-    return a.status !== "canceled" && !isNaN(time) && time > now;
+    return isAppointmentActive(normalizeAppointmentState(a.status, a.is_delayed).status) && !isNaN(time) && time > now;
   });
 
   const discoverCenters = useMemo(
@@ -258,9 +263,7 @@ export function ClientHomeScreen({
 
               <Text style={styles.meta}>{appointment.operator_name}</Text>
 
-              {appointment.status !== "confirmed" ? (
-                <Text style={styles.status}>{appointment.status}</Text>
-              ) : null}
+              <AppointmentStatusLabel isDelayed={appointment.is_delayed} status={appointment.status} />
             </View>
 
             <Text style={styles.price}>
@@ -275,6 +278,15 @@ export function ClientHomeScreen({
 
 /* 🎨 STYLES */
 
+function AppointmentStatusLabel({ isDelayed, status }: { isDelayed?: boolean | null; status: string }) {
+  const meta = getAppointmentStatusMeta(normalizeAppointmentState(status, isDelayed));
+  return (
+    <View style={[styles.statusBadge, { backgroundColor: meta.background }]}>
+      <Text style={[styles.statusBadgeText, { color: meta.text }]}>{meta.label}</Text>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -282,8 +294,8 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingHorizontal: spacing.lg,
-    paddingTop: spacing.xl,
-    paddingBottom: spacing.xxl,
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.xl,
   },
 
   quickBooking: {
@@ -309,16 +321,13 @@ const styles = StyleSheet.create({
   centerCard: {
     alignItems: "center",
     backgroundColor: colors.surface,
-    borderColor: colors.border,
-    borderRadius: 14,
-    borderWidth: 1,
+    borderRadius: 16,
     flexDirection: "row",
     gap: spacing.md,
     padding: spacing.md,
   },
   centerCardSelected: {
     backgroundColor: colors.surfaceSky,
-    borderColor: colors.brand,
   },
   centerLogo: {
     backgroundColor: "#FFFFFF",
@@ -374,9 +383,9 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: spacing.md,
     marginBottom: spacing.md,
-    shadowColor: "#000",
-    shadowOpacity: 0.05,
-    shadowRadius: 10,
+    shadowColor: colors.brandDark,
+    shadowOpacity: 0.04,
+    shadowRadius: 14,
     elevation: 2,
   },
 
@@ -395,13 +404,16 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
 
-  status: {
-    fontSize: 12,
-    marginTop: 4,
-    fontWeight: "600",
+  statusBadge: {
+    alignSelf: "flex-start",
+    borderRadius: 999,
+    marginTop: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
   },
 
-  statusConfirmed: {
-    color: colors.success,
+  statusBadgeText: {
+    fontSize: 11,
+    fontWeight: "800",
   },
 });

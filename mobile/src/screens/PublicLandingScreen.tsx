@@ -181,11 +181,9 @@ const styles = StyleSheet.create({
     backgroundColor: colors.canvas,
   },
   header: {
-    paddingTop: spacing.xl,
-    paddingBottom: spacing.lg,
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.md,
     alignItems: "center",
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
   },
   headerTitle: {
     ...textStyles.screenTitle,
@@ -215,7 +213,7 @@ const styles = StyleSheet.create({
     color: colors.brand,
   },
   formContainer: {
-    padding: spacing.xl,
+    padding: spacing.lg,
     flex: 1,
     justifyContent: "flex-start",
   },
@@ -225,9 +223,8 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   input: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 8,
+    backgroundColor: colors.surface,
+    borderRadius: 14,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.md,
     marginBottom: spacing.md,

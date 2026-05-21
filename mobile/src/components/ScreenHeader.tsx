@@ -1,6 +1,6 @@
 import { Image, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 
-import { spacing } from "../theme/spacing";
+import { radius, spacing } from "../theme/spacing";
 import { textStyles } from "../theme/typography";
 import Ionicons from "react-native-vector-icons/Ionicons";
 import { colors } from "../theme/colors";
@@ -59,9 +59,9 @@ const styles = StyleSheet.create({
   },
   logo: {
     backgroundColor: colors.surface,
-    borderRadius: 16,
-    height: 32,
-    width: 32,
+    borderRadius: radius.md,
+    height: 36,
+    width: 36,
   },
   title: {
     ...textStyles.screenTitle,
@@ -70,6 +70,6 @@ const styles = StyleSheet.create({
   subtitle: {
     ...textStyles.bodyMuted,
     marginTop: spacing.sm,
-    maxWidth: 340,
+    maxWidth: 360,
   },
 });

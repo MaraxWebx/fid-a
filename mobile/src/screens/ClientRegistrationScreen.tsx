@@ -161,15 +161,13 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingHorizontal: spacing.lg,
-    paddingTop: spacing.xl,
-    paddingBottom: spacing.xxl,
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.xl,
   },
   card: {
     backgroundColor: colors.surface,
-    borderColor: colors.overlayBorder,
-    borderRadius: 12,
-    borderWidth: 1,
-    padding: spacing.xl,
+    borderRadius: 20,
+    padding: spacing.lg,
   },
   fieldWrap: {
     marginBottom: spacing.md,
@@ -182,9 +180,7 @@ const styles = StyleSheet.create({
   },
   input: {
     backgroundColor: colors.surfaceSoft,
-    borderColor: colors.border,
-    borderRadius: 12,
-    borderWidth: 1,
+    borderRadius: 14,
     color: colors.text,
     fontSize: 16,
     minHeight: 54,

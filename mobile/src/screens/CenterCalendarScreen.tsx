@@ -17,6 +17,18 @@ import { CenterBookingDetailModal } from "../components/CenterBookingDetailModal
 import { ScreenHeader } from "../components/ScreenHeader";
 import { SectionCard } from "../components/SectionCard";
 import {
+  AppointmentState,
+  AppointmentStatus,
+  AppointmentStatusAction,
+  getAppointmentTemporalState,
+  getAppointmentStatusMeta,
+  getPrimaryAppointmentAction,
+  getSecondaryAppointmentActions,
+  isAppointmentActive,
+  normalizeAppointmentState,
+  toApiBookingState,
+} from "../lib/appointmentStatus";
+import {
   cancelBooking,
   getCenterBookingSlots,
   getCenterBookings,
@@ -62,20 +74,6 @@ type CalendarViewMode = "calendar" | "list";
 
 const weekdayMap = ["Dom", "Lun", "Mar", "Mer", "Gio", "Ven", "Sab"];
 const weekdayHeaders = ["Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom"];
-const statusActions = ["Confermato", "Arrivata", "In ritardo", "Annullato"] as const;
-const statusActionIconMap = {
-  Confermato: "checkmark-circle-outline",
-  Arrivata: "person-circle-outline",
-  "In ritardo": "time-outline",
-  Annullato: "close-circle-outline",
-} as const;
-const statusActionShortLabelMap = {
-  Confermato: "Conferma",
-  Arrivata: "Arrivata",
-  "In ritardo": "Ritardo",
-  Annullato: "Annulla",
-} as const;
-
 const treatmentTones = {
   viso: {
     accent: "#B9E7F6",
@@ -129,7 +127,7 @@ function buildBookingCountMap(bookings: Booking[]) {
   const counts = new Map<string, number>();
 
   bookings.forEach((booking) => {
-    if (!booking.start_time || booking.status === "canceled") {
+    if (!booking.start_time || !isAppointmentActive(normalizeAppointmentState(booking.status, booking.is_delayed).status)) {
       return;
     }
     const dateKey = formatDateKey(new Date(booking.start_time));
@@ -210,29 +208,6 @@ function getTreatmentTone(service: string) {
     return treatmentTones.massaggi;
   }
   return treatmentTones.default;
-}
-
-function getStatusTone(status: string) {
-  const value = status.toLowerCase();
-  if (value.includes("arriv")) return { background: "#EAF9F3", text: "#4D8B77" };
-  if (value.includes("ritardo")) return { background: "#FFF4E7", text: "#B47A3B" };
-  if (value.includes("cancell") || value.includes("annull") || value.includes("disdet")) {
-    return { background: "#EFF4FA", text: "#74889D" };
-  }
-  return { background: "#DFF3FF", text: "#2F6F8C" };
-}
-
-function normalizeStatusLabel(status: string) {
-  if (!status || status === "confirmed") return "Confermato";
-  if (status === "arrived") return "Arrivata";
-  if (status === "late") return "In ritardo";
-  if (status === "canceled") return "Annullato";
-  return status;
-}
-
-function isCanceledStatus(status: string) {
-  const value = status.toLowerCase();
-  return value.includes("annull") || value.includes("disdet") || value.includes("cancel");
 }
 
 function getBookingDurationLabel(booking: Booking) {
@@ -522,7 +497,7 @@ export function CenterCalendarScreen({
     }
   };
 
-  const handleChangeBookingStatus = async (booking: Booking, nextStatus: string) => {
+  const handleChangeBookingStatus = async (booking: Booking, nextState: AppointmentState) => {
     setStatusSavingId(booking.id);
     setBookingsError(null);
     setAgendaError(null);
@@ -531,7 +506,7 @@ export function CenterCalendarScreen({
       const updatedBooking = await updateBookingStatus(booking.id, {
         center_id: center.id,
         role: "center",
-        status: nextStatus,
+        status: toApiBookingState(nextState),
       });
       setBookings((current) =>
         current.map((item) => (item.id === booking.id ? updatedBooking : item)),
@@ -695,7 +670,7 @@ export function CenterCalendarScreen({
                 booking={booking}
                 isLast={index === agendaBookingsSorted.length - 1}
                 key={booking.id}
-                onChangeStatus={(nextStatus) => void handleChangeBookingStatus(booking, nextStatus)}
+                onChangeStatus={(nextState) => void handleChangeBookingStatus(booking, nextState)}
                 saving={statusSavingId === booking.id}
               />
             ))}
@@ -818,7 +793,7 @@ export function CenterCalendarScreen({
                       isCompact
                       isLast={index === bookings.length - 1}
                       key={booking.id}
-                      onChangeStatus={(nextStatus) => void handleChangeBookingStatus(booking, nextStatus)}
+                      onChangeStatus={(nextState) => void handleChangeBookingStatus(booking, nextState)}
                       onEditSlot={() => setBookingEditor(booking)}
                       saving={statusSavingId === booking.id || bookingActionLoading}
                     />
@@ -925,16 +900,23 @@ function AppointmentTimelineCard({
   booking: Booking;
   isCompact?: boolean;
   isLast: boolean;
-  onChangeStatus: (status: string) => void;
+  onChangeStatus: (state: AppointmentState) => void;
   onEditSlot?: () => void;
   saving: boolean;
 }) {
   const tone = getTreatmentTone(booking.service_name ?? "");
-  const status = normalizeStatusLabel(booking.status);
-  const statusTone = getStatusTone(status);
+  const status = normalizeAppointmentState(booking.status, booking.is_delayed);
+  const statusTone = getAppointmentStatusMeta(status);
+  const temporalState = getAppointmentTemporalState(
+    { endTime: booking.end_time, startTime: booking.start_time },
+    new Date(),
+  );
+  const primaryAction = getPrimaryAppointmentAction(status);
+  const secondaryActions = getSecondaryAppointmentActions(status);
   const scale = useRef(new Animated.Value(1)).current;
+  const [moreOpen, setMoreOpen] = useState(false);
 
-  const handleActionPress = (nextStatus: string) => {
+  const handleActionPress = (action: AppointmentStatusAction) => {
     Animated.sequence([
       Animated.timing(scale, {
         duration: 90,
@@ -948,7 +930,7 @@ function AppointmentTimelineCard({
         useNativeDriver: true,
       }),
     ]).start();
-    onChangeStatus(nextStatus);
+    onChangeStatus(action.nextState);
   };
 
   return (
@@ -956,11 +938,23 @@ function AppointmentTimelineCard({
       style={[
         styles.timelineAppointmentRow,
         isLast ? styles.timelineAppointmentRowLast : null,
+        temporalState === "past" ? styles.timelineAppointmentRowPast : null,
+        temporalState === "current" ? styles.timelineAppointmentRowCurrent : null,
+        status.isDelayed ? styles.timelineAppointmentRowDelayed : null,
         { transform: [{ scale }] },
       ]}
     >
       <View style={styles.timelineTimeColumn}>
         <Text style={styles.timelineTime}>{booking.time_label ?? "--:--"}</Text>
+        <Text style={styles.timelineTemporalLabel}>
+          {temporalState === "current"
+            ? "ora"
+            : temporalState === "past"
+              ? "passato"
+              : temporalState === "upcoming"
+                ? "prossimo"
+                : ""}
+        </Text>
         <View style={[styles.timelineNode, { borderColor: tone.accent }]}>
           <View style={[styles.timelineNodeCore, { backgroundColor: tone.accent }]} />
         </View>
@@ -975,8 +969,9 @@ function AppointmentTimelineCard({
             </Text>
           </View>
           <View style={[styles.timelineStatusBadge, { backgroundColor: statusTone.background }]}>
+            <Ionicons color={statusTone.text} name={statusTone.icon} size={13} />
             <Text style={[styles.timelineStatusText, { color: statusTone.text }]}>
-              {status}
+              {statusTone.label}
             </Text>
           </View>
         </View>
@@ -993,51 +988,63 @@ function AppointmentTimelineCard({
             <Ionicons color="#4D7D9B" name="hourglass-outline" size={13} />
             <Text style={styles.timelineDurationText}>{getBookingDurationLabel(booking)}</Text>
           </View>
-          <View style={[styles.timelineCategoryChip, { backgroundColor: tone.background }]}>
-            <Text style={[styles.timelineCategoryText, { color: tone.text }]}>{tone.label}</Text>
-          </View>
         </View>
 
         <View style={styles.timelineActions}>
-          {statusActions.map((action) => {
-            const active = action === status;
-            const actionTone = getStatusTone(action);
-
-            return (
-              <Pressable
-                disabled={saving}
-                key={action}
-                onPress={() => handleActionPress(action)}
-                style={[
-                  styles.timelineAction,
-                  action === "Annullato" ? styles.timelineCancelAction : null,
-                  active
-                    ? {
-                        backgroundColor: actionTone.background,
-                        borderColor: actionTone.text,
-                      }
-                    : null,
-                ]}
-              >
+          <Pressable
+            disabled={saving || !primaryAction}
+            onPress={() => primaryAction && handleActionPress(primaryAction)}
+            style={[styles.timelinePrimaryAction, !primaryAction ? styles.timelinePrimaryActionDisabled : null]}
+          >
+            {primaryAction ? (
+              <>
                 <Ionicons
-                  color={active ? actionTone.text : "#6B91AB"}
-                  name={statusActionIconMap[action]}
-                  size={14}
+                  color={colors.surface}
+                  name={getAppointmentStatusMeta(primaryAction.nextState).icon}
+                  size={16}
                 />
-                <Text
-                  style={[
-                    styles.timelineActionText,
-                    active ? { color: actionTone.text } : null,
-                  ]}
-                >
-                  {statusActionShortLabelMap[action]}
-                </Text>
-              </Pressable>
-            );
-          })}
+                <Text style={styles.timelinePrimaryActionText}>{primaryAction.label}</Text>
+              </>
+            ) : (
+              <Text style={styles.timelinePrimaryActionText}>Completato</Text>
+            )}
+          </Pressable>
+          <Pressable
+            disabled={saving || secondaryActions.length === 0}
+            onPress={() => setMoreOpen((current) => !current)}
+            style={[
+              styles.timelineMoreAction,
+              secondaryActions.length === 0 ? styles.timelineMoreActionDisabled : null,
+            ]}
+          >
+            <Ionicons color={colors.brandInk} name="ellipsis-horizontal" size={18} />
+          </Pressable>
         </View>
+        {moreOpen && secondaryActions.length > 0 ? (
+          <View style={styles.timelineMorePanel}>
+            {secondaryActions.map((action) => {
+              const actionTone = getAppointmentStatusMeta(action.nextState);
+              return (
+                <Pressable
+                  disabled={saving}
+                  key={`${action.nextState.status}-${action.nextState.isDelayed ? "delayed" : "regular"}`}
+                  onPress={() => {
+                    setMoreOpen(false);
+                    handleActionPress(action);
+                  }}
+                  style={styles.timelineMorePanelAction}
+                >
+                  <Ionicons color={actionTone.text} name={actionTone.icon} size={15} />
+                  <Text style={[styles.timelineMorePanelText, { color: actionTone.text }]}>
+                    {action.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        ) : null}
 
-        {onEditSlot && !isCanceledStatus(status) ? (
+        {onEditSlot && status.status !== AppointmentStatus.CANCELLED ? (
           <Pressable onPress={onEditSlot} style={styles.editSlotButton}>
             <Ionicons color="#4D7D9B" name="calendar-outline" size={14} />
             <Text style={styles.editSlotText}>Modifica slot</Text>
@@ -1057,38 +1064,36 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingHorizontal: spacing.lg,
-    paddingTop: spacing.xl,
-    paddingBottom: spacing.xxl,
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.xl,
   },
   viewToggle: {
-    backgroundColor: "rgba(255, 255, 255, 0.78)",
-    borderColor: "rgba(174, 218, 245, 0.5)",
-    borderRadius: 20,
-    borderWidth: 1,
+    backgroundColor: colors.surface,
+    borderRadius: 18,
     flexDirection: "row",
     gap: spacing.xs,
-    marginBottom: spacing.lg,
+    marginBottom: spacing.md,
     padding: spacing.xs,
     shadowColor: "#8EC8EA",
     shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.08,
-    shadowRadius: 24,
+    shadowOpacity: 0.05,
+    shadowRadius: 18,
   },
   viewToggleItem: {
     alignItems: "center",
-    borderRadius: 16,
+    borderRadius: 14,
     flex: 1,
     flexDirection: "row",
     gap: spacing.xs,
     justifyContent: "center",
-    minHeight: 44,
+    minHeight: 40,
   },
   viewToggleActive: {
     backgroundColor: "#DFF3FF",
   },
   viewToggleLabel: {
     color: colors.textMuted,
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: "700",
   },
   viewToggleLabelActive: {
@@ -1103,20 +1108,16 @@ const styles = StyleSheet.create({
   monthButton: {
     alignItems: "center",
     backgroundColor: "#F4FBFF",
-    borderColor: "rgba(174, 218, 245, 0.7)",
-    borderRadius: 15,
-    borderWidth: 1,
-    height: 38,
+    borderRadius: 14,
+    height: 36,
     justifyContent: "center",
     width: 38,
   },
   todayButton: {
     alignItems: "center",
     backgroundColor: "#DFF3FF",
-    borderColor: "#A9D8FF",
-    borderRadius: 15,
-    borderWidth: 1,
-    minHeight: 38,
+    borderRadius: 14,
+    minHeight: 36,
     justifyContent: "center",
     paddingHorizontal: spacing.lg,
   },
@@ -1143,22 +1144,18 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   dateCard: {
-    backgroundColor: "rgba(244, 251, 255, 0.9)",
-    borderColor: "rgba(174, 218, 245, 0.5)",
-    borderRadius: 16,
-    borderWidth: 1,
+    backgroundColor: colors.surfaceMuted,
+    borderRadius: 14,
     flexBasis: "13.45%",
-    minHeight: 76,
+    minHeight: 66,
     padding: spacing.xs,
   },
   dateCardSelected: {
     backgroundColor: "#8DDCFF",
-    borderColor: "#C9F1FF",
-    borderWidth: 1,
     shadowColor: "#5DBFEA",
     shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.24,
-    shadowRadius: 18,
+    shadowOpacity: 0.12,
+    shadowRadius: 14,
   },
   dateCardMuted: {
     opacity: 0.45,
@@ -1181,17 +1178,15 @@ const styles = StyleSheet.create({
     fontWeight: "800",
   },
   premiumAgendaSection: {
-    backgroundColor: "rgba(255, 255, 255, 0.62)",
-    borderColor: "rgba(174, 218, 245, 0.42)",
-    borderRadius: 26,
-    borderWidth: 1,
-    marginBottom: spacing.lg,
-    padding: spacing.md,
+    backgroundColor: "rgba(255, 255, 255, 0.78)",
+    borderRadius: 22,
+    marginBottom: spacing.md,
+    padding: spacing.sm,
     shadowColor: "#8EC8EA",
     shadowOffset: { width: 0, height: 18 },
-    shadowOpacity: 0.1,
-    shadowRadius: 30,
-    elevation: 3,
+    shadowOpacity: 0.05,
+    shadowRadius: 20,
+    elevation: 1,
   },
   premiumAgendaHeader: {
     alignItems: "center",
@@ -1208,16 +1203,14 @@ const styles = StyleSheet.create({
   },
   premiumTitle: {
     color: "#1F4F70",
-    fontSize: 22,
+    fontSize: 21,
     fontWeight: "800",
     marginTop: 3,
   },
   premiumHeaderPill: {
     alignItems: "center",
     backgroundColor: "#EAF6FF",
-    borderColor: "rgba(174, 218, 245, 0.58)",
     borderRadius: 999,
-    borderWidth: 1,
     flexDirection: "row",
     gap: 4,
     paddingHorizontal: spacing.sm,
@@ -1243,22 +1236,40 @@ const styles = StyleSheet.create({
   timelineAppointmentRow: {
     alignItems: "flex-start",
     flexDirection: "row",
-    gap: spacing.md,
-    marginBottom: spacing.md,
-    minHeight: 154,
+    gap: spacing.sm,
+    marginBottom: spacing.sm,
+    minHeight: 104,
   },
   timelineAppointmentRowLast: {
     marginBottom: 0,
   },
+  timelineAppointmentRowPast: {
+    opacity: 0.58,
+  },
+  timelineAppointmentRowCurrent: {
+    backgroundColor: "rgba(221, 243, 250, 0.35)",
+    borderRadius: 18,
+  },
+  timelineAppointmentRowDelayed: {
+    backgroundColor: "rgba(255, 244, 231, 0.55)",
+    borderRadius: 18,
+  },
   timelineTimeColumn: {
     alignItems: "center",
-    paddingTop: spacing.md,
+    paddingTop: spacing.sm,
     width: 46,
   },
   timelineTime: {
     color: "#1F4F70",
     fontSize: 14,
     fontWeight: "800",
+  },
+  timelineTemporalLabel: {
+    color: colors.textMuted,
+    fontSize: 10,
+    fontWeight: "800",
+    marginTop: 2,
+    textTransform: "uppercase",
   },
   timelineNode: {
     alignItems: "center",
@@ -1270,8 +1281,8 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
     shadowColor: "#8EC8EA",
     shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.16,
-    shadowRadius: 16,
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
     width: 24,
   },
   timelineNodeCore: {
@@ -1280,20 +1291,18 @@ const styles = StyleSheet.create({
     width: 10,
   },
   timelineCard: {
-    backgroundColor: "rgba(255, 255, 255, 0.9)",
-    borderColor: "rgba(174, 218, 245, 0.52)",
-    borderRadius: 24,
-    borderWidth: 1,
+    backgroundColor: "rgba(255, 255, 255, 0.92)",
+    borderRadius: 18,
     flex: 1,
-    padding: spacing.md,
+    padding: spacing.sm,
     shadowColor: "#8EC8EA",
     shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.12,
-    shadowRadius: 24,
-    elevation: 3,
+    shadowOpacity: 0.05,
+    shadowRadius: 14,
+    elevation: 1,
   },
   timelineCardCompact: {
-    shadowOpacity: 0.08,
+    shadowOpacity: 0.04,
   },
   timelineCardHeader: {
     alignItems: "center",
@@ -1311,15 +1320,18 @@ const styles = StyleSheet.create({
     fontWeight: "800",
   },
   timelineSubMeta: {
-    color: "#8BAEC5",
+    color: colors.textMuted,
     fontSize: 12,
     fontWeight: "700",
     marginTop: 3,
   },
   timelineStatusBadge: {
+    alignItems: "center",
     borderRadius: 999,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 7,
+    flexDirection: "row",
+    gap: 4,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 5,
   },
   timelineStatusText: {
     fontSize: 10,
@@ -1330,7 +1342,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     flexDirection: "row",
     gap: spacing.xs,
-    marginTop: spacing.sm,
+    marginTop: spacing.xs,
   },
   timelineServiceIcon: {
     alignItems: "center",
@@ -1340,7 +1352,7 @@ const styles = StyleSheet.create({
     width: 28,
   },
   timelineServiceName: {
-    color: "#4D7D9B",
+    color: colors.text,
     flex: 1,
     fontSize: 15,
     fontWeight: "700",
@@ -1349,28 +1361,26 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
     gap: spacing.xs,
-    marginTop: spacing.sm,
+    marginTop: spacing.xs,
   },
   timelineDurationChip: {
     alignItems: "center",
     backgroundColor: "#F4FBFF",
-    borderColor: "rgba(174, 218, 245, 0.62)",
     borderRadius: 999,
-    borderWidth: 1,
     flexDirection: "row",
     gap: 4,
     paddingHorizontal: spacing.sm,
-    paddingVertical: 6,
+    paddingVertical: 5,
   },
   timelineDurationText: {
-    color: "#4D7D9B",
+    color: colors.textMuted,
     fontSize: 12,
     fontWeight: "800",
   },
   timelineCategoryChip: {
     borderRadius: 999,
     paddingHorizontal: spacing.sm,
-    paddingVertical: 6,
+    paddingVertical: 5,
   },
   timelineCategoryText: {
     fontSize: 12,
@@ -1378,25 +1388,75 @@ const styles = StyleSheet.create({
   },
   timelineActions: {
     flexDirection: "row",
-    flexWrap: "wrap",
     gap: spacing.xs,
-    marginTop: spacing.md,
+    marginTop: spacing.sm,
+  },
+  timelinePrimaryAction: {
+    alignItems: "center",
+    backgroundColor: colors.brandDark,
+    borderRadius: 14,
+    flex: 1,
+    flexDirection: "row",
+    gap: spacing.xs,
+    justifyContent: "center",
+    minHeight: 40,
+    paddingHorizontal: spacing.md,
+  },
+  timelinePrimaryActionText: {
+    color: colors.surface,
+    fontSize: 13,
+    fontWeight: "800",
+  },
+  timelinePrimaryActionDisabled: {
+    backgroundColor: colors.surfaceMuted,
+  },
+  timelineMoreAction: {
+    alignItems: "center",
+    backgroundColor: colors.surfaceMuted,
+    borderRadius: 14,
+    height: 40,
+    justifyContent: "center",
+    width: 46,
+  },
+  timelineMoreActionDisabled: {
+    opacity: 0.42,
+  },
+  timelineMorePanel: {
+    backgroundColor: colors.surfaceMuted,
+    borderRadius: 14,
+    flexDirection: "row",
+    gap: spacing.xs,
+    marginTop: spacing.xs,
+    padding: spacing.xs,
+  },
+  timelineMorePanelAction: {
+    alignItems: "center",
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    flex: 1,
+    flexDirection: "row",
+    gap: 4,
+    justifyContent: "center",
+    minHeight: 36,
+    paddingHorizontal: spacing.xs,
+  },
+  timelineMorePanelText: {
+    fontSize: 12,
+    fontWeight: "800",
   },
   timelineAction: {
     alignItems: "center",
     backgroundColor: "rgba(244, 251, 255, 0.72)",
-    borderColor: "rgba(174, 218, 245, 0.62)",
     borderRadius: 14,
-    borderWidth: 1,
     flexDirection: "row",
     gap: 4,
     justifyContent: "center",
-    minHeight: 42,
+    minHeight: 36,
     paddingHorizontal: 10,
     shadowColor: "#8EC8EA",
     shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
+    shadowOpacity: 0,
+    shadowRadius: 0,
   },
   timelineCancelAction: {
     borderStyle: "dashed",
@@ -1410,9 +1470,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     alignSelf: "flex-start",
     backgroundColor: "#EAF6FF",
-    borderColor: "rgba(174, 218, 245, 0.58)",
     borderRadius: 999,
-    borderWidth: 1,
     flexDirection: "row",
     gap: 4,
     marginTop: spacing.sm,
@@ -1434,9 +1492,7 @@ const styles = StyleSheet.create({
   agendaRow: {
     alignItems: "center",
     backgroundColor: colors.surfaceSoft,
-    borderColor: colors.border,
-    borderRadius: 12,
-    borderWidth: 1,
+    borderRadius: 14,
     flexDirection: "row",
     gap: spacing.md,
     padding: spacing.md,
@@ -1458,10 +1514,8 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   manageDayButton: {
-    backgroundColor: colors.surface,
-    borderColor: colors.border,
+    backgroundColor: colors.surfaceMuted,
     borderRadius: 10,
-    borderWidth: 1,
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.xs,
   },
@@ -1475,28 +1529,28 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(49, 94, 114, 0.28)",
     flex: 1,
     justifyContent: "flex-end",
-    padding: spacing.lg,
+    padding: spacing.md,
   },
   modalCard: {
     backgroundColor: colors.surface,
-    borderRadius: 24,
+    borderRadius: 22,
     maxHeight: "92%",
     maxWidth: 560,
-    padding: spacing.lg,
+    padding: spacing.md,
     width: "100%",
   },
   bookingModalCard: {
     backgroundColor: colors.surface,
-    borderRadius: 24,
+    borderRadius: 22,
     maxWidth: 560,
-    padding: spacing.lg,
+    padding: spacing.md,
     width: "100%",
   },
   modalHeader: {
     alignItems: "center",
     flexDirection: "row",
     justifyContent: "space-between",
-    marginBottom: spacing.lg,
+    marginBottom: spacing.md,
   },
   modalScroll: {
     paddingBottom: spacing.sm,
@@ -1535,14 +1589,13 @@ const styles = StyleSheet.create({
   toggleRow: {
     alignItems: "center",
     backgroundColor: colors.surfaceMuted,
-    borderRadius: 16,
+    borderRadius: 14,
     flexDirection: "row",
     justifyContent: "space-between",
-    padding: spacing.md,
+    padding: spacing.sm,
   },
   toggleRowActive: {
-    borderColor: colors.brandDark,
-    borderWidth: 1,
+    backgroundColor: colors.surfaceSky,
   },
   toggleTitle: {
     ...textStyles.titleXs,
@@ -1571,9 +1624,7 @@ const styles = StyleSheet.create({
   },
   input: {
     backgroundColor: colors.surfaceSoft,
-    borderColor: colors.border,
-    borderRadius: 12,
-    borderWidth: 1,
+    borderRadius: 14,
     color: colors.text,
     fontSize: 16,
     minHeight: 54,
@@ -1609,9 +1660,7 @@ const styles = StyleSheet.create({
   },
   bookingCard: {
     backgroundColor: colors.surfaceSoft,
-    borderColor: colors.border,
     borderRadius: 16,
-    borderWidth: 1,
     padding: spacing.md,
   },
   bookingHead: {
@@ -1661,16 +1710,13 @@ const styles = StyleSheet.create({
   slotRow: {
     alignItems: "center",
     backgroundColor: colors.surfaceSoft,
-    borderColor: colors.border,
     borderRadius: 14,
-    borderWidth: 1,
     flexDirection: "row",
     justifyContent: "space-between",
     padding: spacing.md,
   },
   slotRowActive: {
     backgroundColor: colors.surfaceSky,
-    borderColor: colors.brand,
   },
   slotTitle: {
     color: colors.text,

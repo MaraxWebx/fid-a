@@ -12,6 +12,12 @@ import { LinearGradient } from "expo-linear-gradient";
 import Ionicons from "react-native-vector-icons/Ionicons";
 
 import { getCenterClientDetail } from "../lib/api";
+import {
+  AppointmentStatus,
+  getAppointmentStatusMeta,
+  isAppointmentActive,
+  normalizeAppointmentState,
+} from "../lib/appointmentStatus";
 import { colors } from "../theme/colors";
 import { spacing } from "../theme/spacing";
 import { textStyles } from "../theme/typography";
@@ -355,8 +361,13 @@ function buildClientIntelligence(
   stats: CenterClientDetail["stats"] | null,
 ) {
   const totalBookings = bookings.length;
-  const completedBookings = bookings.filter((booking) => booking.status !== "cancelled").length;
-  const cancellations = bookings.filter((booking) => booking.status === "cancelled").length;
+  const normalizedStatuses = bookings.map((booking) => normalizeAppointmentState(booking.status, booking.is_delayed));
+  const completedBookings = normalizedStatuses.filter(
+    (state) => state.status === AppointmentStatus.COMPLETED || state.status === AppointmentStatus.ARRIVED,
+  ).length;
+  const cancellations = normalizedStatuses.filter(
+    (state) => state.status === AppointmentStatus.CANCELLED,
+  ).length;
   const totalSpent = bookings.reduce((sum, booking) => sum + (booking.price ?? 0), 0);
   const averageTicket = totalBookings > 0 ? Math.round(totalSpent / totalBookings) : 0;
   const cancellationRate = totalBookings > 0 ? Math.round((cancellations / totalBookings) * 100) : 0;
@@ -390,7 +401,9 @@ function buildClientIntelligence(
     loyaltyLevel: beautyScore > 84 ? "Gold Ritual" : beautyScore > 72 ? "Silver Glow" : "New Glow",
     loyaltyProgress: clamp(points / 10, 24, 96),
     mood: averageRating >= 4.7 ? "sereno" : "da curare",
-    nextBooking: bookings.find((booking) => booking.status === "confirmed")?.date_label ?? "Da pianificare",
+    nextBooking:
+      bookings.find((booking) => isAppointmentActive(normalizeAppointmentState(booking.status, booking.is_delayed).status))
+        ?.date_label ?? "Da pianificare",
     points,
     refillCopy: stats?.summary.top_treatment
       ? `Suggerisci refill ${stats.summary.top_treatment}.`
@@ -409,15 +422,24 @@ function buildClientIntelligence(
 }
 
 function buildTimeline(bookings: Booking[], reviews: Review[]): TimelineEvent[] {
-  const bookingEvents = bookings.slice(0, 5).map((booking) => ({
-    body: `${booking.time_label ?? ""}${booking.status !== "confirmed" ? ` - ${booking.status}` : ""}`,
-    color: booking.status === "cancelled" ? colors.rose : colors.brand,
-    date: booking.date_label ?? "Data non disponibile",
-    icon: booking.status === "cancelled" ? "close-circle-outline" : "sparkles-outline",
-    id: `booking-${booking.id}`,
-    kicker: booking.status === "cancelled" ? "Appuntamento annullato" : "Trattamento effettuato",
-    title: booking.service_name,
-  }));
+  const bookingEvents = bookings.slice(0, 5).map((booking) => {
+    const state = normalizeAppointmentState(booking.status, booking.is_delayed);
+    const meta = getAppointmentStatusMeta(state);
+    return {
+      body: `${booking.time_label ?? ""} - ${meta.label}`,
+      color: meta.text,
+      date: booking.date_label ?? "Data non disponibile",
+      icon: meta.icon,
+      id: `booking-${booking.id}`,
+      kicker:
+        state.status === AppointmentStatus.CANCELLED
+          ? "Appuntamento annullato"
+          : state.status === AppointmentStatus.NO_SHOW
+            ? "No-show"
+            : "Trattamento",
+      title: booking.service_name,
+    };
+  });
 
   const reviewEvents = reviews.slice(0, 2).map((review) => ({
     body: review.comment,
@@ -626,9 +648,9 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   content: {
-    paddingBottom: spacing.xxl,
+    paddingBottom: spacing.xl,
     paddingHorizontal: spacing.lg,
-    paddingTop: spacing.xl,
+    paddingTop: spacing.lg,
   },
   topBar: {
     alignItems: "center",
@@ -649,9 +671,7 @@ const styles = StyleSheet.create({
   centerPill: {
     alignItems: "center",
     backgroundColor: "rgba(255,255,255,0.78)",
-    borderColor: colors.overlayBorder,
     borderRadius: 999,
-    borderWidth: 1,
     flexDirection: "row",
     gap: 6,
     maxWidth: "58%",
@@ -666,12 +686,10 @@ const styles = StyleSheet.create({
   loadingPanel: {
     alignItems: "center",
     backgroundColor: colors.surface,
-    borderColor: colors.overlayBorder,
     borderRadius: 18,
-    borderWidth: 1,
     gap: spacing.sm,
-    marginBottom: spacing.lg,
-    padding: spacing.lg,
+    marginBottom: spacing.md,
+    padding: spacing.md,
   },
   loadingText: {
     color: colors.textMuted,
@@ -684,16 +702,14 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
   },
   hero: {
-    borderColor: "rgba(255,255,255,0.9)",
-    borderRadius: 30,
-    borderWidth: 1,
+    borderRadius: 22,
     overflow: "hidden",
-    padding: spacing.lg,
+    padding: spacing.md,
     shadowColor: colors.brandDark,
     shadowOffset: { width: 0, height: 22 },
-    shadowOpacity: 0.16,
-    shadowRadius: 34,
-    elevation: 8,
+    shadowOpacity: 0.08,
+    shadowRadius: 24,
+    elevation: 3,
   },
   heroGlow: {
     backgroundColor: "rgba(143,207,227,0.22)",
@@ -711,15 +727,15 @@ const styles = StyleSheet.create({
   },
   photoFrame: {
     backgroundColor: "rgba(255,255,255,0.74)",
-    borderRadius: 28,
+    borderRadius: 22,
     padding: 6,
   },
   avatar: {
     alignItems: "center",
-    borderRadius: 24,
-    height: 84,
+    borderRadius: 20,
+    height: 76,
     justifyContent: "center",
-    width: 84,
+    width: 76,
   },
   avatarText: {
     color: colors.brandInk,
@@ -763,25 +779,23 @@ const styles = StyleSheet.create({
   beautyScorePanel: {
     alignItems: "center",
     backgroundColor: "rgba(255,255,255,0.62)",
-    borderColor: colors.overlayBorder,
-    borderRadius: 24,
-    borderWidth: 1,
+    borderRadius: 18,
     flexDirection: "row",
     gap: spacing.md,
-    marginTop: spacing.lg,
-    padding: spacing.md,
+    marginTop: spacing.md,
+    padding: spacing.sm,
   },
   scoreEyebrow: {
-    color: colors.textMuted,
+    color: colors.brandDark,
     fontSize: 11,
     fontWeight: "800",
     textTransform: "uppercase",
   },
   scoreValue: {
     color: colors.brandInk,
-    fontSize: 42,
+    fontSize: 38,
     fontWeight: "800",
-    lineHeight: 48,
+    lineHeight: 44,
   },
   scoreCopy: {
     flex: 1,
@@ -805,9 +819,7 @@ const styles = StyleSheet.create({
   },
   heroMetric: {
     backgroundColor: "rgba(255,255,255,0.66)",
-    borderColor: colors.overlayBorder,
     borderRadius: 18,
-    borderWidth: 1,
     minWidth: "30%",
     padding: spacing.sm,
   },
@@ -831,20 +843,18 @@ const styles = StyleSheet.create({
   actionButton: {
     alignItems: "center",
     backgroundColor: colors.surface,
-    borderColor: colors.overlayBorder,
     borderRadius: 18,
-    borderWidth: 1,
     flexBasis: "30%",
     flexGrow: 1,
     gap: 7,
-    minHeight: 82,
+    minHeight: 68,
     justifyContent: "center",
     padding: spacing.sm,
     shadowColor: colors.brandDark,
     shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.07,
-    shadowRadius: 20,
-    elevation: 2,
+    shadowOpacity: 0.04,
+    shadowRadius: 14,
+    elevation: 1,
   },
   pressed: {
     opacity: 0.78,
@@ -857,13 +867,11 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   aiBox: {
-    borderColor: colors.overlayBorder,
-    borderRadius: 24,
-    borderWidth: 1,
+    borderRadius: 18,
     flexDirection: "row",
     gap: spacing.md,
-    marginTop: spacing.lg,
-    padding: spacing.lg,
+    marginTop: spacing.md,
+    padding: spacing.md,
   },
   aiIcon: {
     alignItems: "center",
@@ -888,8 +896,8 @@ const styles = StyleSheet.create({
     lineHeight: 19,
   },
   sectionHeader: {
-    marginBottom: spacing.md,
-    marginTop: spacing.xl,
+    marginBottom: spacing.sm,
+    marginTop: spacing.lg,
   },
   sectionEyebrow: {
     ...textStyles.eyebrow,
@@ -924,9 +932,7 @@ const styles = StyleSheet.create({
   },
   timelineCard: {
     backgroundColor: colors.surface,
-    borderColor: colors.overlayBorder,
     borderRadius: 20,
-    borderWidth: 1,
     flex: 1,
     padding: spacing.md,
   },
@@ -961,12 +967,10 @@ const styles = StyleSheet.create({
   },
   analyticsTile: {
     backgroundColor: colors.surface,
-    borderColor: colors.overlayBorder,
     borderRadius: 20,
-    borderWidth: 1,
     flexBasis: "47%",
     flexGrow: 1,
-    minHeight: 148,
+    minHeight: 124,
     padding: spacing.md,
   },
   analyticsIcon: {
@@ -1004,9 +1008,7 @@ const styles = StyleSheet.create({
   },
   aiForecastCard: {
     backgroundColor: "rgba(255,255,255,0.76)",
-    borderColor: colors.overlayBorder,
     borderRadius: 22,
-    borderWidth: 1,
     gap: spacing.sm,
     marginTop: spacing.md,
     padding: spacing.md,
@@ -1035,10 +1037,8 @@ const styles = StyleSheet.create({
   },
   preferenceCard: {
     backgroundColor: colors.surface,
-    borderColor: colors.overlayBorder,
-    borderRadius: 24,
-    borderWidth: 1,
-    padding: spacing.lg,
+    borderRadius: 20,
+    padding: spacing.md,
   },
   preferenceTags: {
     flexDirection: "row",
@@ -1079,9 +1079,7 @@ const styles = StyleSheet.create({
   },
   galleryCard: {
     backgroundColor: colors.surface,
-    borderColor: colors.overlayBorder,
-    borderRadius: 24,
-    borderWidth: 1,
+    borderRadius: 20,
     padding: spacing.md,
   },
   comparison: {
@@ -1110,9 +1108,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     alignSelf: "center",
     backgroundColor: "rgba(255,255,255,0.86)",
-    borderColor: colors.overlayBorder,
     borderRadius: 18,
-    borderWidth: 1,
     height: 36,
     justifyContent: "center",
     left: "50%",
@@ -1160,10 +1156,8 @@ const styles = StyleSheet.create({
   },
   sentimentCard: {
     backgroundColor: colors.surface,
-    borderColor: colors.overlayBorder,
-    borderRadius: 24,
-    borderWidth: 1,
-    padding: spacing.lg,
+    borderRadius: 20,
+    padding: spacing.md,
   },
   sentimentHeader: {
     alignItems: "center",
@@ -1232,9 +1226,7 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   alertCard: {
-    borderColor: colors.overlayBorder,
     borderRadius: 18,
-    borderWidth: 1,
     flexBasis: "47%",
     flexGrow: 1,
     minHeight: 132,
@@ -1266,10 +1258,8 @@ const styles = StyleSheet.create({
   },
   loyaltyCard: {
     backgroundColor: colors.surface,
-    borderColor: colors.overlayBorder,
-    borderRadius: 24,
-    borderWidth: 1,
-    padding: spacing.lg,
+    borderRadius: 20,
+    padding: spacing.md,
   },
   loyaltyHeader: {
     alignItems: "flex-start",

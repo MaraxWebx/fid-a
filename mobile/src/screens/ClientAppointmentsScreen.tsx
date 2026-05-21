@@ -9,6 +9,11 @@ import {
 } from "react-native";
 
 import { cancelBooking, getUserBookings } from "../lib/api";
+import {
+  AppointmentStatus,
+  getAppointmentStatusMeta,
+  normalizeAppointmentState,
+} from "../lib/appointmentStatus";
 import type { Booking } from "../types/api";
 import { ScreenHeader } from "../components/ScreenHeader";
 import { SectionCard } from "../components/SectionCard";
@@ -114,7 +119,11 @@ export function ClientAppointmentsScreen({
 }
 
 function canManageBooking(booking: Booking) {
-  if (booking.status === "canceled" || !booking.start_time) {
+  const status = normalizeAppointmentState(booking.status, booking.is_delayed).status;
+  if (
+    [AppointmentStatus.CANCELLED, AppointmentStatus.COMPLETED, AppointmentStatus.NO_SHOW].includes(status) ||
+    !booking.start_time
+  ) {
     return false;
   }
 
@@ -132,6 +141,8 @@ function AppointmentRow({
   onCancel: () => void;
 }) {
   const isManageable = canManageBooking(appointment);
+  const status = normalizeAppointmentState(appointment.status, appointment.is_delayed);
+  const statusMeta = getAppointmentStatusMeta(status);
 
   return (
     <View style={styles.row}>
@@ -142,8 +153,12 @@ function AppointmentRow({
         </Text>
         <Text style={styles.meta}>
           {appointment.operator_name}
-          {appointment.status !== "confirmed" ? ` - ${appointment.status}` : ""}
         </Text>
+        <View style={[styles.statusBadge, { backgroundColor: statusMeta.background }]}>
+          <Text style={[styles.statusBadgeText, { color: statusMeta.text }]}>
+            {statusMeta.label}
+          </Text>
+        </View>
       </View>
       <View style={styles.rowSide}>
         <Text style={styles.price}>
@@ -170,16 +185,17 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingHorizontal: spacing.lg,
-    paddingTop: spacing.xl,
-    paddingBottom: spacing.xxl,
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.xl,
   },
   row: {
-    borderTopColor: colors.border,
-    borderTopWidth: 1,
+    backgroundColor: colors.surface,
+    borderRadius: 16,
     flexDirection: "row",
     gap: spacing.md,
     justifyContent: "space-between",
-    paddingVertical: spacing.md,
+    marginBottom: spacing.sm,
+    padding: spacing.md,
   },
   rowMain: {
     flex: 1,
@@ -224,5 +240,16 @@ const styles = StyleSheet.create({
     color: colors.danger,
     fontSize: 14,
     marginTop: spacing.md,
+  },
+  statusBadge: {
+    alignSelf: "flex-start",
+    borderRadius: 999,
+    marginTop: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+  },
+  statusBadgeText: {
+    fontSize: 11,
+    fontWeight: "800",
   },
 });

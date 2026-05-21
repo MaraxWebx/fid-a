@@ -130,6 +130,7 @@ def serialize_booking(document):
         "operator_name": operator_name,
         "client_name": document.get("client_name"),
         "client_phone": document.get("client_phone"),
+        "is_delayed": (bool(document.get("is_delayed")) or document.get("status") == "late") and document.get("status") in ["booked", "confirmed", "late"],
         "status": document.get("status"),
         "slot_id": document.get("slot_id"),
         "start_time": start_time,
@@ -299,10 +300,24 @@ class CenterRegistrationPayload(BaseModel):
     country: str = Field(min_length=2, max_length=64)
 
 
+class OpeningHourSlotPayload(BaseModel):
+    start: str | None = None
+    end: str | None = None
+
+
+class CenterOpeningHoursPayload(BaseModel):
+    start: str | None = None
+    end: str | None = None
+    slots: list[OpeningHourSlotPayload] = Field(default_factory=list)
+    break_enabled: bool = False
+    break_start: str | None = None
+    break_end: str | None = None
+
+
 class CenterOnboardingPayload(BaseModel):
     logo_url: str | None = None
     opening_days: list[str] = Field(default_factory=list)
-    opening_hours: dict[str, dict[str, str | None]] = Field(default_factory=dict)
+    opening_hours: dict[str, CenterOpeningHoursPayload] = Field(default_factory=dict)
     primary_services: list[str] = Field(default_factory=list)
 
 
@@ -530,32 +545,59 @@ def parse_time_value(value: str | None):
     return parsed
 
 
-def build_center_day_window(center: dict, target_date: date):
+def build_center_day_windows(center: dict, target_date: date):
     date_key = target_date.isoformat()
     overrides = center.get("availability_overrides") or {}
     override = overrides.get(date_key)
+    break_window = None
 
     if override is not None:
         if not override.get("enabled"):
-            return None
+            return [], None
         start_value = parse_time_value(override.get("start"))
         end_value = parse_time_value(override.get("end"))
+        raw_windows = [(start_value, end_value)]
     else:
         weekday_key = ITALIAN_WEEKDAY_KEYS[target_date.weekday()]
         if weekday_key not in (center.get("opening_days") or []):
-            return None
+            return [], None
         hours = (center.get("opening_hours") or {}).get(weekday_key) or {}
-        start_value = parse_time_value(hours.get("start"))
-        end_value = parse_time_value(hours.get("end"))
+        raw_slots = hours.get("slots") or []
+        raw_windows = [
+            (parse_time_value(slot.get("start")), parse_time_value(slot.get("end")))
+            for slot in raw_slots
+            if isinstance(slot, dict)
+        ]
+        if not raw_windows:
+            raw_windows = [(parse_time_value(hours.get("start")), parse_time_value(hours.get("end")))]
 
-    if not start_value or not end_value:
-        return None
+        if hours.get("break_enabled"):
+            break_start = parse_time_value(hours.get("break_start"))
+            break_end = parse_time_value(hours.get("break_end"))
+            if break_start and break_end and break_end > break_start:
+                break_window = (
+                    datetime.combine(target_date, break_start),
+                    datetime.combine(target_date, break_end),
+                )
 
-    start_dt = datetime.combine(target_date, start_value)
-    end_dt = datetime.combine(target_date, end_value)
-    if end_dt <= start_dt:
+    windows = []
+    for start_value, end_value in raw_windows:
+        if not start_value or not end_value:
+            continue
+
+        start_dt = datetime.combine(target_date, start_value)
+        end_dt = datetime.combine(target_date, end_value)
+        if end_dt > start_dt:
+            windows.append((start_dt, end_dt))
+
+    return windows, break_window
+
+
+def build_center_day_window(center: dict, target_date: date):
+    windows, _break_window = build_center_day_windows(center, target_date)
+    if not windows:
         return None
-    return start_dt, end_dt
+    return min(start for start, _end in windows), max(end for _start, end in windows)
 
 
 def load_service_for_center(center_object_id: ObjectId, service_id: str):
@@ -579,38 +621,49 @@ def has_booking_overlap(center_object_id: ObjectId, start_dt: datetime, end_dt: 
 
 
 def build_booking_slot_list(center: dict, service: dict, target_date: date, *, exclude_booking_id: ObjectId | None = None):
-    day_window = build_center_day_window(center, target_date)
-    if not day_window:
+    day_windows, break_window = build_center_day_windows(center, target_date)
+    if not day_windows:
         return []
 
     duration_minutes = service.get("duration") if isinstance(service.get("duration"), int) else 60
     slot_step = timedelta(minutes=15)
-    start_dt, end_dt = day_window
     now = datetime.now()
-    if target_date == now.date():
-        minimum_start = now.replace(second=0, microsecond=0)
-        remainder = minimum_start.minute % 15
-        if remainder:
-            minimum_start += timedelta(minutes=15 - remainder)
-        if minimum_start > start_dt:
-            start_dt = minimum_start
-    cursor = start_dt
     slots = []
 
-    while cursor + timedelta(minutes=duration_minutes) <= end_dt:
-        slot_end = cursor + timedelta(minutes=duration_minutes)
-        if not has_booking_overlap(center["_id"], cursor, slot_end, exclude_booking_id=exclude_booking_id):
-            slots.append(
-                {
-                    "id": cursor.isoformat(timespec="minutes"),
-                    "start_time": cursor.isoformat(),
-                    "end_time": slot_end.isoformat(),
-                    "date_label": cursor.strftime("%d/%m/%Y"),
-                    "time_label": cursor.strftime("%H:%M"),
-                    "availability_label": "Disponibile",
-                }
+    for start_dt, end_dt in day_windows:
+        if target_date == now.date():
+            minimum_start = now.replace(second=0, microsecond=0)
+            remainder = minimum_start.minute % 15
+            if remainder:
+                minimum_start += timedelta(minutes=15 - remainder)
+            if minimum_start > start_dt:
+                start_dt = minimum_start
+        cursor = start_dt
+
+        while cursor + timedelta(minutes=duration_minutes) <= end_dt:
+            slot_end = cursor + timedelta(minutes=duration_minutes)
+            overlaps_break = bool(
+                break_window
+                and cursor < break_window[1]
+                and slot_end > break_window[0]
             )
-        cursor += slot_step
+            if not overlaps_break and not has_booking_overlap(
+                center["_id"],
+                cursor,
+                slot_end,
+                exclude_booking_id=exclude_booking_id,
+            ):
+                slots.append(
+                    {
+                        "id": cursor.isoformat(timespec="minutes"),
+                        "start_time": cursor.isoformat(),
+                        "end_time": slot_end.isoformat(),
+                        "date_label": cursor.strftime("%d/%m/%Y"),
+                        "time_label": cursor.strftime("%H:%M"),
+                        "availability_label": "Disponibile",
+                    }
+                )
+            cursor += slot_step
 
     return slots
 
@@ -1019,10 +1072,15 @@ def update_center_onboarding(center_id: str, payload: CenterOnboardingPayload):
     if payload.logo_url is not None:
         branding["logo"] = payload.logo_url.strip()
 
+    opening_hours = {
+        day: hours.dict()
+        for day, hours in payload.opening_hours.items()
+    }
+
     update_fields = {
         "branding": branding,
         "opening_days": opening_days,
-        "opening_hours": payload.opening_hours,
+        "opening_hours": opening_hours,
         "primary_services": primary_services,
         "updated_at": datetime.now(UTC),
     }
@@ -1134,7 +1192,7 @@ def list_center_services(center_id: str):
     object_id = parse_object_id(center_id, "center id")
 
     documents = list(
-        db.services.find({"center_id": object_id, "visibility": "active"}).sort(
+        db.services.find({"center_id": object_id, "visibility": {"$ne": "archived"}}).sort(
             [("category", 1), ("subcategory", 1), ("name", 1)]
         )
     )
@@ -1214,7 +1272,7 @@ def update_center_services(center_id: str, payload: CenterServicesCatalogPayload
         center = db.centers.find_one({"_id": object_id})
 
     documents = list(
-        db.services.find({"center_id": object_id, "visibility": "active"}).sort(
+        db.services.find({"center_id": object_id, "visibility": {"$ne": "archived"}}).sort(
             [("category", 1), ("name", 1)]
         )
     )
@@ -1392,10 +1450,15 @@ def get_center_dashboard(center_id: str):
     now = datetime.now(ZoneInfo("Europe/Rome")).replace(tzinfo=None)
     today_start = datetime.combine(now.date(), time(0, 0))
     tomorrow_start = today_start + timedelta(days=1)
-    active_booking_query = {"center_id": object_id, "status": {"$ne": "canceled"}}
+    active_booking_query = {"center_id": object_id, "status": {"$nin": ["canceled", "no_show"]}}
     canceled_today_query = {
         "center_id": object_id,
         "status": "canceled",
+        "start_time": {"$gte": today_start, "$lt": tomorrow_start},
+    }
+    no_show_today_query = {
+        "center_id": object_id,
+        "status": "no_show",
         "start_time": {"$gte": today_start, "$lt": tomorrow_start},
     }
 
@@ -1408,11 +1471,12 @@ def get_center_dashboard(center_id: str):
         ).sort("start_time", 1)
     )
     canceled_today_bookings = list(db.bookings.find(canceled_today_query).sort("start_time", 1))
+    no_show_today_bookings = list(db.bookings.find(no_show_today_query).sort("start_time", 1))
     upcoming_bookings = list(
         db.bookings.find(
             {
                 **active_booking_query,
-                "start_time": {"$gte": today_start},
+                "start_time": {"$gte": now},
             }
         )
         .sort("start_time", 1)
@@ -1452,7 +1516,7 @@ def get_center_dashboard(center_id: str):
     total_revenue = 0
     service_ids = [
         booking.get("service_id")
-        for booking in [*todays_bookings, *upcoming_bookings, *canceled_today_bookings]
+        for booking in [*todays_bookings, *upcoming_bookings, *canceled_today_bookings, *no_show_today_bookings]
         if booking.get("service_id")
     ]
     services_by_id = {
@@ -1465,18 +1529,19 @@ def get_center_dashboard(center_id: str):
             total_revenue += service["price"]
 
     agenda = []
-    agenda_bookings_by_id = {booking["_id"]: booking for booking in upcoming_bookings}
-    for booking in canceled_today_bookings:
+    agenda_bookings_by_id = {booking["_id"]: booking for booking in todays_bookings}
+    for booking in [*canceled_today_bookings, *no_show_today_bookings]:
         agenda_bookings_by_id[booking["_id"]] = booking
 
     agenda_bookings = sorted(
         agenda_bookings_by_id.values(),
         key=lambda item: item.get("start_time") or datetime.max,
-    )[:10]
+    )[:12]
 
     for booking in agenda_bookings:
         user = db.users.find_one({"_id": booking.get("user_id")})
         start_time = booking.get("start_time")
+        end_time = booking.get("end_time")
         date_prefix = ""
         if isinstance(start_time, datetime) and start_time.date() != today_start.date():
             date_prefix = start_time.strftime("%d/%m ")
@@ -1484,16 +1549,20 @@ def get_center_dashboard(center_id: str):
             {"center_id": object_id, "user_id": booking.get("user_id"), "status": "canceled"}
         )
         booking_status = booking.get("status", "")
+        is_delayed = (bool(booking.get("is_delayed")) or booking_status == "late") and booking_status in ["booked", "confirmed", "late"]
         service = services_by_id.get(booking.get("service_id"))
         duration = service.get("duration") if service else None
         agenda.append(
             {
                 "id": serialize_id(booking["_id"]),
+                "start_time": start_time.isoformat() if isinstance(start_time, datetime) else None,
+                "end_time": end_time.isoformat() if isinstance(end_time, datetime) else None,
                 "time_label": f"{date_prefix}{start_time.strftime('%H:%M')}" if isinstance(start_time, datetime) else "",
                 "client_name": (user or {}).get("name", "Cliente"),
                 "operator_name": center.get("name", "Centro"),
                 "service": booking.get("service_name", "Servizio"),
-                "status_label": "Annullato" if booking_status == "canceled" else ("Confermato" if booking_status == "confirmed" else booking_status),
+                "is_delayed": is_delayed,
+                "status_label": "Annullato" if booking_status == "canceled" else ("Confermato" if booking_status in ["confirmed", "late"] else booking_status),
                 "duration_label": f"{duration} min" if isinstance(duration, int) else None,
                 "canceled_at": booking.get("canceled_at"),
                 "cancellation_reason": booking.get("cancellation_reason"),
@@ -1877,30 +1946,46 @@ def update_booking_status(booking_id: str, payload: BookingStatusPayload):
     )
 
     status_map = {
+        "booked": "booked",
+        "prenotato": "booked",
+        "prenotata": "booked",
         "confermato": "confirmed",
+        "confermata": "confirmed",
         "confirmed": "confirmed",
         "arrivata": "arrived",
         "arrivato": "arrived",
         "arrived": "arrived",
-        "in ritardo": "late",
-        "late": "late",
+        "completed": "completed",
+        "completato": "completed",
+        "completata": "completed",
+        "in ritardo": "confirmed",
+        "delayed": "confirmed",
+        "late": "confirmed",
         "annullato": "canceled",
+        "annullata": "canceled",
         "disdetta cliente": "canceled",
         "canceled": "canceled",
+        "cancelled": "canceled",
+        "no_show": "no_show",
+        "no-show": "no_show",
+        "noshow": "no_show",
     }
-    normalized_status = status_map.get(payload.status.strip().lower())
+    requested_status = payload.status.strip().lower()
+    normalized_status = status_map.get(requested_status)
     if normalized_status is None:
         raise HTTPException(status_code=400, detail="Unsupported booking status.")
 
     now = datetime.now(UTC)
     reason = payload.cancellation_reason.strip() if payload.cancellation_reason else None
+    is_delayed_update = requested_status in {"in ritardo", "delayed", "late"}
     history_item = {
-        "status": normalized_status,
+        "status": "late" if is_delayed_update else normalized_status,
         "changed_at": now,
         "changed_by": payload.role,
         "reason": reason,
     }
     update_fields = {
+        "is_delayed": is_delayed_update,
         "status": normalized_status,
         "updated_at": now,
     }
@@ -1956,6 +2041,7 @@ def cancel_booking(booking_id: str, role: str = Query(...), user_email: str | No
         {
             "$set": {
                 "status": "canceled",
+                "is_delayed": False,
                 "canceled_at": now,
                 "canceled_by": role,
                 "updated_at": now,

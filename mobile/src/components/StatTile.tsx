@@ -1,7 +1,7 @@
 import { StyleSheet, Text, View } from "react-native";
 
 import { colors } from "../theme/colors";
-import { spacing } from "../theme/spacing";
+import { radius, shadows, spacing } from "../theme/spacing";
 import { textStyles } from "../theme/typography";
 
 type StatTileProps = {
@@ -21,18 +21,17 @@ export function StatTile({ label, value }: StatTileProps) {
 const styles = StyleSheet.create({
   card: {
     backgroundColor: colors.surface,
-    borderColor: colors.overlayBorder,
-    borderRadius: 12,
-    borderWidth: 1,
+    borderRadius: radius.xl,
     flex: 1,
-    minHeight: 110,
+    minHeight: 100,
     padding: spacing.md,
+    ...shadows.soft,
   },
   value: {
     ...textStyles.metricValue,
   },
   label: {
     ...textStyles.caption,
-    marginTop: spacing.sm,
+    marginTop: spacing.xs,
   },
 });
