@@ -1,6 +1,7 @@
 import { ReactNode, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Image,
   Modal,
   Pressable,
@@ -11,6 +12,9 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import * as DocumentPicker from 'expo-document-picker';
+import * as FileSystem from 'expo-file-system';
+import * as ImagePicker from 'expo-image-picker';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 
 import { PrimaryButton } from '../components/PrimaryButton';
@@ -18,11 +22,17 @@ import { ServiceCatalogPicker } from '../components/ServiceCatalogPicker';
 import { treatmentCatalog } from '../data/treatmentCatalog';
 import {
   getCenterReviews,
+  getCenterBookings,
   getCenterServices,
+  uploadCenterLogo,
   updateCenterOnboarding,
   updateCenterProfile,
   updateCenterServices,
 } from '../lib/api';
+import {
+  hasWhatsappPrefixWarning,
+  normalizeWhatsappNumber,
+} from '../lib/whatsapp';
 import { colors } from '../theme/colors';
 import { radius, spacing } from '../theme/spacing';
 import { textStyles } from '../theme/typography';
@@ -92,6 +102,15 @@ type PackageDraft = {
   promoBadge: string;
   sessions: string;
   treatments: string;
+};
+
+type LogoUploadAsset = {
+  fileName?: string | null;
+  fileSize?: number;
+  height?: number;
+  mimeType?: string;
+  uri: string;
+  width?: number;
 };
 
 const weekdayOptions: { key: WeekdayKey; fullLabel: string }[] = [
@@ -177,6 +196,60 @@ const initialPackages: PackageDraft[] = [
   },
 ];
 
+const acceptedLogoMimeTypes = ['image/jpeg', 'image/png', 'image/webp'];
+const acceptedLogoExtensions = ['jpg', 'jpeg', 'png', 'webp'];
+const maxLogoBytes = 5 * 1024 * 1024;
+
+function getLogoFileName(asset: LogoUploadAsset) {
+  const rawName = asset.fileName || asset.uri.split('/').pop() || 'logo.jpg';
+  const cleaned = rawName.replace(/[^a-zA-Z0-9._-]/g, '-');
+  return cleaned.includes('.') ? cleaned : `${cleaned}.jpg`;
+}
+
+function getLogoMimeType(asset: LogoUploadAsset) {
+  const name = getLogoFileName(asset).toLowerCase();
+  if (asset.mimeType) return asset.mimeType;
+  if (name.endsWith('.png')) return 'image/png';
+  if (name.endsWith('.webp')) return 'image/webp';
+  return 'image/jpeg';
+}
+
+async function getLogoFileSize(asset: LogoUploadAsset) {
+  if (typeof asset.fileSize === 'number') return asset.fileSize;
+  const info = await FileSystem.getInfoAsync(asset.uri, { size: true });
+  return info.exists && typeof info.size === 'number' ? info.size : 0;
+}
+
+function buildInitialOperators(center: Center): OperatorDraft[] {
+  const staff = center.staff_members ?? [];
+  if (staff.length === 0) return initialOperators;
+  return staff.map((member, index) => {
+    const mondayHours = member.working_hours?.Lun;
+    return {
+      active: member.is_active,
+      color: operatorColorOptions[index % operatorColorOptions.length],
+      hours: `${mondayHours?.start ?? '09:00'} - ${mondayHours?.end ?? '18:00'}`,
+      id: member.id,
+      imageUrl: member.avatar_url ?? '',
+      name: member.name,
+      role: member.role ?? 'Estetista',
+      specialties: (member.service_ids ?? []).join(', '),
+    };
+  });
+}
+
+function buildInitialCabins(center: Center): CabinDraft[] {
+  const rooms = center.rooms ?? [];
+  if (rooms.length === 0) return initialCabins;
+  return rooms.map((room, index) => ({
+    active: room.is_active,
+    color: operatorColorOptions[index % operatorColorOptions.length],
+    id: room.id,
+    name: room.name,
+    treatments: (room.compatible_treatment_names ?? room.compatible_treatment_ids ?? []).join(', '),
+  }));
+}
+
 function buildInitialSchedule(center: Center): Record<WeekdayKey, DaySchedule> {
   return weekdayOptions.reduce(
     (accumulator, day) => {
@@ -205,6 +278,38 @@ function buildInitialSchedule(center: Center): Record<WeekdayKey, DaySchedule> {
     },
     {} as Record<WeekdayKey, DaySchedule>,
   );
+}
+
+function timeToMinutes(value?: string | null) {
+  if (!value) return 0;
+  const [hours, minutes] = value.split(':').map(Number);
+  return (Number.isFinite(hours) ? hours : 0) * 60 + (Number.isFinite(minutes) ? minutes : 0);
+}
+
+function bookingFitsSchedule(startTime: string | undefined, endTime: string | undefined, schedule: Record<WeekdayKey, DaySchedule>) {
+  if (!startTime || !endTime) return true;
+  const start = new Date(startTime);
+  const end = new Date(endTime);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return true;
+  const weekday = weekdayOptions[(start.getDay() + 6) % 7].key;
+  const day = schedule[weekday];
+  if (!day.enabled) return false;
+  const startMinutes = start.getHours() * 60 + start.getMinutes();
+  const endMinutes = end.getHours() * 60 + end.getMinutes();
+  return day.slots.some((slot) => startMinutes >= timeToMinutes(slot.start) && endMinutes <= timeToMinutes(slot.end));
+}
+
+function confirmImpactedAppointments(count: number) {
+  return new Promise<boolean>((resolve) => {
+    Alert.alert(
+      'Modifica orari',
+      `Questa modifica impatta ${count} appuntamenti gia prenotati. Vuoi continuare?`,
+      [
+        { text: 'Annulla', style: 'cancel', onPress: () => resolve(false) },
+        { text: 'Continua', style: 'destructive', onPress: () => resolve(true) },
+      ],
+    );
+  });
 }
 
 function DashboardSection({ eyebrow, title, subtitle, children }: DashboardSectionProps) {
@@ -676,6 +781,8 @@ export function CenterSettingsScreen({
   const [loadingServices, setLoadingServices] = useState(true);
   const [savingService, setSavingService] = useState(false);
   const [savingProfile, setSavingProfile] = useState(false);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
+  const [logoUploadMessage, setLogoUploadMessage] = useState<string | null>(null);
   const [catalogError, setCatalogError] = useState<string | null>(null);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [profileName, setProfileName] = useState(center.name);
@@ -683,6 +790,18 @@ export function CenterSettingsScreen({
   const [profileDescription, setProfileDescription] = useState(center.branding.description ?? '');
   const [profileInstagramUrl, setProfileInstagramUrl] = useState(center.branding.instagram_url ?? '');
   const [profileTiktokUrl, setProfileTiktokUrl] = useState(center.branding.tiktok_url ?? '');
+  const [enableWhatsapp, setEnableWhatsapp] = useState(Boolean(center.enableWhatsapp));
+  const [showWhatsappButtonToClients, setShowWhatsappButtonToClients] = useState(Boolean(center.showWhatsappButtonToClients));
+  const [whatsappPhoneNumber, setWhatsappPhoneNumber] = useState(center.whatsappPhoneNumber ?? '');
+  const [whatsappBookingMessageTemplate, setWhatsappBookingMessageTemplate] = useState(
+    center.whatsappBookingMessageTemplate || 'Ciao, vorrei prenotare {treatmentName} il giorno {date} alle {time}.',
+  );
+  const [whatsappInfoMessageTemplate, setWhatsappInfoMessageTemplate] = useState(
+    center.whatsappInfoMessageTemplate || 'Ciao {centerName}, vorrei ricevere informazioni sui vostri trattamenti.',
+  );
+  const [whatsappAppointmentReminderTemplate, setWhatsappAppointmentReminderTemplate] = useState(
+    center.whatsappAppointmentReminderTemplate || "Ciao {clientName}, ti ricordiamo l'appuntamento per {treatmentName} il {date} alle {time} presso {centerName}.",
+  );
   const [schedule, setSchedule] = useState(() => buildInitialSchedule(center));
   const [selectedDayKey, setSelectedDayKey] = useState<WeekdayKey>('Lun');
   const [copiedSchedule, setCopiedSchedule] = useState<DaySchedule | null>(null);
@@ -696,10 +815,11 @@ export function CenterSettingsScreen({
   const [editingServiceName, setEditingServiceName] = useState('');
   const [editingServicePrice, setEditingServicePrice] = useState('');
   const [editingServiceDuration, setEditingServiceDuration] = useState('');
-  const [operators, setOperators] = useState<OperatorDraft[]>(initialOperators);
-  const [cabins, setCabins] = useState<CabinDraft[]>(initialCabins);
+  const [operators, setOperators] = useState<OperatorDraft[]>(() => buildInitialOperators(center));
+  const [cabins, setCabins] = useState<CabinDraft[]>(() => buildInitialCabins(center));
   const [packages, setPackages] = useState<PackageDraft[]>(initialPackages);
   const [qrActionMessage, setQrActionMessage] = useState<string | null>(null);
+  const [saveFeedback, setSaveFeedback] = useState<string | null>(null);
 
   useEffect(() => {
     setProfileName(center.name);
@@ -782,6 +902,13 @@ export function CenterSettingsScreen({
     () => JSON.stringify(schedule) !== JSON.stringify(buildInitialSchedule(center)),
     [center, schedule],
   );
+  const resourceConfigChanged = useMemo(
+    () =>
+      JSON.stringify(operators) !== JSON.stringify(buildInitialOperators(center)) ||
+      JSON.stringify(cabins) !== JSON.stringify(buildInitialCabins(center)),
+    [cabins, center, operators],
+  );
+  const configChanged = scheduleChanged || resourceConfigChanged;
   const businessStatusTone: StatusTone = activation.is_listable ? 'success' : 'warning';
   const topServiceLabel =
     center.primary_services?.[0] ??
@@ -1299,12 +1426,19 @@ export function CenterSettingsScreen({
     try {
       const response = await updateCenterProfile(center.id, {
         description: profileDescription.trim(),
+        enableWhatsapp,
         instagram_url: profileInstagramUrl.trim(),
         name: profileName,
         logo_url: profileLogoUrl,
+        showWhatsappButtonToClients,
         tiktok_url: profileTiktokUrl.trim(),
+        whatsappAppointmentReminderTemplate,
+        whatsappBookingMessageTemplate,
+        whatsappInfoMessageTemplate,
+        whatsappPhoneNumber: normalizeWhatsappNumber(whatsappPhoneNumber),
       });
       onCenterUpdated(response.center, response.activation);
+      setSaveFeedback(profileLogoUrl ? 'Modifiche salvate. Logo aggiornato.' : 'Modifiche salvate.');
       setIsProfileModalOpen(false);
     } catch (error) {
       setCatalogError(
@@ -1317,9 +1451,94 @@ export function CenterSettingsScreen({
     }
   };
 
+  const uploadLogoAsset = async (asset: LogoUploadAsset) => {
+    setCatalogError(null);
+    setLogoUploadMessage(null);
+
+    const fileName = getLogoFileName(asset);
+    const extension = fileName.split('.').pop()?.toLowerCase() ?? '';
+    const mimeType = getLogoMimeType(asset);
+
+    if (!acceptedLogoMimeTypes.includes(mimeType) || !acceptedLogoExtensions.includes(extension)) {
+      setCatalogError("Formato non valido. Carica un'immagine JPG, PNG o WEBP.");
+      return;
+    }
+
+    const size = await getLogoFileSize(asset);
+    if (size > maxLogoBytes) {
+      setCatalogError('Immagine troppo pesante. Carica un file sotto i 5 MB.');
+      return;
+    }
+
+    setUploadingLogo(true);
+    try {
+      const response = await uploadCenterLogo(center.id, {
+        name: fileName,
+        type: mimeType,
+        uri: asset.uri,
+      });
+      setProfileLogoUrl(response.logoUrl);
+      onCenterUpdated(response.center, response.activation);
+      setLogoUploadMessage('Logo caricato correttamente.');
+      setSaveFeedback('Logo caricato correttamente.');
+    } catch {
+      setCatalogError('Upload non riuscito. Riprova tra qualche secondo.');
+    } finally {
+      setUploadingLogo(false);
+    }
+  };
+
+  const pickLogoFromGallery = async () => {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      setCatalogError("Per caricare il logo devi consentire l'accesso alle foto o ai documenti.");
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      allowsEditing: true,
+      mediaTypes: [ImagePicker.MediaType.Images],
+      quality: 0.9,
+    });
+    if (!result.canceled && result.assets[0]) {
+      await uploadLogoAsset(result.assets[0]);
+    }
+  };
+
+  const pickLogoFromDocuments = async () => {
+    const result = await DocumentPicker.getDocumentAsync({
+      copyToCacheDirectory: true,
+      multiple: false,
+      type: acceptedLogoMimeTypes,
+    });
+    if (!result.canceled && result.assets[0]) {
+      await uploadLogoAsset({
+        fileName: result.assets[0].name,
+        fileSize: result.assets[0].size,
+        mimeType: result.assets[0].mimeType,
+        uri: result.assets[0].uri,
+      });
+    }
+  };
+
+  const removeLogo = () => {
+    setProfileLogoUrl('');
+    setLogoUploadMessage('Logo rimosso dalla preview. Salva il profilo per confermare.');
+  };
+
+  const handleSaveWhatsapp = async () => {
+    if (enableWhatsapp && normalizeWhatsappNumber(whatsappPhoneNumber).length === 0) {
+      setCatalogError('Inserisci un numero WhatsApp valido.');
+      return;
+    }
+    await handleSaveProfile();
+    setSaveFeedback('WhatsApp salvato. CTA clienti e messaggi precompilati aggiornati.');
+  };
+
   const handleSaveSchedule = async () => {
     setSavingSchedule(true);
     setCatalogError(null);
+    setSaveFeedback(null);
 
     const openingDays = weekdayOptions
       .filter(({ key }) => schedule[key].enabled)
@@ -1342,13 +1561,69 @@ export function CenterSettingsScreen({
     );
 
     try {
+      if (scheduleChanged) {
+        const bookings = await getCenterBookings(center.id);
+        const now = Date.now();
+        const impactedCount = bookings.filter((booking) => {
+          if (booking.status === 'canceled' || booking.status === 'cancelled') return false;
+          const startTime = booking.start_time ? new Date(booking.start_time).getTime() : 0;
+          return startTime > now && !bookingFitsSchedule(booking.start_time, booking.end_time, schedule);
+        }).length;
+        if (impactedCount > 0) {
+          const confirmed = await confirmImpactedAppointments(impactedCount);
+          if (!confirmed) {
+            setSavingSchedule(false);
+            return;
+          }
+        }
+      }
       const response = await updateCenterOnboarding(center.id, {
         logo_url: center.branding.logo ?? '',
         opening_days: openingDays,
         opening_hours: openingHours,
         primary_services: configuredServices.map((service) => service.name),
+        staff_members: operators.map((operator) => ({
+          avatar_url: operator.imageUrl || null,
+          id: operator.id,
+          is_active: operator.active,
+          name: operator.name,
+          role: operator.role,
+          service_ids: operator.specialties
+            .split(',')
+            .map((item) => item.trim())
+            .filter(Boolean),
+          working_hours: Object.fromEntries(
+            weekdayOptions.map((day) => {
+              const [start = '09:00', end = '18:00'] = operator.hours.split('-').map((item) => item.trim());
+              return [
+                day.key,
+                {
+                  break_enabled: false,
+                  break_end: null,
+                  break_start: null,
+                  end,
+                  slots: [{ start, end }],
+                  start,
+                },
+              ];
+            }),
+          ),
+        })),
+        rooms: cabins.map((cabin) => ({
+          compatible_treatment_ids: [],
+          compatible_treatment_names: cabin.treatments
+            .split(',')
+            .map((item) => item.trim())
+            .filter(Boolean),
+          id: cabin.id,
+          is_active: cabin.active,
+          name: cabin.name,
+          type: 'cabina',
+        })),
+        slot_step_minutes: 15,
       });
       onCenterUpdated(response.center, response.activation);
+      setSaveFeedback('Modifiche salvate. Agenda aggiornata. Disponibilita cliente aggiornata.');
     } catch (error) {
       setCatalogError(
         error instanceof Error
@@ -1482,6 +1757,7 @@ export function CenterSettingsScreen({
         </DashboardSection>
 
         {catalogError ? <Text style={styles.errorText}>{catalogError}</Text> : null}
+        {saveFeedback ? <Text style={styles.successText}>{saveFeedback}</Text> : null}
 
         <DashboardSection
           eyebrow="01 Business"
@@ -1502,6 +1778,84 @@ export function CenterSettingsScreen({
             onUpdate={updateOperator}
             operators={operators}
           />
+          <View style={styles.managementPanel}>
+            <View style={styles.managementHeader}>
+              <View>
+                <Text style={styles.cardMiniTitle}>WhatsApp e contatti</Text>
+                <Text style={styles.cardHint}>Numero del centro e template per CTA clienti e reminder.</Text>
+              </View>
+              <Switch
+                onValueChange={setEnableWhatsapp}
+                thumbColor={colors.surface}
+                trackColor={{ false: colors.border, true: colors.success }}
+                value={enableWhatsapp}
+              />
+            </View>
+            <View style={styles.fieldWrap}>
+              <Text style={styles.fieldLabel}>Numero WhatsApp</Text>
+              <TextInput
+                keyboardType="phone-pad"
+                onChangeText={setWhatsappPhoneNumber}
+                placeholder="+39 333 123 4567"
+                placeholderTextColor={colors.textSoft}
+                style={styles.input}
+                value={whatsappPhoneNumber}
+              />
+              {hasWhatsappPrefixWarning(whatsappPhoneNumber) ? (
+                <Text style={styles.warningText}>Aggiungi il prefisso internazionale, es. +39</Text>
+              ) : null}
+              <Text style={styles.compactMeta}>Salvato come {normalizeWhatsappNumber(whatsappPhoneNumber) || 'numero non impostato'}</Text>
+            </View>
+            <View style={styles.onlineToggle}>
+              <View style={styles.onlineCopy}>
+                <Text style={styles.onlineTitle}>Mostra bottone ai clienti</Text>
+                <Text style={styles.onlineMeta}>Abilita "Scrivi su WhatsApp" nelle schermate cliente.</Text>
+              </View>
+              <Switch
+                onValueChange={setShowWhatsappButtonToClients}
+                thumbColor={colors.surface}
+                trackColor={{ false: colors.border, true: colors.success }}
+                value={showWhatsappButtonToClients}
+              />
+            </View>
+            <View style={styles.fieldWrap}>
+              <Text style={styles.fieldLabel}>Template prenotazione</Text>
+              <TextInput
+                multiline
+                onChangeText={setWhatsappBookingMessageTemplate}
+                style={[styles.input, styles.textArea]}
+                value={whatsappBookingMessageTemplate}
+              />
+            </View>
+            <View style={styles.fieldWrap}>
+              <Text style={styles.fieldLabel}>Template informazioni</Text>
+              <TextInput
+                multiline
+                onChangeText={setWhatsappInfoMessageTemplate}
+                style={[styles.input, styles.textArea]}
+                value={whatsappInfoMessageTemplate}
+              />
+            </View>
+            <View style={styles.fieldWrap}>
+              <Text style={styles.fieldLabel}>Template reminder</Text>
+              <TextInput
+                multiline
+                onChangeText={setWhatsappAppointmentReminderTemplate}
+                style={[styles.input, styles.textArea]}
+                value={whatsappAppointmentReminderTemplate}
+              />
+            </View>
+            <Text style={styles.compactMeta}>
+              Placeholder: {'{centerName}'}, {'{clientName}'}, {'{treatmentName}'}, {'{date}'}, {'{time}'}, {'{staffName}'}, {'{address}'}
+            </Text>
+            <PrimaryButton
+              disabled={savingProfile}
+              label={savingProfile ? 'Salvataggio...' : 'Salva WhatsApp'}
+              onPress={() => {
+                void handleSaveWhatsapp();
+              }}
+            />
+          </View>
         </DashboardSection>
 
         <DashboardSection
@@ -1954,15 +2308,15 @@ export function CenterSettingsScreen({
         </DashboardSection>
       </ScrollView>
 
-      {scheduleChanged ? (
+      {configChanged ? (
         <View style={styles.stickySaveBar}>
           <View style={styles.stickyCopy}>
-            <Text style={styles.stickyTitle}>Orari modificati</Text>
-            <Text style={styles.stickyMeta}>Salva per aggiornare le prenotazioni.</Text>
+            <Text style={styles.stickyTitle}>Config modificata</Text>
+            <Text style={styles.stickyMeta}>Salva per aggiornare agenda e disponibilita cliente.</Text>
           </View>
           <PrimaryButton
             disabled={savingSchedule}
-            label={savingSchedule ? 'Saving...' : 'Save Hours'}
+            label={savingSchedule ? 'Salvataggio...' : 'Salva config'}
             onPress={() => {
               void handleSaveSchedule();
             }}
@@ -1999,16 +2353,50 @@ export function CenterSettingsScreen({
               />
             </View>
 
-            <View style={styles.fieldWrap}>
-              <Text style={styles.fieldLabel}>Beauty Center Logo Upload</Text>
-              <TextInput
-                autoCapitalize="none"
-                onChangeText={setProfileLogoUrl}
-                placeholder="https://..."
-                placeholderTextColor={colors.textSoft}
-                style={styles.input}
-                value={profileLogoUrl}
-              />
+            <View style={styles.logoUploadCard}>
+              <View style={styles.logoPreviewWrap}>
+                {profileLogoUrl ? (
+                  <Image source={{ uri: profileLogoUrl }} style={styles.logoPreviewImage} />
+                ) : (
+                  <View style={styles.logoPreviewPlaceholder}>
+                    <Ionicons color={colors.brandDark} name="image-outline" size={28} />
+                    <Text style={styles.logoPreviewPlaceholderText}>Logo centro</Text>
+                  </View>
+                )}
+              </View>
+              <View style={styles.logoUploadCopy}>
+                <Text style={styles.cardMiniTitle}>Logo beauty center</Text>
+                <Text style={styles.cardHint}>Carica un'immagine quadrata JPG, PNG o WEBP sotto i 5 MB.</Text>
+                {logoUploadMessage ? <Text style={styles.successInlineText}>{logoUploadMessage}</Text> : null}
+              </View>
+              <View style={styles.logoUploadActions}>
+                <Pressable
+                  disabled={uploadingLogo}
+                  onPress={() => {
+                    void pickLogoFromGallery();
+                  }}
+                  style={[styles.logoUploadButton, uploadingLogo ? styles.disabledAction : null]}
+                >
+                  {uploadingLogo ? <ActivityIndicator color={colors.surface} /> : <Ionicons color={colors.surface} name="images-outline" size={17} />}
+                  <Text style={styles.logoUploadButtonText}>{uploadingLogo ? 'Upload...' : 'Carica logo'}</Text>
+                </Pressable>
+                <Pressable
+                  disabled={uploadingLogo}
+                  onPress={() => {
+                    void pickLogoFromDocuments();
+                  }}
+                  style={styles.logoSecondaryButton}
+                >
+                  <Ionicons color={colors.brandInk} name="folder-open-outline" size={17} />
+                  <Text style={styles.logoSecondaryButtonText}>Da documenti</Text>
+                </Pressable>
+                {profileLogoUrl ? (
+                  <Pressable disabled={uploadingLogo} onPress={removeLogo} style={styles.logoRemoveButton}>
+                    <Ionicons color={colors.danger} name="trash-outline" size={16} />
+                    <Text style={styles.logoRemoveButtonText}>Rimuovi logo</Text>
+                  </Pressable>
+                ) : null}
+              </View>
             </View>
 
             <View style={styles.fieldWrap}>
@@ -2059,7 +2447,7 @@ export function CenterSettingsScreen({
                 variant="secondary"
               />
               <PrimaryButton
-                disabled={savingProfile}
+                disabled={savingProfile || uploadingLogo}
                 label={savingProfile ? 'Salvataggio...' : 'Salva profilo'}
                 onPress={() => {
                   void handleSaveProfile();
@@ -3530,6 +3918,22 @@ const styles = StyleSheet.create({
     fontSize: 14,
     marginBottom: spacing.sm,
   },
+  warningText: {
+    color: colors.warning,
+    fontSize: 12,
+    fontWeight: '700',
+    marginTop: spacing.xs,
+  },
+  successText: {
+    backgroundColor: colors.surfaceSky,
+    borderRadius: radius.lg,
+    color: colors.brandInk,
+    fontSize: 14,
+    fontWeight: '700',
+    lineHeight: 20,
+    marginBottom: spacing.sm,
+    padding: spacing.md,
+  },
   stickySaveBar: {
     alignItems: 'center',
     backgroundColor: colors.surface,
@@ -3633,6 +4037,97 @@ const styles = StyleSheet.create({
     borderRadius: radius.lg,
     marginTop: spacing.sm,
     padding: spacing.md,
+  },
+  logoUploadCard: {
+    backgroundColor: colors.surfaceSoft,
+    borderRadius: radius.lg,
+    gap: spacing.md,
+    marginBottom: spacing.md,
+    padding: spacing.md,
+  },
+  logoPreviewWrap: {
+    alignItems: 'center',
+  },
+  logoPreviewImage: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.xl,
+    height: 128,
+    width: 128,
+  },
+  logoPreviewPlaceholder: {
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderColor: colors.overlayBorder,
+    borderRadius: radius.xl,
+    borderStyle: 'dashed',
+    borderWidth: 1,
+    height: 128,
+    justifyContent: 'center',
+    width: 128,
+  },
+  logoPreviewPlaceholderText: {
+    color: colors.textMuted,
+    fontSize: 13,
+    fontWeight: '800',
+    marginTop: spacing.xs,
+  },
+  logoUploadCopy: {
+    alignItems: 'center',
+  },
+  successInlineText: {
+    color: colors.success,
+    fontSize: 13,
+    fontWeight: '800',
+    marginTop: spacing.xs,
+    textAlign: 'center',
+  },
+  logoUploadActions: {
+    gap: spacing.sm,
+  },
+  logoUploadButton: {
+    alignItems: 'center',
+    backgroundColor: colors.brandInk,
+    borderRadius: radius.round,
+    flexDirection: 'row',
+    gap: spacing.xs,
+    justifyContent: 'center',
+    minHeight: 48,
+  },
+  logoUploadButtonText: {
+    color: colors.surface,
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  disabledAction: {
+    opacity: 0.58,
+  },
+  logoSecondaryButton: {
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderRadius: radius.round,
+    flexDirection: 'row',
+    gap: spacing.xs,
+    justifyContent: 'center',
+    minHeight: 46,
+  },
+  logoSecondaryButtonText: {
+    color: colors.brandInk,
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  logoRemoveButton: {
+    alignItems: 'center',
+    backgroundColor: colors.roseSoft,
+    borderRadius: radius.round,
+    flexDirection: 'row',
+    gap: spacing.xs,
+    justifyContent: 'center',
+    minHeight: 42,
+  },
+  logoRemoveButtonText: {
+    color: colors.danger,
+    fontSize: 13,
+    fontWeight: '800',
   },
   serviceEditFields: {
     flexDirection: 'row',

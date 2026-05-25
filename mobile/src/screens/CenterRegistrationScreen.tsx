@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Animated,
+  Image,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -13,7 +15,12 @@ import {
 import Ionicons from "react-native-vector-icons/Ionicons";
 
 import { PrimaryButton } from "../components/PrimaryButton";
-import { activateCenterSubscription, registerCenter, updateCenterOnboarding } from "../lib/api";
+import {
+  activateCenterSubscription,
+  registerCenter,
+  updateCenterOnboarding,
+  updateCenterProfile,
+} from "../lib/api";
 import type { CenterRegistrationInput, CenterRegistrationResponse } from "../types/api";
 import { colors } from "../theme/colors";
 import { spacing } from "../theme/spacing";
@@ -98,8 +105,12 @@ const initialForm: CenterRegistrationInput = {
 export function CenterRegistrationScreen({ onBack, onRegistered }: CenterRegistrationScreenProps) {
   const [stepIndex, setStepIndex] = useState(0);
   const [form, setForm] = useState(initialForm);
-  const [logoPreview, setLogoPreview] = useState("");
-  const [coverPreview, setCoverPreview] = useState("");
+  const [logoAsset, setLogoAsset] = useState<{
+    label: string;
+    source: "gallery" | "files" | "camera";
+    uri?: string;
+  } | null>(null);
+  const [centerDescription, setCenterDescription] = useState("");
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [stations, setStations] = useState("2");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -176,6 +187,20 @@ export function CenterRegistrationScreen({ onBack, onRegistered }: CenterRegistr
     );
   };
 
+  const handleLogoSelect = (source: "gallery" | "files" | "camera") => {
+    const labels = {
+      gallery: "Logo selezionato dalla galleria",
+      files: "Logo selezionato dai file",
+      camera: "Logo acquisito dal telefono",
+    };
+
+    setLogoAsset({ label: labels[source], source });
+    Alert.alert(
+      "Logo pronto",
+      "Il selettore nativo sarà collegato a galleria, file e camera quando i moduli Expo picker saranno disponibili.",
+    );
+  };
+
   const handleSubmit = async () => {
     if (isSubmitting) return;
     setIsSubmitting(true);
@@ -187,8 +212,9 @@ export function CenterRegistrationScreen({ onBack, onRegistered }: CenterRegistr
         vat_number: form.vat_number || selectedCategories.join(", "),
       });
       const activationResponse = await activateCenterSubscription(response.center.id);
+      const logoUrl = logoAsset?.uri ?? "";
       const onboardingResponse = await updateCenterOnboarding(response.center.id, {
-        logo_url: logoPreview,
+        logo_url: logoUrl,
         opening_days: ["Lun", "Mar", "Mer", "Gio", "Ven", "Sab"],
         opening_hours: {
           Lun: { start: "09:00", end: "19:00" },
@@ -200,12 +226,23 @@ export function CenterRegistrationScreen({ onBack, onRegistered }: CenterRegistr
         },
         primary_services: selectedCategories,
       });
+      const profileResponse = centerDescription.trim()
+        ? await updateCenterProfile(response.center.id, {
+            description: centerDescription.trim(),
+            instagram_url: "",
+            logo_url: logoUrl,
+            name: form.name,
+            tiktok_url: "",
+          })
+        : null;
       onRegistered({
         ...response,
-        center: onboardingResponse.center,
-        activation: onboardingResponse.activation.subscription_status === "active"
-          ? onboardingResponse.activation
-          : activationResponse.activation,
+        center: profileResponse?.center ?? onboardingResponse.center,
+        activation:
+          profileResponse?.activation ??
+          (onboardingResponse.activation.subscription_status === "active"
+            ? onboardingResponse.activation
+            : activationResponse.activation),
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Attivazione non completata. Riprova.");
@@ -333,19 +370,13 @@ export function CenterRegistrationScreen({ onBack, onRegistered }: CenterRegistr
               subtitle="Un profilo elegante, semplice da riconoscere."
               title="Personalizza il tuo spazio"
             >
-              <UploadCard
-                icon="image-outline"
-                label="Logo del centro"
-                onChangeText={setLogoPreview}
-                placeholder="URL logo opzionale"
-                value={logoPreview}
+              <LogoUploadCard
+                asset={logoAsset}
+                onSelect={handleLogoSelect}
               />
-              <UploadCard
-                icon="albums-outline"
-                label="Immagine cover"
-                onChangeText={setCoverPreview}
-                placeholder="URL cover opzionale"
-                value={coverPreview}
+              <DescriptionField
+                onChangeText={setCenterDescription}
+                value={centerDescription}
               />
             </StepCard>
           ) : null}
@@ -514,33 +545,78 @@ function Field({ compact, label, value, onChangeText, placeholder, ...props }: F
   );
 }
 
-function UploadCard({
-  icon,
-  label,
-  onChangeText,
-  placeholder,
-  value,
+function LogoUploadCard({
+  asset,
+  onSelect,
 }: {
-  icon: string;
-  label: string;
-  onChangeText: (value: string) => void;
-  placeholder: string;
-  value: string;
+  asset: { label: string; source: "gallery" | "files" | "camera"; uri?: string } | null;
+  onSelect: (source: "gallery" | "files" | "camera") => void;
 }) {
   return (
     <View style={styles.uploadCard}>
-      <View style={styles.uploadIcon}>
-        <Ionicons color={colors.brandInk} name={icon} size={22} />
+      <View style={styles.logoPreview}>
+        {asset?.uri ? (
+          <Image resizeMode="cover" source={{ uri: asset.uri }} style={styles.logoPreviewImage} />
+        ) : (
+          <Ionicons color={colors.brandInk} name="cloud-upload-outline" size={30} />
+        )}
       </View>
-      <Text style={styles.uploadLabel}>{label}</Text>
+      <Text style={styles.uploadLabel}>Aggiungi il logo del tuo centro</Text>
+      <Text style={styles.uploadHint}>
+        {asset ? asset.label : "Scegli un'immagine dal telefono o dai tuoi file."}
+      </Text>
+      <View style={styles.uploadActions}>
+        <UploadAction icon="images-outline" label="Galleria" onPress={() => onSelect("gallery")} />
+        <UploadAction icon="folder-open-outline" label="File" onPress={() => onSelect("files")} />
+        <UploadAction icon="camera-outline" label="Telefono" onPress={() => onSelect("camera")} />
+      </View>
+    </View>
+  );
+}
+
+function UploadAction({
+  icon,
+  label,
+  onPress,
+}: {
+  icon: string;
+  label: string;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable onPress={onPress} style={styles.uploadAction}>
+      <Ionicons color={colors.brandInk} name={icon} size={16} />
+      <Text style={styles.uploadActionText}>{label}</Text>
+    </Pressable>
+  );
+}
+
+function DescriptionField({
+  onChangeText,
+  value,
+}: {
+  onChangeText: (value: string) => void;
+  value: string;
+}) {
+  const maxLength = 150;
+
+  return (
+    <View style={styles.descriptionBlock}>
+      <Text style={styles.descriptionTitle}>Descrizione del centro</Text>
+      <Text style={styles.descriptionCopy}>
+        Una breve presentazione visibile nel profilo professionale.
+      </Text>
       <TextInput
-        autoCapitalize="none"
+        maxLength={maxLength}
+        multiline
         onChangeText={onChangeText}
-        placeholder={placeholder}
+        placeholder="Un luogo dedicato alla bellezza, alla cura e al benessere delle tue clienti."
         placeholderTextColor={colors.textSoft}
-        style={styles.uploadInput}
+        style={styles.descriptionInput}
+        textAlignVertical="top"
         value={value}
       />
+      <Text style={styles.counter}>{value.length}/{maxLength}</Text>
     </View>
   );
 }
@@ -748,34 +824,101 @@ const styles = StyleSheet.create({
     alignItems: "center",
     backgroundColor: "#FFFDFC",
     borderColor: colors.overlayBorder,
-    borderRadius: 22,
+    borderRadius: 26,
     borderWidth: 1,
-    marginBottom: 14,
-    padding: 18,
+    marginBottom: 22,
+    padding: 22,
+    shadowColor: colors.brandInk,
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.08,
+    shadowRadius: 20,
   },
-  uploadIcon: {
+  logoPreview: {
     alignItems: "center",
     backgroundColor: colors.surfaceLavender,
-    borderRadius: 22,
-    height: 58,
+    borderColor: "rgba(40,111,112,0.10)",
+    borderRadius: 34,
+    borderWidth: 1,
+    height: 86,
     justifyContent: "center",
-    width: 58,
+    overflow: "hidden",
+    width: 86,
+  },
+  logoPreviewImage: {
+    height: "100%",
+    width: "100%",
   },
   uploadLabel: {
     color: colors.brandInk,
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: "800",
-    marginTop: 12,
+    marginTop: 16,
+    textAlign: "center",
   },
-  uploadInput: {
+  uploadHint: {
+    color: colors.textMuted,
+    fontSize: 13,
+    lineHeight: 19,
+    marginTop: 8,
+    textAlign: "center",
+  },
+  uploadActions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    justifyContent: "center",
+    marginTop: 18,
+  },
+  uploadAction: {
+    alignItems: "center",
+    backgroundColor: colors.surfaceSky,
+    borderColor: "rgba(40,111,112,0.10)",
+    borderRadius: 999,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 6,
+    minHeight: 40,
+    paddingHorizontal: 13,
+  },
+  uploadActionText: {
+    color: colors.brandInk,
+    fontSize: 12,
+    fontWeight: "800",
+  },
+  descriptionBlock: {
     backgroundColor: colors.surfaceSoft,
-    borderRadius: 16,
+    borderRadius: 24,
+    padding: 16,
+  },
+  descriptionTitle: {
+    color: colors.brandInk,
+    fontSize: 18,
+    fontWeight: "800",
+  },
+  descriptionCopy: {
+    color: colors.textMuted,
+    fontSize: 13,
+    lineHeight: 19,
+    marginTop: 6,
+  },
+  descriptionInput: {
+    backgroundColor: colors.surface,
+    borderColor: "rgba(40,111,112,0.10)",
+    borderRadius: 18,
+    borderWidth: 1,
     color: colors.text,
-    fontSize: 14,
+    fontSize: 15,
+    lineHeight: 22,
     marginTop: 12,
-    minHeight: 48,
-    paddingHorizontal: 14,
-    width: "100%",
+    minHeight: 112,
+    padding: 14,
+  },
+  counter: {
+    color: colors.textMuted,
+    fontSize: 12,
+    fontWeight: "800",
+    marginTop: 8,
+    textAlign: "right",
   },
   categoryGrid: {
     flexDirection: "row",

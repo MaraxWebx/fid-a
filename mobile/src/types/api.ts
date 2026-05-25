@@ -18,6 +18,7 @@ export type Center = {
     logo?: string;
     tiktok_url?: string;
   };
+  logoStoragePath?: string | null;
   opening_hours: Record<
     string,
     {
@@ -34,6 +35,16 @@ export type Center = {
     string,
     { enabled: boolean; start: string | null; end: string | null; note?: string | null }
   >;
+  enableWhatsapp?: boolean;
+  whatsappPhoneNumber?: string;
+  whatsappBookingMessageTemplate?: string;
+  whatsappInfoMessageTemplate?: string;
+  whatsappAppointmentReminderTemplate?: string;
+  showWhatsappButtonToClients?: boolean;
+  staff_members?: StaffMember[];
+  rooms?: Room[];
+  calendar_exceptions?: CalendarException[];
+  slot_step_minutes?: number;
   primary_services?: string[];
   registration_status?: string;
   subscription_status?: string;
@@ -53,7 +64,52 @@ export type Service = {
   price: number | null;
   description?: string;
   visibility?: string;
+  buffer_before_minutes?: number;
+  buffer_after_minutes?: number;
+  is_bookable_online?: boolean;
+  required_room_type?: string | null;
+  required_room_ids?: string[];
+  assigned_staff_ids?: string[];
   created_at?: string;
+};
+
+export type StaffMember = {
+  id: string;
+  center_id?: string;
+  name: string;
+  role?: string;
+  avatar_url?: string | null;
+  is_active: boolean;
+  working_hours?: Center['opening_hours'];
+  service_ids?: string[];
+  created_at?: string;
+  updated_at?: string;
+};
+
+export type Room = {
+  id: string;
+  center_id?: string;
+  name: string;
+  type?: string;
+  is_active: boolean;
+  compatible_treatment_ids?: string[];
+  compatible_treatment_names?: string[];
+  created_at?: string;
+  updated_at?: string;
+};
+
+export type CalendarException = {
+  id: string;
+  center_id?: string;
+  date: string;
+  type: 'closed' | 'special_opening' | 'staff_unavailable' | 'room_unavailable';
+  start_time?: string | null;
+  end_time?: string | null;
+  staff_member_id?: string | null;
+  room_id?: string | null;
+  reason?: string | null;
+  created_at?: string;
+  updated_at?: string;
 };
 
 export type UserProfile = {
@@ -75,6 +131,8 @@ export type Booking = {
   service_id: string;
   service_name: string;
   operator_name: string;
+  staff_member_id?: string | null;
+  room_id?: string | null;
   client_name?: string;
   client_phone?: string;
   is_delayed?: boolean | null;
@@ -100,6 +158,19 @@ export type BookingSlot = {
   date_label: string;
   time_label: string;
   availability_label: string;
+  staff_member_id?: string | null;
+  staff_member_name?: string | null;
+  room_id?: string | null;
+  room_name?: string | null;
+  distance_minutes?: number;
+};
+
+export type BookingSlotAlternativesResponse = {
+  center_id: string;
+  service_id: string;
+  date: string;
+  requested_time: string;
+  suggestions: BookingSlot[];
 };
 
 export type Review = {
@@ -132,6 +203,8 @@ export type BookingInput = {
   user_email: string;
   service_id: string;
   slot_id: string;
+  staff_member_id?: string | null;
+  room_id?: string | null;
 };
 
 export type BookingUpdateInput = {
@@ -140,6 +213,8 @@ export type BookingUpdateInput = {
   center_id?: string;
   service_id: string;
   slot_id: string;
+  staff_member_id?: string | null;
+  room_id?: string | null;
 };
 
 export type BookingStatusInput = {
@@ -229,7 +304,7 @@ export type CenterDashboard = {
   clients: DashboardClient[];
 };
 
-export type BusinessInsightPeriod = 'week' | 'month' | 'quarter';
+export type BusinessInsightPeriod = 'today' | 'week' | 'month' | 'quarter' | 'year';
 
 export type BusinessBreakdownItem = {
   label: string;
@@ -248,6 +323,14 @@ export type BusinessInsights = {
     expected_revenue: number;
     confirmed_revenue: number;
     no_show_losses: number;
+    average_ticket?: number;
+  };
+  operations?: {
+    total_appointments: number;
+    free_slots: number;
+    occupancy_rate: number;
+    cancellations: number;
+    no_shows: number;
   };
   breakdowns: {
     categories: BusinessBreakdownItem[];
@@ -255,6 +338,19 @@ export type BusinessInsights = {
     weekdays: BusinessBreakdownItem[];
     time_slots: BusinessBreakdownItem[];
   };
+  top_treatments?: Array<{
+    label: string;
+    bookings: number;
+    revenue: number;
+    average_duration: number;
+  }>;
+  staff_performance?: Array<{
+    label: string;
+    appointments: number;
+    revenue: number;
+    occupancy_rate: number;
+    average_review?: number | null;
+  }>;
   insights: string[];
   no_show_report: {
     deleted?: boolean;
@@ -329,6 +425,25 @@ export type CenterOnboardingInput = {
     }
   >;
   primary_services: string[];
+  staff_members?: Array<{
+    id?: string;
+    name: string;
+    role?: string | null;
+    avatar_url?: string | null;
+    is_active: boolean;
+    working_hours?: Center['opening_hours'];
+    service_ids?: string[];
+  }>;
+  rooms?: Array<{
+    id?: string;
+    name: string;
+    type?: string | null;
+    is_active: boolean;
+    compatible_treatment_ids?: string[];
+    compatible_treatment_names?: string[];
+  }>;
+  calendar_exceptions?: Array<Omit<CalendarException, 'center_id' | 'created_at' | 'updated_at'>>;
+  slot_step_minutes?: number;
 };
 
 export type CenterOnboardingResponse = {
@@ -336,12 +451,23 @@ export type CenterOnboardingResponse = {
   activation: ActivationStatus;
 };
 
+export type CenterLogoUploadResponse = CenterOnboardingResponse & {
+  logoUrl: string;
+  logoStoragePath?: string | null;
+};
+
 export type CenterProfileInput = {
   description: string;
+  enableWhatsapp?: boolean;
   instagram_url: string;
   name: string;
   logo_url: string;
+  showWhatsappButtonToClients?: boolean;
   tiktok_url: string;
+  whatsappAppointmentReminderTemplate?: string;
+  whatsappBookingMessageTemplate?: string;
+  whatsappInfoMessageTemplate?: string;
+  whatsappPhoneNumber?: string;
 };
 
 export type UserProfileInput = {
@@ -369,6 +495,12 @@ export type CenterServiceConfigInput = {
     price: number | null;
     description?: string;
     visibility?: string;
+    buffer_before_minutes?: number;
+    buffer_after_minutes?: number;
+    is_bookable_online?: boolean;
+    required_room_type?: string | null;
+    required_room_ids?: string[];
+    assigned_staff_ids?: string[];
   }>;
 };
 

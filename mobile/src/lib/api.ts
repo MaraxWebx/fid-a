@@ -6,6 +6,7 @@ import type {
   BookingInput,
   BookingStatusInput,
   BookingSlot,
+  BookingSlotAlternativesResponse,
   BookingUpdateInput,
   BusinessInsightPeriod,
   BusinessInsights,
@@ -19,6 +20,7 @@ import type {
   CenterClient,
   CenterDashboard,
   CenterClientDetail,
+  CenterLogoUploadResponse,
   CenterMembershipsResponse,
   CenterOnboardingInput,
   CenterOnboardingResponse,
@@ -42,11 +44,40 @@ const baseUrl =
   process.env.EXPO_PUBLIC_API_BASE_URL ??
   'https://fid-a-production.up.railway.app';
 
+export class ApiError extends Error {
+  code?: string;
+  alternatives?: BookingSlot[];
+
+  constructor(message: string, code?: string, alternatives?: BookingSlot[]) {
+    super(message);
+    this.name = 'ApiError';
+    this.code = code;
+    this.alternatives = alternatives;
+  }
+}
+
+async function parseApiError(response: Response) {
+  try {
+    const body = await response.json();
+    if (typeof body?.detail === 'string') return new ApiError(body.detail);
+    if (body?.detail?.message || body?.detail?.code) {
+      return new ApiError(
+        body.detail.message ?? `Request failed: ${response.status}`,
+        body.detail.code,
+        body.detail.alternatives,
+      );
+    }
+  } catch {
+    // Use generic error below.
+  }
+  return new ApiError(`Request failed: ${response.status}`);
+}
+
 async function request<T>(path: string): Promise<T> {
   const response = await fetch(`${baseUrl}${path}`);
 
   if (!response.ok) {
-    throw new Error(`Request failed: ${response.status}`);
+    throw await parseApiError(response);
   }
 
   return (await response.json()) as T;
@@ -62,7 +93,7 @@ async function post<TResponse, TPayload>(path: string, payload: TPayload): Promi
   });
 
   if (!response.ok) {
-    throw new Error(`Request failed: ${response.status}`);
+    throw await parseApiError(response);
   }
 
   return (await response.json()) as TResponse;
@@ -78,7 +109,7 @@ async function patch<TResponse, TPayload>(path: string, payload: TPayload): Prom
   });
 
   if (!response.ok) {
-    throw new Error(`Request failed: ${response.status}`);
+    throw await parseApiError(response);
   }
 
   return (await response.json()) as TResponse;
@@ -90,7 +121,7 @@ async function del<TResponse>(path: string): Promise<TResponse> {
   });
 
   if (!response.ok) {
-    throw new Error(`Request failed: ${response.status}`);
+    throw await parseApiError(response);
   }
 
   return (await response.json()) as TResponse;
@@ -110,8 +141,36 @@ export function getCenterBookingSlots(centerId: string, params: { serviceId: str
     date: params.date,
   });
   if (params.bookingId) search.set('booking_id', params.bookingId);
-  return request<{ center_id: string; service_id: string; date: string; slots: BookingSlot[] }>(
+  return request<{ center_id: string; service_id: string; date: string; slots: BookingSlot[]; alternatives?: BookingSlot[]; reason?: string | null }>(
     `/api/centers/${centerId}/booking-slots?${search.toString()}`,
+  );
+}
+
+async function postForm<TResponse>(path: string, formData: FormData): Promise<TResponse> {
+  const response = await fetch(`${baseUrl}${path}`, {
+    method: 'POST',
+    body: formData,
+  });
+
+  if (!response.ok) {
+    throw await parseApiError(response);
+  }
+
+  return (await response.json()) as TResponse;
+}
+
+export function getCenterBookingSlotAlternatives(
+  centerId: string,
+  params: { serviceId: string; date: string; time: string; maxSuggestions?: number },
+) {
+  const search = new URLSearchParams({
+    service_id: params.serviceId,
+    date: params.date,
+    time: params.time,
+    max_suggestions: String(params.maxSuggestions ?? 3),
+  });
+  return request<BookingSlotAlternativesResponse>(
+    `/api/centers/${centerId}/booking-slots/alternatives?${search.toString()}`,
   );
 }
 
@@ -236,6 +295,18 @@ export function updateCenterProfile(centerId: string, payload: CenterProfileInpu
   return patch<CenterOnboardingResponse, CenterProfileInput>(
     `/api/centers/${centerId}/profile`,
     payload,
+  );
+}
+
+export function uploadCenterLogo(
+  centerId: string,
+  file: { name: string; type: string; uri: string },
+) {
+  const formData = new FormData();
+  formData.append('file', file as unknown as Blob);
+  return postForm<CenterLogoUploadResponse>(
+    `/api/centers/${centerId}/branding/logo`,
+    formData,
   );
 }
 

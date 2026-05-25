@@ -18,6 +18,12 @@ import {
   getUserBookings,
   toggleFavoriteCenter,
 } from "../lib/api";
+import {
+  buildCenterWhatsappMessage,
+  buildWhatsappUrl,
+  isWhatsappConfigured,
+  openWhatsappUrl,
+} from "../lib/whatsapp";
 import { PrimaryButton } from "../components/PrimaryButton";
 import { colors } from "../theme/colors";
 import { spacing } from "../theme/spacing";
@@ -144,6 +150,12 @@ export function ClientCenterDetailScreen({
       setFavoriteLoading(false);
     }
   };
+  const openInfoWhatsapp = () => {
+    if (!center) return;
+    if (!isWhatsappConfigured(center, true)) return;
+    const url = buildWhatsappUrl(center.whatsappPhoneNumber, buildCenterWhatsappMessage(center, "info"));
+    if (url) void openWhatsappUrl(url);
+  };
 
   if (!center) {
     return (
@@ -226,6 +238,13 @@ export function ClientCenterDetailScreen({
           label="Prenota trattamento"
           onPress={() => onBookCenter(center.id)}
         />
+        {isWhatsappConfigured(center, true) ? (
+          <PrimaryButton
+            label="Scrivi su WhatsApp"
+            onPress={openInfoWhatsapp}
+            variant="secondary"
+          />
+        ) : null}
         {selectedCenterId === center.id ? (
           <Text style={styles.selectedHint}>Questo e il tuo centro predefinito.</Text>
         ) : null}
@@ -259,9 +278,27 @@ export function ClientCenterDetailScreen({
                   {service.category} - {service.duration ?? "-"} min
                 </Text>
               </View>
-              <Text style={styles.price}>
-                {service.price !== null ? `EUR ${service.price}` : ""}
-              </Text>
+              <View style={styles.serviceActions}>
+                <Text style={styles.price}>
+                  {service.price !== null ? `EUR ${service.price}` : ""}
+                </Text>
+                {isWhatsappConfigured(center, true) ? (
+                  <Pressable
+                    onPress={() => {
+                      const url = buildWhatsappUrl(
+                        center.whatsappPhoneNumber,
+                        buildCenterWhatsappMessage(center, "booking", {
+                          treatmentName: service.name,
+                        }),
+                      );
+                      if (url) void openWhatsappUrl(url);
+                    }}
+                    style={styles.whatsappMiniButton}
+                  >
+                    <Ionicons color={colors.surface} name="logo-whatsapp" size={16} />
+                  </Pressable>
+                ) : null}
+              </View>
             </View>
           ))}
         </View>
@@ -617,6 +654,18 @@ const styles = StyleSheet.create({
     color: colors.brandDark,
     fontSize: 14,
     fontWeight: "800",
+  },
+  serviceActions: {
+    alignItems: "flex-end",
+    gap: spacing.xs,
+  },
+  whatsappMiniButton: {
+    alignItems: "center",
+    backgroundColor: "#25D366",
+    borderRadius: 999,
+    height: 34,
+    justifyContent: "center",
+    width: 34,
   },
   historyRow: {
     backgroundColor: colors.surfaceSoft,

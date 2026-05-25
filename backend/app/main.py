@@ -1,14 +1,16 @@
 from datetime import UTC, date, datetime, time, timedelta
 import hashlib
 import hmac
+from pathlib import Path
 import re
 import secrets
+import shutil
 from zoneinfo import ZoneInfo
 
 from bson import ObjectId
-from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi import FastAPI, File, HTTPException, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, Response
 from pymongo.errors import PyMongoError
 from pydantic import BaseModel, Field
 import stripe
@@ -33,6 +35,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+UPLOAD_ROOT = Path(__file__).resolve().parent.parent / "uploads"
+ALLOWED_LOGO_EXTENSIONS = {"jpg", "jpeg", "png", "webp"}
+ALLOWED_LOGO_CONTENT_TYPES = {"image/jpeg", "image/png", "image/webp"}
+MAX_LOGO_BYTES = 5 * 1024 * 1024
 
 
 def serialize_id(value):
@@ -76,9 +83,20 @@ def serialize_center(document):
         "address": document.get("address"),
         "subscription_plan": document.get("subscription_plan"),
         "branding": document.get("branding", {}),
+        "logoStoragePath": document.get("logoStoragePath"),
         "opening_hours": document.get("opening_hours", {}),
         "opening_days": document.get("opening_days", []),
         "availability_overrides": document.get("availability_overrides", {}),
+        "enableWhatsapp": document.get("enableWhatsapp", False),
+        "whatsappPhoneNumber": document.get("whatsappPhoneNumber", ""),
+        "whatsappBookingMessageTemplate": document.get("whatsappBookingMessageTemplate", ""),
+        "whatsappInfoMessageTemplate": document.get("whatsappInfoMessageTemplate", ""),
+        "whatsappAppointmentReminderTemplate": document.get("whatsappAppointmentReminderTemplate", ""),
+        "showWhatsappButtonToClients": document.get("showWhatsappButtonToClients", False),
+        "staff_members": document.get("staff_members", []),
+        "rooms": document.get("rooms", []),
+        "calendar_exceptions": document.get("calendar_exceptions", []),
+        "slot_step_minutes": document.get("slot_step_minutes", 15),
         "primary_services": document.get("primary_services", []),
         "registration_status": document.get("registration_status"),
         "subscription_status": document.get("subscription_status"),
@@ -100,6 +118,12 @@ def serialize_service(document):
         "price": document.get("price"),
         "description": document.get("description"),
         "visibility": document.get("visibility"),
+        "buffer_before_minutes": document.get("buffer_before_minutes", 0),
+        "buffer_after_minutes": document.get("buffer_after_minutes", 0),
+        "is_bookable_online": document.get("is_bookable_online", document.get("visibility") == "active"),
+        "required_room_type": document.get("required_room_type"),
+        "required_room_ids": [serialize_id(item) if isinstance(item, ObjectId) else str(item) for item in document.get("required_room_ids", [])],
+        "assigned_staff_ids": [serialize_id(item) if isinstance(item, ObjectId) else str(item) for item in document.get("assigned_staff_ids", [])],
         "created_at": document.get("created_at"),
     }
 
@@ -125,7 +149,7 @@ def serialize_user(document):
 def serialize_booking(document):
     start_time = document.get("start_time")
     end_time = document.get("end_time")
-    price = document.get("service", {}).get("price")
+    price = document.get("service", {}).get("price") if document.get("service") else document.get("total_price")
     operator_name = document.get("operator_name")
 
     if not operator_name or operator_name == "Staff":
@@ -141,6 +165,8 @@ def serialize_booking(document):
         "service_id": serialize_id(document.get("service_id")),
         "service_name": document.get("service_name") or document.get("service", {}).get("name"),
         "operator_name": operator_name,
+        "staff_member_id": document.get("staff_member_id"),
+        "room_id": document.get("room_id"),
         "client_name": document.get("client_name"),
         "client_phone": document.get("client_phone"),
         "is_delayed": (bool(document.get("is_delayed")) or document.get("status") == "late") and document.get("status") in ["booked", "confirmed", "late"],
@@ -468,11 +494,45 @@ class CenterOpeningHoursPayload(BaseModel):
     break_end: str | None = None
 
 
+class CenterStaffMemberPayload(BaseModel):
+    id: str | None = None
+    name: str = Field(min_length=1, max_length=120)
+    role: str | None = Field(default=None, max_length=80)
+    avatar_url: str | None = None
+    is_active: bool = True
+    working_hours: dict[str, CenterOpeningHoursPayload] = Field(default_factory=dict)
+    service_ids: list[str] = Field(default_factory=list)
+
+
+class CenterRoomPayload(BaseModel):
+    id: str | None = None
+    name: str = Field(min_length=1, max_length=120)
+    type: str | None = Field(default=None, max_length=80)
+    is_active: bool = True
+    compatible_treatment_ids: list[str] = Field(default_factory=list)
+    compatible_treatment_names: list[str] = Field(default_factory=list)
+
+
+class CalendarExceptionPayload(BaseModel):
+    id: str | None = None
+    date: str
+    type: str = Field(min_length=2, max_length=40)
+    start_time: str | None = None
+    end_time: str | None = None
+    staff_member_id: str | None = None
+    room_id: str | None = None
+    reason: str | None = Field(default=None, max_length=240)
+
+
 class CenterOnboardingPayload(BaseModel):
     logo_url: str | None = None
     opening_days: list[str] = Field(default_factory=list)
     opening_hours: dict[str, CenterOpeningHoursPayload] = Field(default_factory=dict)
     primary_services: list[str] = Field(default_factory=list)
+    staff_members: list[CenterStaffMemberPayload] | None = None
+    rooms: list[CenterRoomPayload] | None = None
+    calendar_exceptions: list[CalendarExceptionPayload] | None = None
+    slot_step_minutes: int | None = Field(default=None, ge=5, le=120)
 
 
 class CenterAvailabilityDayPayload(BaseModel):
@@ -488,10 +548,16 @@ class CenterAvailabilityPayload(BaseModel):
 
 class CenterProfilePayload(BaseModel):
     description: str | None = Field(default=None, max_length=300)
+    enableWhatsapp: bool | None = None
     instagram_url: str | None = Field(default=None, max_length=240)
     tiktok_url: str | None = Field(default=None, max_length=240)
     name: str | None = Field(default=None, min_length=2, max_length=120)
     logo_url: str | None = None
+    showWhatsappButtonToClients: bool | None = None
+    whatsappAppointmentReminderTemplate: str | None = Field(default=None, max_length=500)
+    whatsappBookingMessageTemplate: str | None = Field(default=None, max_length=500)
+    whatsappInfoMessageTemplate: str | None = Field(default=None, max_length=500)
+    whatsappPhoneNumber: str | None = Field(default=None, max_length=40)
 
 
 class UserProfilePayload(BaseModel):
@@ -506,6 +572,12 @@ class CenterServiceConfigItemPayload(BaseModel):
     price: float | None = Field(default=None, ge=0)
     description: str | None = None
     visibility: str = Field(default="active", min_length=2, max_length=32)
+    buffer_before_minutes: int = Field(default=0, ge=0, le=240)
+    buffer_after_minutes: int = Field(default=0, ge=0, le=240)
+    is_bookable_online: bool | None = None
+    required_room_type: str | None = Field(default=None, max_length=80)
+    required_room_ids: list[str] = Field(default_factory=list)
+    assigned_staff_ids: list[str] = Field(default_factory=list)
 
 
 class CenterServicesCatalogPayload(BaseModel):
@@ -555,6 +627,8 @@ class BookingUpdatePayload(BaseModel):
     center_id: str | None = None
     service_id: str = Field(min_length=24, max_length=24)
     slot_id: str = Field(min_length=1, max_length=64)
+    staff_member_id: str | None = None
+    room_id: str | None = None
 
 
 class BookingStatusPayload(BaseModel):
@@ -569,14 +643,19 @@ ITALIAN_WEEKDAY_FULL = ["Lunedi", "Martedi", "Mercoledi", "Giovedi", "Venerdi", 
 
 
 def format_eur(value: float):
-    return f"EUR {value:,.0f}".replace(",", ".")
+    formatted = f"{value:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    return f"€ {formatted}"
 
 
 def parse_report_period(period: str):
     today = datetime.now(ZoneInfo("Europe/Rome")).replace(tzinfo=None).date()
     normalized = period.strip().lower()
 
-    if normalized == "week":
+    if normalized == "today":
+        start = today
+        end = today + timedelta(days=1)
+        title = "Oggi"
+    elif normalized == "week":
         start = today - timedelta(days=today.weekday())
         end = start + timedelta(days=7)
         title = "Settimana corrente"
@@ -588,6 +667,10 @@ def parse_report_period(period: str):
         end_month = end_month - 12 if end_month > 12 else end_month
         end = date(end_year, end_month, 1)
         title = "Trimestre corrente"
+    elif normalized == "year":
+        start = date(today.year, 1, 1)
+        end = date(today.year + 1, 1, 1)
+        title = "Anno corrente"
     else:
         start = date(today.year, today.month, 1)
         end = date(today.year + (1 if today.month == 12 else 0), 1 if today.month == 12 else today.month + 1, 1)
@@ -672,6 +755,11 @@ def build_business_insights(center: dict, period: str = "month"):
     no_show_clients: dict[str, dict] = {}
     no_show_slots: dict[str, float] = {}
     no_show_services: dict[str, float] = {}
+    treatment_stats: dict[str, dict] = {}
+    staff_stats: dict[str, dict] = {}
+    completed_count = 0
+    cancellations = 0
+    no_shows = 0
 
     def slot_label(value: datetime | None):
         if not isinstance(value, datetime):
@@ -693,16 +781,33 @@ def build_business_insights(center: dict, period: str = "month"):
         operator = booking.get("operator_name") or center.get("name") or "Staff"
         weekday = ITALIAN_WEEKDAY_FULL[start_time.weekday()] if isinstance(start_time, datetime) else "Giorno n/d"
         slot = slot_label(start_time)
+        service_name = booking.get("service_name") or service.get("name") or "Trattamento"
+        duration = 60
+        if isinstance(start_time, datetime) and isinstance(booking.get("end_time"), datetime):
+            duration = max(15, int((booking["end_time"] - start_time).total_seconds() // 60))
 
         if status in ["booked", "confirmed", "late"] and isinstance(start_time, datetime) and start_time >= now:
             expected_revenue += amount
         if status == "completed":
+            completed_count += 1
             confirmed_revenue += amount
             add_breakdown(categories, category, amount)
             add_breakdown(staff, operator, amount)
             add_breakdown(weekdays, weekday, amount)
             add_breakdown(time_slots, slot, amount)
+            if service_name not in treatment_stats:
+                treatment_stats[service_name] = {"label": service_name, "bookings": 0, "revenue": 0.0, "duration": 0}
+            treatment_stats[service_name]["bookings"] += 1
+            treatment_stats[service_name]["revenue"] += amount
+            treatment_stats[service_name]["duration"] += duration
+            if operator not in staff_stats:
+                staff_stats[operator] = {"label": operator, "appointments": 0, "revenue": 0.0}
+            staff_stats[operator]["appointments"] += 1
+            staff_stats[operator]["revenue"] += amount
+        if status in ["canceled", "cancelled"]:
+            cancellations += 1
         if status == "no_show" and not no_show_report_deleted:
+            no_shows += 1
             no_show_losses += amount
             client_name = (booking.get("user") or {}).get("name") or booking.get("client_name") or "Cliente"
             if client_name not in no_show_clients:
@@ -710,7 +815,7 @@ def build_business_insights(center: dict, period: str = "month"):
             no_show_clients[client_name]["count"] += 1
             no_show_clients[client_name]["value"] += amount
             add_breakdown(no_show_slots, slot, amount)
-            add_breakdown(no_show_services, booking.get("service_name") or service.get("name") or "Trattamento", amount)
+            add_breakdown(no_show_services, service_name, amount)
 
     breakdowns = {
         "categories": sorted_breakdown(categories),
@@ -740,6 +845,29 @@ def build_business_insights(center: dict, period: str = "month"):
         key=lambda item: (item["count"], item["value"]),
         reverse=True,
     )[:5]
+    period_days = max(1, (end.date() - start.date()).days)
+    estimated_capacity = max(1, period_days * 8)
+    active_appointments = len([booking for booking in bookings if booking.get("status") not in ["canceled", "cancelled", "no_show"]])
+    occupancy_rate = min(100, round((active_appointments / estimated_capacity) * 100))
+    top_treatments = [
+        {
+            "label": item["label"],
+            "bookings": item["bookings"],
+            "revenue": round(item["revenue"], 2),
+            "average_duration": round(item["duration"] / item["bookings"]) if item["bookings"] else 0,
+        }
+        for item in sorted(treatment_stats.values(), key=lambda value: (value["bookings"], value["revenue"]), reverse=True)[:5]
+    ]
+    staff_performance = [
+        {
+            "label": item["label"],
+            "appointments": item["appointments"],
+            "revenue": round(item["revenue"], 2),
+            "occupancy_rate": min(100, round((item["appointments"] / estimated_capacity) * 100)),
+            "average_review": None,
+        }
+        for item in sorted(staff_stats.values(), key=lambda value: value["label"])[:5]
+    ]
 
     return {
         "period": {
@@ -752,8 +880,18 @@ def build_business_insights(center: dict, period: str = "month"):
             "expected_revenue": round(expected_revenue, 2),
             "confirmed_revenue": round(confirmed_revenue, 2),
             "no_show_losses": round(no_show_losses, 2),
+            "average_ticket": round(confirmed_revenue / completed_count, 2) if completed_count else 0,
+        },
+        "operations": {
+            "total_appointments": len(bookings),
+            "free_slots": max(0, estimated_capacity - active_appointments),
+            "occupancy_rate": occupancy_rate,
+            "cancellations": cancellations,
+            "no_shows": no_shows,
         },
         "breakdowns": breakdowns,
+        "top_treatments": top_treatments,
+        "staff_performance": staff_performance,
         "insights": insights[:4],
         "no_show_report": {
             "deleted": no_show_report_deleted,
@@ -942,6 +1080,172 @@ def parse_time_value(value: str | None):
     return parsed
 
 
+def booking_error(code: str, message: str, status_code: int = 409, **extra):
+    detail = {"code": code, "message": message}
+    detail.update(extra)
+    raise HTTPException(status_code=status_code, detail=detail)
+
+
+def ranges_overlap(start_a: datetime, end_a: datetime, start_b: datetime, end_b: datetime):
+    return start_a < end_b and end_a > start_b
+
+
+def normalize_resource_id(value):
+    if value is None:
+        return None
+    return str(value)
+
+
+def normalize_whatsapp_number(value: str | None):
+    return "".join(character for character in (value or "") if character.isdigit())
+
+
+def safe_logo_extension(filename: str | None, content_type: str | None):
+    suffix = Path(filename or "").suffix.lower().lstrip(".")
+    if suffix == "jpg" or suffix == "jpeg":
+        ext = suffix
+    elif suffix in ALLOWED_LOGO_EXTENSIONS:
+        ext = suffix
+    elif content_type == "image/jpeg":
+        ext = "jpg"
+    elif content_type == "image/png":
+        ext = "png"
+    elif content_type == "image/webp":
+        ext = "webp"
+    else:
+        ext = ""
+    if ext not in ALLOWED_LOGO_EXTENSIONS:
+        raise HTTPException(status_code=400, detail={"code": "INVALID_LOGO_FORMAT", "message": "Formato non valido. Carica un'immagine JPG, PNG o WEBP."})
+    return ext
+
+
+def public_upload_url(request: Request, storage_path: str):
+    return f"{str(request.base_url).rstrip('/')}/api/uploads/{storage_path}"
+
+
+def get_center_staff_members(center: dict):
+    raw_staff = center.get("staff_members") or []
+    if raw_staff:
+        return [
+            {
+                "id": str(item.get("id") or item.get("_id") or f"staff-{index}"),
+                "name": item.get("name") or center.get("name") or "Operatrice",
+                "role": item.get("role") or "Operatrice",
+                "is_active": item.get("is_active", item.get("active", True)),
+                "working_hours": item.get("working_hours") or {},
+                "service_ids": [str(value) for value in item.get("service_ids", [])],
+            }
+            for index, item in enumerate(raw_staff)
+            if isinstance(item, dict)
+        ]
+    return [
+        {
+            "id": "center-staff",
+            "name": center.get("name") or "Centro",
+            "role": "Staff",
+            "is_active": True,
+            "working_hours": {},
+            "service_ids": [],
+        }
+    ]
+
+
+def get_center_rooms(center: dict):
+    return [
+        {
+            "id": str(item.get("id") or item.get("_id") or f"room-{index}"),
+            "name": item.get("name") or "Cabina",
+            "type": item.get("type") or "cabina",
+            "is_active": item.get("is_active", item.get("active", True)),
+            "compatible_treatment_ids": [str(value) for value in item.get("compatible_treatment_ids", [])],
+            "compatible_treatment_names": [str(value).lower() for value in item.get("compatible_treatment_names", [])],
+        }
+        for index, item in enumerate(center.get("rooms") or [])
+        if isinstance(item, dict)
+    ]
+
+
+def service_is_online_bookable(service: dict):
+    return (
+        service.get("visibility") == "active"
+        and service.get("is_bookable_online", True) is not False
+        and service.get("duration") is not None
+        and service.get("price") is not None
+    )
+
+
+def staff_can_perform_service(staff_member: dict, service: dict):
+    service_id = str(service.get("_id"))
+    assigned = [str(value) for value in service.get("assigned_staff_ids", [])]
+    enabled = [str(value).lower() for value in staff_member.get("service_ids", [])]
+    service_name = str(service.get("name") or "").lower()
+    service_category = str(service.get("category") or "").lower()
+    enabled_match = (
+        not enabled
+        or service_id in enabled
+        or any(token and (token in service_name or token in service_category) for token in enabled)
+    )
+    return (not assigned or staff_member["id"] in assigned) and enabled_match
+
+
+def room_can_host_service(room: dict, service: dict):
+    service_id = str(service.get("_id"))
+    required_ids = [str(value) for value in service.get("required_room_ids", [])]
+    compatible_ids = [str(value) for value in room.get("compatible_treatment_ids", [])]
+    compatible_names = [str(value).lower() for value in room.get("compatible_treatment_names", [])]
+    service_name = str(service.get("name") or "").lower()
+    service_category = str(service.get("category") or "").lower()
+
+    if required_ids:
+        return room["id"] in required_ids
+    if service.get("required_room_type"):
+        return room.get("type") == service.get("required_room_type")
+    if compatible_ids or compatible_names:
+        return service_id in compatible_ids or any(token and (token in service_name or token in service_category) for token in compatible_names)
+    return True
+
+
+def build_resource_day_windows(default_windows: list[tuple[datetime, datetime]], raw_hours: dict, target_date: date):
+    if not raw_hours:
+        return default_windows
+    weekday_key = ITALIAN_WEEKDAY_KEYS[target_date.weekday()]
+    hours = raw_hours.get(weekday_key) or {}
+    raw_slots = hours.get("slots") or []
+    raw_windows = [
+        (parse_time_value(slot.get("start")), parse_time_value(slot.get("end")))
+        for slot in raw_slots
+        if isinstance(slot, dict)
+    ]
+    if not raw_windows and (hours.get("start") or hours.get("end")):
+        raw_windows = [(parse_time_value(hours.get("start")), parse_time_value(hours.get("end")))]
+    if not raw_windows:
+        return default_windows
+    return [
+        (datetime.combine(target_date, start_value), datetime.combine(target_date, end_value))
+        for start_value, end_value in raw_windows
+        if start_value and end_value and end_value > start_value
+    ]
+
+
+def calendar_exception_blocks(center: dict, target_date: date, start_dt: datetime, end_dt: datetime, *, staff_member_id: str | None = None, room_id: str | None = None):
+    date_key = target_date.isoformat()
+    for item in center.get("calendar_exceptions") or []:
+        if not isinstance(item, dict) or item.get("date") != date_key:
+            continue
+        exception_type = item.get("type")
+        if exception_type not in ["closed", "staff_unavailable", "room_unavailable"]:
+            continue
+        if exception_type == "staff_unavailable" and item.get("staff_member_id") != staff_member_id:
+            continue
+        if exception_type == "room_unavailable" and item.get("room_id") != room_id:
+            continue
+        exception_start = parse_time_value(item.get("start_time")) or time(0, 0)
+        exception_end = parse_time_value(item.get("end_time")) or time(23, 59)
+        if ranges_overlap(start_dt, end_dt, datetime.combine(target_date, exception_start), datetime.combine(target_date, exception_end)):
+            return True
+    return False
+
+
 def build_center_day_windows(center: dict, target_date: date):
     date_key = target_date.isoformat()
     overrides = center.get("availability_overrides") or {}
@@ -1005,7 +1309,7 @@ def load_service_for_center(center_object_id: ObjectId, service_id: str):
     return service_object_id, service
 
 
-def has_booking_overlap(center_object_id: ObjectId, start_dt: datetime, end_dt: datetime, *, exclude_booking_id: ObjectId | None = None):
+def has_booking_overlap(center_object_id: ObjectId, start_dt: datetime, end_dt: datetime, *, exclude_booking_id: ObjectId | None = None, staff_member_id: str | None = None, room_id: str | None = None):
     query: dict = {
         "center_id": center_object_id,
         "status": {"$ne": "canceled"},
@@ -1014,17 +1318,47 @@ def has_booking_overlap(center_object_id: ObjectId, start_dt: datetime, end_dt: 
     }
     if exclude_booking_id is not None:
         query["_id"] = {"$ne": exclude_booking_id}
-    return db.bookings.find_one(query) is not None
+    for booking in db.bookings.find(query):
+        booking_staff_id = normalize_resource_id(booking.get("staff_member_id"))
+        booking_room_id = normalize_resource_id(booking.get("room_id"))
+        if not booking_staff_id and not booking_room_id:
+            return True
+        if staff_member_id and booking_staff_id == staff_member_id:
+            return True
+        if room_id and booking_room_id == room_id:
+            return True
+    return False
 
 
-def build_booking_slot_list(center: dict, service: dict, target_date: date, *, exclude_booking_id: ObjectId | None = None):
+def get_available_slots(center: dict, service: dict, target_date: date, *, preferred_time: str | None = None, staff_member_id: str | None = None, room_id: str | None = None, exclude_booking_id: ObjectId | None = None, enforce_online: bool = False):
     day_windows, break_window = build_center_day_windows(center, target_date)
     if not day_windows:
-        return []
+        return {"slots": [], "alternatives": [], "reason": "CENTER_CLOSED"}
+    if enforce_online and not service_is_online_bookable(service):
+        return {"slots": [], "alternatives": [], "reason": "TREATMENT_NOT_BOOKABLE"}
 
     duration_minutes = service.get("duration") if isinstance(service.get("duration"), int) else 60
-    slot_step = timedelta(minutes=15)
+    buffer_before = service.get("buffer_before_minutes") if isinstance(service.get("buffer_before_minutes"), int) else 0
+    buffer_after = service.get("buffer_after_minutes") if isinstance(service.get("buffer_after_minutes"), int) else 0
+    slot_step = timedelta(minutes=center.get("slot_step_minutes") if isinstance(center.get("slot_step_minutes"), int) else 15)
     now = datetime.now()
+    active_staff = [
+        item
+        for item in get_center_staff_members(center)
+        if item.get("is_active") and (not staff_member_id or item["id"] == staff_member_id) and staff_can_perform_service(item, service)
+    ]
+    if not active_staff:
+        return {"slots": [], "alternatives": [], "reason": "STAFF_NOT_AVAILABLE"}
+
+    active_rooms = [
+        item
+        for item in get_center_rooms(center)
+        if item.get("is_active") and (not room_id or item["id"] == room_id) and room_can_host_service(item, service)
+    ]
+    room_required = bool(service.get("required_room_ids") or service.get("required_room_type") or active_rooms)
+    if room_required and not active_rooms:
+        return {"slots": [], "alternatives": [], "reason": "ROOM_NOT_AVAILABLE"}
+
     slots = []
 
     for start_dt, end_dt in day_windows:
@@ -1039,30 +1373,128 @@ def build_booking_slot_list(center: dict, service: dict, target_date: date, *, e
 
         while cursor + timedelta(minutes=duration_minutes) <= end_dt:
             slot_end = cursor + timedelta(minutes=duration_minutes)
+            blocked_start = cursor - timedelta(minutes=buffer_before)
+            blocked_end = slot_end + timedelta(minutes=buffer_after)
             overlaps_break = bool(
                 break_window
                 and cursor < break_window[1]
                 and slot_end > break_window[0]
             )
-            if not overlaps_break and not has_booking_overlap(
-                center["_id"],
-                cursor,
-                slot_end,
-                exclude_booking_id=exclude_booking_id,
-            ):
-                slots.append(
-                    {
-                        "id": cursor.isoformat(timespec="minutes"),
-                        "start_time": cursor.isoformat(),
-                        "end_time": slot_end.isoformat(),
-                        "date_label": cursor.strftime("%d/%m/%Y"),
-                        "time_label": cursor.strftime("%H:%M"),
-                        "availability_label": "Disponibile",
-                    }
-                )
+            if not overlaps_break and not calendar_exception_blocks(center, target_date, cursor, slot_end):
+                for staff_item in active_staff:
+                    staff_windows = build_resource_day_windows(day_windows, staff_item.get("working_hours") or {}, target_date)
+                    if not any(cursor >= window_start and slot_end <= window_end for window_start, window_end in staff_windows):
+                        continue
+                    if calendar_exception_blocks(center, target_date, cursor, slot_end, staff_member_id=staff_item["id"]):
+                        continue
+                    candidate_rooms = active_rooms if room_required else [None]
+                    for room_item in candidate_rooms:
+                        candidate_room_id = room_item["id"] if room_item else None
+                        if room_item and calendar_exception_blocks(center, target_date, cursor, slot_end, room_id=candidate_room_id):
+                            continue
+                        if has_booking_overlap(
+                            center["_id"],
+                            blocked_start,
+                            blocked_end,
+                            exclude_booking_id=exclude_booking_id,
+                            staff_member_id=staff_item["id"],
+                            room_id=candidate_room_id,
+                        ):
+                            continue
+                        slots.append(
+                            {
+                                "id": cursor.isoformat(timespec="minutes"),
+                                "start_time": cursor.isoformat(),
+                                "end_time": slot_end.isoformat(),
+                                "date_label": cursor.strftime("%d/%m/%Y"),
+                                "time_label": cursor.strftime("%H:%M"),
+                                "availability_label": "Disponibile",
+                                "staff_member_id": staff_item["id"],
+                                "staff_member_name": staff_item["name"],
+                                "room_id": candidate_room_id,
+                                "room_name": room_item["name"] if room_item else None,
+                            }
+                        )
+                        break
+                    else:
+                        continue
+                    break
             cursor += slot_step
 
-    return slots
+    slots.sort(key=lambda item: item["start_time"])
+    unique_slots = []
+    seen_starts = set()
+    for slot in slots:
+        if slot["start_time"] in seen_starts:
+            continue
+        seen_starts.add(slot["start_time"])
+        unique_slots.append(slot)
+
+    alternatives = []
+    if preferred_time:
+        requested_dt = datetime.combine(target_date, parse_time_value(preferred_time) or time(0, 0))
+        alternatives = sorted(
+            [
+                {**slot, "distance_minutes": abs(int((datetime.fromisoformat(slot["start_time"]) - requested_dt).total_seconds() // 60))}
+                for slot in unique_slots
+            ],
+            key=lambda item: item["distance_minutes"],
+        )[:3]
+    return {"slots": unique_slots, "alternatives": alternatives, "reason": None if unique_slots else "SLOT_NOT_AVAILABLE"}
+
+
+def suggest_alternative_slots(center: dict, service: dict, requested_date: date, requested_time: str, *, max_suggestions: int = 3):
+    suggestions = get_available_slots(center, service, requested_date, preferred_time=requested_time)["alternatives"]
+    if len(suggestions) >= max_suggestions:
+        return suggestions[:max_suggestions]
+
+    for offset in range(1, 15):
+        target_date = requested_date + timedelta(days=offset)
+        next_day_slots = get_available_slots(center, service, target_date)["slots"]
+        if next_day_slots:
+            return [*suggestions, *next_day_slots[: max_suggestions - len(suggestions)]]
+    return suggestions
+
+
+def build_booking_slot_list(center: dict, service: dict, target_date: date, *, exclude_booking_id: ObjectId | None = None):
+    return get_available_slots(center, service, target_date, exclude_booking_id=exclude_booking_id)["slots"]
+
+
+def validate_appointment_slot(center: dict, service: dict, start_time: datetime, *, staff_member_id: str | None = None, room_id: str | None = None, exclude_booking_id: ObjectId | None = None, enforce_online: bool = False):
+    duration = service.get("duration") if isinstance(service.get("duration"), int) else 60
+    if duration <= 0:
+        booking_error("INVALID_DURATION", "La durata del trattamento non e valida.", 400)
+    end_time = start_time + timedelta(minutes=duration)
+    result = get_available_slots(
+        center,
+        service,
+        start_time.date(),
+        preferred_time=start_time.strftime("%H:%M"),
+        staff_member_id=staff_member_id,
+        room_id=room_id,
+        exclude_booking_id=exclude_booking_id,
+        enforce_online=enforce_online,
+    )
+    matching_slot = next(
+        (
+            slot
+            for slot in result["slots"]
+            if datetime.fromisoformat(slot["start_time"]).replace(second=0, microsecond=0) == start_time.replace(second=0, microsecond=0)
+        ),
+        None,
+    )
+    if not matching_slot:
+        alternatives = suggest_alternative_slots(center, service, start_time.date(), start_time.strftime("%H:%M"))
+        reason = result["reason"] or "SLOT_NOT_AVAILABLE"
+        messages = {
+            "CENTER_CLOSED": "Il centro e chiuso in questa data. Scegli un altro giorno.",
+            "STAFF_NOT_AVAILABLE": "L'operatrice non e disponibile in questo orario.",
+            "ROOM_NOT_AVAILABLE": "La cabina necessaria non e disponibile in questo orario.",
+            "TREATMENT_NOT_BOOKABLE": "Il trattamento non e prenotabile online.",
+            "SLOT_NOT_AVAILABLE": "Questo orario e gia occupato. Abbiamo trovato alcune alternative per te.",
+        }
+        booking_error(reason, messages.get(reason, "Slot non disponibile."), alternatives=alternatives)
+    return matching_slot, end_time
 
 
 def validate_booking_actor(booking: dict, *, role: str, user_email: str | None = None, center_id: str | None = None):
@@ -1609,14 +2041,62 @@ def update_center_onboarding(center_id: str, payload: CenterOnboardingPayload):
         day: hours.dict()
         for day, hours in payload.opening_hours.items()
     }
+    now = datetime.now(UTC)
 
     update_fields = {
         "branding": branding,
         "opening_days": opening_days,
         "opening_hours": opening_hours,
         "primary_services": primary_services,
-        "updated_at": datetime.now(UTC),
+        "updated_at": now,
     }
+    if payload.staff_members is not None:
+        update_fields["staff_members"] = [
+            {
+                "id": item.id or f"staff-{index}",
+                "name": item.name.strip(),
+                "role": (item.role or "Operatrice").strip(),
+                "avatar_url": item.avatar_url,
+                "is_active": item.is_active,
+                "working_hours": {day: hours.dict() for day, hours in item.working_hours.items()},
+                "service_ids": item.service_ids,
+                "created_at": now,
+                "updated_at": now,
+            }
+            for index, item in enumerate(payload.staff_members)
+        ]
+    if payload.rooms is not None:
+        update_fields["rooms"] = [
+            {
+                "id": item.id or f"room-{index}",
+                "name": item.name.strip(),
+                "type": (item.type or "cabina").strip(),
+                "is_active": item.is_active,
+                "compatible_treatment_ids": item.compatible_treatment_ids,
+                "compatible_treatment_names": item.compatible_treatment_names,
+                "created_at": now,
+                "updated_at": now,
+            }
+            for index, item in enumerate(payload.rooms)
+        ]
+    if payload.calendar_exceptions is not None:
+        update_fields["calendar_exceptions"] = [
+            {
+                "id": item.id or f"exception-{index}",
+                "date": item.date,
+                "type": item.type,
+                "start_time": item.start_time,
+                "end_time": item.end_time,
+                "staff_member_id": item.staff_member_id,
+                "room_id": item.room_id,
+                "reason": item.reason,
+                "created_at": now,
+                "updated_at": now,
+            }
+            for index, item in enumerate(payload.calendar_exceptions)
+        ]
+    if payload.slot_step_minutes is not None:
+        update_fields["slot_step_minutes"] = payload.slot_step_minutes
 
     provisional_document = {
         **center,
@@ -1664,6 +2144,27 @@ def update_center_profile(center_id: str, payload: CenterProfilePayload):
 
     if payload.tiktok_url is not None:
         branding["tiktok_url"] = payload.tiktok_url.strip()
+
+    if payload.enableWhatsapp is not None:
+        update_fields["enableWhatsapp"] = payload.enableWhatsapp
+    if payload.showWhatsappButtonToClients is not None:
+        update_fields["showWhatsappButtonToClients"] = payload.showWhatsappButtonToClients
+    if payload.whatsappPhoneNumber is not None:
+        normalized_whatsapp = normalize_whatsapp_number(payload.whatsappPhoneNumber)
+        if payload.enableWhatsapp and not normalized_whatsapp:
+            raise HTTPException(status_code=400, detail={"code": "INVALID_WHATSAPP_NUMBER", "message": "Numero WhatsApp obbligatorio."})
+        update_fields["whatsappPhoneNumber"] = normalized_whatsapp
+    if payload.whatsappBookingMessageTemplate is not None:
+        update_fields["whatsappBookingMessageTemplate"] = payload.whatsappBookingMessageTemplate.strip()
+    if payload.whatsappInfoMessageTemplate is not None:
+        update_fields["whatsappInfoMessageTemplate"] = payload.whatsappInfoMessageTemplate.strip()
+    if payload.whatsappAppointmentReminderTemplate is not None:
+        update_fields["whatsappAppointmentReminderTemplate"] = payload.whatsappAppointmentReminderTemplate.strip()
+
+    next_enable_whatsapp = update_fields.get("enableWhatsapp", center.get("enableWhatsapp", False))
+    next_whatsapp_number = update_fields.get("whatsappPhoneNumber", center.get("whatsappPhoneNumber", ""))
+    if next_enable_whatsapp and not next_whatsapp_number:
+        raise HTTPException(status_code=400, detail={"code": "INVALID_WHATSAPP_NUMBER", "message": "Numero WhatsApp obbligatorio."})
 
     update_fields["branding"] = branding
 
@@ -1746,12 +2247,34 @@ def get_center_booking_slots(center_id: str, service_id: str = Query(...), date:
         raise HTTPException(status_code=400, detail="Invalid date.") from exc
 
     excluded_booking_id = parse_object_id(booking_id, "booking id") if booking_id else None
-    slots = build_booking_slot_list(center, service, target_date, exclude_booking_id=excluded_booking_id)
+    availability = get_available_slots(center, service, target_date, exclude_booking_id=excluded_booking_id, enforce_online=booking_id is None)
     return {
         "center_id": center_id,
         "service_id": str(service_object_id),
         "date": target_date.isoformat(),
-        "slots": slots,
+        "slots": availability["slots"],
+        "alternatives": availability["alternatives"],
+        "reason": availability["reason"],
+    }
+
+
+@app.get("/api/centers/{center_id}/booking-slots/alternatives")
+def get_center_booking_slot_alternatives(center_id: str, service_id: str = Query(...), date: str = Query(...), time: str = Query(...), max_suggestions: int = Query(default=3, ge=1, le=8)):
+    center_object_id = parse_object_id(center_id, "center id")
+    center = db.centers.find_one({"_id": center_object_id})
+    if not center:
+        raise HTTPException(status_code=404, detail="Center not found.")
+    service_object_id, service = load_service_for_center(center_object_id, service_id)
+    try:
+        target_date = datetime.fromisoformat(date).date()
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=400, detail="Invalid date.") from exc
+    return {
+        "center_id": center_id,
+        "service_id": str(service_object_id),
+        "date": target_date.isoformat(),
+        "requested_time": time,
+        "suggestions": suggest_alternative_slots(center, service, target_date, time, max_suggestions=max_suggestions),
     }
 
 
@@ -1760,6 +2283,70 @@ def list_center_reviews(center_id: str):
     object_id = parse_object_id(center_id, "center id")
     documents = list(db.reviews.find({"center_id": object_id}).sort("created_at", -1))
     return [serialize_review(document) for document in documents]
+
+
+@app.get("/api/uploads/{storage_path:path}")
+def get_uploaded_asset(storage_path: str):
+    target = (UPLOAD_ROOT / storage_path).resolve()
+    root = UPLOAD_ROOT.resolve()
+    if not str(target).startswith(str(root)) or not target.is_file():
+        raise HTTPException(status_code=404, detail="File not found.")
+    return FileResponse(target)
+
+
+@app.post("/api/centers/{center_id}/branding/logo")
+async def upload_center_logo(request: Request, center_id: str, file: UploadFile = File(...)):
+    object_id = parse_object_id(center_id, "center id")
+    center = db.centers.find_one({"_id": object_id})
+    if not center:
+        raise HTTPException(status_code=404, detail="Center not found.")
+    if file.content_type not in ALLOWED_LOGO_CONTENT_TYPES:
+        raise HTTPException(status_code=400, detail={"code": "INVALID_LOGO_FORMAT", "message": "Formato non valido. Carica un'immagine JPG, PNG o WEBP."})
+
+    ext = safe_logo_extension(file.filename, file.content_type)
+    center_dir = UPLOAD_ROOT / "centers" / center_id / "branding"
+    center_dir.mkdir(parents=True, exist_ok=True)
+    storage_path = f"centers/{center_id}/branding/logo.{ext}"
+    target = UPLOAD_ROOT / storage_path
+    temporary = target.with_suffix(f".upload-{secrets.token_hex(4)}.{ext}")
+
+    size = 0
+    with temporary.open("wb") as output:
+        while chunk := await file.read(1024 * 1024):
+            size += len(chunk)
+            if size > MAX_LOGO_BYTES:
+                output.close()
+                temporary.unlink(missing_ok=True)
+                raise HTTPException(status_code=400, detail={"code": "LOGO_TOO_LARGE", "message": "Immagine troppo pesante. Carica un file sotto i 5 MB."})
+            output.write(chunk)
+
+    previous_path = center.get("logoStoragePath")
+    if previous_path and previous_path != storage_path:
+        previous_target = (UPLOAD_ROOT / previous_path).resolve()
+        if str(previous_target).startswith(str(UPLOAD_ROOT.resolve())):
+            previous_target.unlink(missing_ok=True)
+    for old_ext in ALLOWED_LOGO_EXTENSIONS - {ext}:
+        (center_dir / f"logo.{old_ext}").unlink(missing_ok=True)
+    shutil.move(str(temporary), str(target))
+
+    logo_url = public_upload_url(request, storage_path)
+    db.centers.update_one(
+        {"_id": object_id},
+        {
+            "$set": {
+                "branding.logo": logo_url,
+                "logoStoragePath": storage_path,
+                "updated_at": datetime.now(UTC),
+            }
+        },
+    )
+    updated_center = db.centers.find_one({"_id": object_id})
+    return {
+        "center": serialize_center(updated_center),
+        "activation": build_activation_status(updated_center),
+        "logoUrl": logo_url,
+        "logoStoragePath": storage_path,
+    }
 
 
 @app.patch("/api/centers/{center_id}/services")
@@ -1791,6 +2378,12 @@ def update_center_services(center_id: str, payload: CenterServicesCatalogPayload
                     "price": item.price,
                     "description": normalized_description,
                     "visibility": normalized_visibility,
+                    "buffer_before_minutes": item.buffer_before_minutes,
+                    "buffer_after_minutes": item.buffer_after_minutes,
+                    "is_bookable_online": item.is_bookable_online if item.is_bookable_online is not None else normalized_visibility == "active",
+                    "required_room_type": item.required_room_type,
+                    "required_room_ids": item.required_room_ids,
+                    "assigned_staff_ids": item.assigned_staff_ids,
                     "updated_at": now,
                 },
                 "$setOnInsert": {
@@ -2040,28 +2633,29 @@ def export_center_business_report(center_id: str, period: str = Query(default="m
 
     report = build_business_insights(center, period)
     lines = [
-        center.get("name", "Beauty Center"),
-        f"Business Report - {report['period']['label']}",
+        center.get("name", "Centro estetico"),
+        f"Report andamento centro - {report['period']['label']}",
         f"Periodo: {report['period']['start']} / {report['period']['end']}",
         "",
-        "Main KPIs",
-        f"Expected Revenue: {format_eur(report['kpis']['expected_revenue'])}",
-        f"Confirmed Revenue: {format_eur(report['kpis']['confirmed_revenue'])}",
-        f"No-show Losses: {format_eur(report['kpis']['no_show_losses'])}",
+        "Riepilogo incassi",
+        f"Incasso previsto: {format_eur(report['kpis']['expected_revenue'])}",
+        f"Incasso confermato: {format_eur(report['kpis']['confirmed_revenue'])}",
+        f"Mancato incasso: {format_eur(report['kpis']['no_show_losses'])}",
+        f"Ticket medio: {format_eur(report['kpis'].get('average_ticket', 0))}",
         "",
-        "Top Categories",
+        "Categorie trattamenti",
         *[f"- {item['label']}: {format_eur(item['value'])}" for item in report["breakdowns"]["categories"][:4]],
         "",
-        "Top Staff",
+        "Operatrici",
         *[f"- {item['label']}: {format_eur(item['value'])}" for item in report["breakdowns"]["staff"][:4]],
         "",
-        "Best Performing Days",
+        "Giorni della settimana",
         *[f"- {item['label']}: {format_eur(item['value'])}" for item in report["breakdowns"]["weekdays"][:4]],
         "",
-        "Strongest Time Slots",
+        "Fasce orarie",
         *[f"- {item['label']}: {format_eur(item['value'])}" for item in report["breakdowns"]["time_slots"][:4]],
         "",
-        "Smart Insights",
+        "Suggerimenti intelligenti",
         *[f"- {insight}" for insight in report["insights"]],
     ]
     filename = f"business-report-{report['period']['key']}.pdf"
@@ -2082,19 +2676,19 @@ def export_center_no_show_report(center_id: str, period: str = Query(default="mo
     report = build_business_insights(center, period)
     no_show = report["no_show_report"]
     lines = [
-        center.get("name", "Beauty Center"),
-        f"No-show Losses Report - {report['period']['label']}",
+        center.get("name", "Centro estetico"),
+        f"Report mancati appuntamenti - {report['period']['label']}",
         f"Periodo: {report['period']['start']} / {report['period']['end']}",
         "",
-        f"Total Estimated Losses: {format_eur(no_show['total_losses'])}",
+        f"Mancato incasso stimato: {format_eur(no_show['total_losses'])}",
         "",
-        "Repeated No-show Clients",
+        "Clienti con mancati appuntamenti ripetuti",
         *[f"- {item['label']}: {item['count']} no-show / {format_eur(item['value'])}" for item in no_show["repeated_clients"]],
         "",
-        "Worst Time Slots",
+        "Fasce orarie piu colpite",
         *[f"- {item['label']}: {format_eur(item['value'])}" for item in no_show["worst_time_slots"][:4]],
         "",
-        "Most Affected Services",
+        "Trattamenti piu colpiti",
         *[f"- {item['label']}: {format_eur(item['value'])}" for item in no_show["affected_services"][:4]],
     ]
     filename = f"no-show-report-{report['period']['key']}.pdf"
@@ -2552,13 +3146,14 @@ def create_booking(payload: BookingPayload):
 
     service_object_id, service = load_service_for_center(center_object_id, payload.service_id)
     start_time = parse_slot_datetime(payload.slot_id)
-    duration = service.get("duration") if isinstance(service.get("duration"), int) else 60
-    end_time = start_time + timedelta(minutes=duration)
-    day_window = build_center_day_window(center, start_time.date())
-    if not day_window or start_time < day_window[0] or end_time > day_window[1]:
-        raise HTTPException(status_code=409, detail="Selected slot is outside center availability.")
-    if has_booking_overlap(center_object_id, start_time, end_time):
-        raise HTTPException(status_code=409, detail="Selected slot is no longer available.")
+    selected_slot, end_time = validate_appointment_slot(
+        center,
+        service,
+        start_time,
+        staff_member_id=payload.staff_member_id,
+        room_id=payload.room_id,
+        enforce_online=True,
+    )
 
     now = datetime.now(UTC)
     booking_document = {
@@ -2566,7 +3161,10 @@ def create_booking(payload: BookingPayload):
         "user_id": user["_id"],
         "service_id": service_object_id,
         "service_name": service.get("name"),
-        "operator_name": center.get("name", "Centro"),
+        "operator_name": selected_slot.get("staff_member_name") or center.get("name", "Centro"),
+        "staff_member_id": selected_slot.get("staff_member_id"),
+        "room_id": selected_slot.get("room_id"),
+        "total_price": service.get("price"),
         "status": "confirmed",
         "slot_id": payload.slot_id,
         "start_time": start_time,
@@ -2618,13 +3216,12 @@ def update_booking(booking_id: str, payload: BookingUpdatePayload):
 
     service_object_id, service = load_service_for_center(center_object_id, payload.service_id)
     start_time = parse_slot_datetime(payload.slot_id)
-    duration = service.get("duration") if isinstance(service.get("duration"), int) else 60
-    end_time = start_time + timedelta(minutes=duration)
-    day_window = build_center_day_window(center, start_time.date())
-    if not day_window or start_time < day_window[0] or end_time > day_window[1]:
-        raise HTTPException(status_code=409, detail="Selected slot is outside center availability.")
-    if has_booking_overlap(center_object_id, start_time, end_time, exclude_booking_id=booking_object_id):
-        raise HTTPException(status_code=409, detail="Selected slot is no longer available.")
+    selected_slot, end_time = validate_appointment_slot(
+        center,
+        service,
+        start_time,
+        exclude_booking_id=booking_object_id,
+    )
 
     db.bookings.update_one(
         {"_id": booking_object_id},
@@ -2632,6 +3229,10 @@ def update_booking(booking_id: str, payload: BookingUpdatePayload):
             "$set": {
                 "service_id": service_object_id,
                 "service_name": service.get("name"),
+                "operator_name": selected_slot.get("staff_member_name") or center.get("name", "Centro"),
+                "staff_member_id": selected_slot.get("staff_member_id"),
+                "room_id": selected_slot.get("room_id"),
+                "total_price": service.get("price"),
                 "slot_id": payload.slot_id,
                 "start_time": start_time,
                 "end_time": end_time,

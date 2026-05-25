@@ -11,12 +11,20 @@ import {
 } from "react-native";
 
 import {
+  ApiError,
   createBooking,
   getCenterBookingSlots,
   getCenterMemberships,
   getCenterServices,
 } from "../lib/api";
 import { buildUpcomingDateOptions } from "../lib/date";
+import {
+  buildBookingWhatsappValues,
+  buildCenterWhatsappMessage,
+  buildWhatsappUrl,
+  isWhatsappConfigured,
+  openWhatsappUrl,
+} from "../lib/whatsapp";
 import type { BookingSlot, Center, Service } from "../types/api";
 import { MiniDateCalendar } from "../components/MiniDateCalendar";
 import { PrimaryButton } from "../components/PrimaryButton";
@@ -54,6 +62,8 @@ export function ClientBookingScreen({
   );
   const [slotId, setSlotId] = useState<string | null>(null);
   const [slotModalOpen, setSlotModalOpen] = useState(false);
+  const [alternativesModalOpen, setAlternativesModalOpen] = useState(false);
+  const [alternativeSlots, setAlternativeSlots] = useState<BookingSlot[]>([]);
   const [bookingLoading, setBookingLoading] = useState(false);
   const [bookingError, setBookingError] = useState<string | null>(null);
 
@@ -86,7 +96,9 @@ export function ClientBookingScreen({
     getCenterServices(activeCenterId)
       .then((response) => {
         if (!mounted) return;
-        const activeServices = response.filter((service) => service.visibility === "active");
+        const activeServices = response.filter(
+          (service) => service.visibility === "active" && service.is_bookable_online !== false,
+        );
         setServices(activeServices);
         const defaultServiceId =
           activeServices.some((service) => service.id === selectedServiceId)
@@ -160,6 +172,24 @@ export function ClientBookingScreen({
     () => upcomingDates.find((day) => day.key === selectedDateKey) ?? null,
     [selectedDateKey, upcomingDates],
   );
+  const canUseWhatsapp = isWhatsappConfigured(selectedCenter, true);
+
+  const openBookingWhatsapp = (slot?: BookingSlot | null) => {
+    if (!selectedCenter || !selectedService || !canUseWhatsapp) return;
+    const url = buildWhatsappUrl(
+      selectedCenter.whatsappPhoneNumber,
+      buildCenterWhatsappMessage(
+        selectedCenter,
+        "booking",
+        buildBookingWhatsappValues({
+          center: selectedCenter,
+          service: selectedService,
+          slot: slot ?? selectedSlot,
+        }),
+      ),
+    );
+    if (url) void openWhatsappUrl(url);
+  };
 
   const resetSlotSelection = () => {
     setSlotId(null);
@@ -183,9 +213,15 @@ export function ClientBookingScreen({
         user_email: userEmail,
         service_id: serviceId,
         slot_id: slotId,
+        staff_member_id: selectedSlot?.staff_member_id ?? null,
+        room_id: selectedSlot?.room_id ?? null,
       });
       onBookingConfirmed();
     } catch (error) {
+      if (error instanceof ApiError && error.code === "SLOT_NOT_AVAILABLE") {
+        setAlternativeSlots(error.alternatives ?? []);
+        setAlternativesModalOpen(true);
+      }
       setBookingError(
         error instanceof Error
           ? error.message
@@ -309,6 +345,13 @@ export function ClientBookingScreen({
                 }}
                 variant="secondary"
               />
+              {canUseWhatsapp ? (
+                <PrimaryButton
+                  label="Scrivi su WhatsApp"
+                  onPress={() => openBookingWhatsapp(null)}
+                  variant="secondary"
+                />
+              ) : null}
             </View>
           </SectionCard>
         ) : null}
@@ -335,6 +378,11 @@ export function ClientBookingScreen({
           <SectionCard eyebrow="Giorno e orario" title={selectedDay?.label ?? "Selezionato"}>
             <Text style={styles.selectedEntityTitle}>{selectedSlot.time_label}</Text>
             <Text style={styles.notice}>{selectedSlot.date_label}</Text>
+            {selectedSlot.staff_member_name || selectedSlot.room_name ? (
+              <Text style={styles.notice}>
+                {[selectedSlot.staff_member_name, selectedSlot.room_name].filter(Boolean).join(" - ")}
+              </Text>
+            ) : null}
             <View style={styles.changeWrap}>
               <PrimaryButton
                 label="Cambia giorno e orario"
@@ -344,6 +392,13 @@ export function ClientBookingScreen({
                 }}
                 variant="secondary"
               />
+              {canUseWhatsapp ? (
+                <PrimaryButton
+                  label="Scrivi su WhatsApp"
+                  onPress={() => openBookingWhatsapp()}
+                  variant="secondary"
+                />
+              ) : null}
             </View>
           </SectionCard>
         ) : null}
@@ -369,6 +424,13 @@ export function ClientBookingScreen({
                 onPress={handleConfirmBooking}
                 disabled={bookingLoading}
               />
+              {canUseWhatsapp ? (
+                <PrimaryButton
+                  label="Scrivi su WhatsApp"
+                  onPress={() => openBookingWhatsapp()}
+                  variant="secondary"
+                />
+              ) : null}
             </View>
           </SectionCard>
         ) : null}
@@ -425,6 +487,70 @@ export function ClientBookingScreen({
                 </Pressable>
               ))}
             </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        animationType="slide"
+        onRequestClose={() => setAlternativesModalOpen(false)}
+        transparent
+        visible={alternativesModalOpen}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeader}>
+              <View>
+                <Text style={styles.modalEyebrow}>Orario non disponibile</Text>
+                <Text style={styles.modalTitle}>Alternative trovate</Text>
+              </View>
+              <Pressable onPress={() => setAlternativesModalOpen(false)}>
+                <Text style={styles.modalClose}>Chiudi</Text>
+              </Pressable>
+            </View>
+            {alternativeSlots.length > 0 ? (
+              <>
+                <Text style={styles.notice}>
+                  Questo orario e gia occupato. Abbiamo trovato alcune alternative per te.
+                </Text>
+                <View style={styles.alternativeList}>
+                  {alternativeSlots.slice(0, 3).map((slot) => (
+                    <PrimaryButton
+                      key={`${slot.start_time}-${slot.staff_member_id ?? ""}-${slot.room_id ?? ""}`}
+                      label={`Prenota alle ${slot.time_label}`}
+                      onPress={() => {
+                        setSlots((current) =>
+                          current.some((item) => item.id === slot.id) ? current : [...current, slot],
+                        );
+                        setSlotId(slot.id);
+                        setSelectedDateKey(slot.start_time.slice(0, 10));
+                        setAlternativesModalOpen(false);
+                        setBookingError(null);
+                      }}
+                    />
+                  ))}
+                </View>
+                <PrimaryButton
+                  label="Vedi altri orari"
+                  onPress={() => {
+                    setAlternativesModalOpen(false);
+                    setSlotModalOpen(true);
+                  }}
+                  variant="secondary"
+                />
+                {canUseWhatsapp ? (
+                  <PrimaryButton
+                    label="Scrivi su WhatsApp"
+                    onPress={() => openBookingWhatsapp(alternativeSlots[0])}
+                    variant="secondary"
+                  />
+                ) : null}
+              </>
+            ) : (
+              <Text style={styles.notice}>
+                Nessun orario disponibile per questo giorno. Puoi scegliere un'altra data.
+              </Text>
+            )}
           </View>
         </View>
       </Modal>
@@ -641,6 +767,11 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
     gap: spacing.sm,
+    marginTop: spacing.md,
+  },
+  alternativeList: {
+    gap: spacing.sm,
+    marginBottom: spacing.md,
     marginTop: spacing.md,
   },
   slotChip: {

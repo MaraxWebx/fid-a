@@ -11,22 +11,31 @@ import {
 
 import { getCenterBookingDetail } from "../lib/api";
 import {
+  buildBookingWhatsappValues,
+  buildCenterWhatsappMessage,
+  buildWhatsappUrl,
+  isWhatsappConfigured,
+  openWhatsappUrl,
+} from "../lib/whatsapp";
+import {
   AppointmentStatus,
   getAppointmentStatusMeta,
   normalizeAppointmentState,
 } from "../lib/appointmentStatus";
 import { colors } from "../theme/colors";
 import { spacing } from "../theme/spacing";
-import type { BookingDetail } from "../types/api";
+import type { BookingDetail, Center } from "../types/api";
 
 type CenterBookingDetailModalProps = {
   bookingId: string | null;
+  center: Center;
   centerId: string;
   onClose: () => void;
 };
 
 export function CenterBookingDetailModal({
   bookingId,
+  center,
   centerId,
   onClose,
 }: CenterBookingDetailModalProps) {
@@ -64,6 +73,20 @@ export function CenterBookingDetailModal({
   const review = detail?.review ?? null;
   const bookingStatus = normalizeAppointmentState(booking?.status, booking?.is_delayed);
   const bookingStatusMeta = getAppointmentStatusMeta(bookingStatus);
+  const canWriteWhatsapp = Boolean(booking?.client_phone) && isWhatsappConfigured(center);
+
+  const openClientWhatsapp = () => {
+    if (!booking?.client_phone || !canWriteWhatsapp) return;
+    const url = buildWhatsappUrl(
+      booking.client_phone,
+      buildCenterWhatsappMessage(
+        center,
+        "reminder",
+        buildBookingWhatsappValues({ booking, center }),
+      ),
+    );
+    if (url) void openWhatsappUrl(url);
+  };
 
   return (
     <Modal
@@ -120,6 +143,11 @@ export function CenterBookingDetailModal({
                   label="Telefono"
                   value={booking.client_phone ?? "Telefono non disponibile"}
                 />
+                {canWriteWhatsapp ? (
+                  <Pressable onPress={openClientWhatsapp} style={styles.whatsappButton}>
+                    <Text style={styles.whatsappButtonText}>Scrivi su WhatsApp</Text>
+                  </Pressable>
+                ) : null}
               </View>
 
               <View style={styles.section}>
@@ -277,5 +305,18 @@ const styles = StyleSheet.create({
   error: {
     color: colors.danger,
     fontSize: 14,
+  },
+  whatsappButton: {
+    alignItems: "center",
+    backgroundColor: "#25D366",
+    borderRadius: 14,
+    justifyContent: "center",
+    marginTop: spacing.sm,
+    minHeight: 44,
+  },
+  whatsappButtonText: {
+    color: colors.surface,
+    fontSize: 14,
+    fontWeight: "800",
   },
 });

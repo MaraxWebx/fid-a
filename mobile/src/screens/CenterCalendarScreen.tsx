@@ -33,6 +33,13 @@ import {
   updateCenterAvailability,
 } from "../lib/api";
 import { toLocalDateKey } from "../lib/date";
+import {
+  buildBookingWhatsappValues,
+  buildCenterWhatsappMessage,
+  buildWhatsappUrl,
+  isWhatsappConfigured,
+  openWhatsappUrl,
+} from "../lib/whatsapp";
 import { colors } from "../theme/colors";
 import { radius, shadows, spacing } from "../theme/spacing";
 import { textStyles } from "../theme/typography";
@@ -214,9 +221,10 @@ function inferRoomId(booking: Booking) {
 function getResourceBookingMatch(booking: Booking, resourceId: string) {
   if (resourceId === "global") return true;
   if (resourceId.startsWith("operator:")) {
-    return booking.operator_name === resourceId.replace("operator:", "");
+    const operatorId = resourceId.replace("operator:", "");
+    return booking.staff_member_id === operatorId || booking.operator_name === operatorId;
   }
-  return inferRoomId(booking) === resourceId;
+  return booking.room_id === resourceId || inferRoomId(booking) === resourceId;
 }
 
 function getDailyBookings(bookings: Booking[], dateKey: string, resourceId = "global") {
@@ -312,7 +320,7 @@ function buildMonthCalendarDays(center: Center, visibleMonth: Date, bookings: Bo
   });
 }
 
-function buildResources(bookings: Booking[]): AgendaResource[] {
+function buildResources(bookings: Booking[], center?: Center): AgendaResource[] {
   const operators = Array.from(new Set(bookings.map((booking) => booking.operator_name).filter(Boolean))).map(
     (name) => ({
       id: `operator:${name}`,
@@ -321,11 +329,23 @@ function buildResources(bookings: Booking[]): AgendaResource[] {
       type: "operator" as const,
     }),
   );
+  const configuredOperators = (center?.staff_members ?? []).map((member) => ({
+    id: `operator:${member.id}`,
+    name: member.name,
+    subtitle: member.role ?? "Operatrice",
+    type: "operator" as const,
+  }));
+  const configuredRooms = (center?.rooms ?? []).map((room) => ({
+    id: room.id,
+    name: room.name,
+    subtitle: room.type ?? "Cabina",
+    type: "room" as const,
+  }));
 
   return [
     { id: "global", name: "Tutto il centro", subtitle: "Agenda completa", type: "global" },
-    ...operators,
-    ...roomCatalog.map((room) => ({ id: room.id, name: room.name, subtitle: room.subtitle, type: "room" as const })),
+    ...(configuredOperators.length > 0 ? configuredOperators : operators),
+    ...(configuredRooms.length > 0 ? configuredRooms : roomCatalog.map((room) => ({ id: room.id, name: room.name, subtitle: room.subtitle, type: "room" as const }))),
   ];
 }
 
@@ -407,12 +427,22 @@ function buildTimelineItems(center: Center, dateKey: string, bookings: Booking[]
   return items.length > 0 ? items : [{ end: hours.end, id: "empty-day", kind: "free", minutes: openMinutesFromHours(hours.start, hours.end), start: hours.start }];
 }
 
+function getNextAvailabilityLabel(center: Center, dateKey: string, bookings: Booking[], resourceId: string) {
+  const [year, month, day] = dateKey.split("-").map(Number);
+  const hours = getDayHours(center, new Date(year, month - 1, day));
+  if (!hours.enabled) return "giorno chiuso";
+
+  const gaps = calculateGaps(hours.start, hours.end, getDailyBookings(bookings, dateKey, resourceId).filter(isActiveBooking));
+  const nextGap = gaps.find((gap) => gap.duration >= 30);
+  return nextGap ? `${nextGap.start} (${nextGap.duration} min)` : "nessuno slot libero";
+}
+
 function openMinutesFromHours(start: string, end: string) {
   return Math.max(0, timeToMinutes(end) - timeToMinutes(start));
 }
 
 export function CenterCalendarScreen({ center, onCenterUpdated }: CenterCalendarScreenProps) {
-  const [viewMode, setViewMode] = useState<AgendaViewMode>("day");
+  const [activeAgendaView, setActiveAgendaView] = useState<AgendaViewMode>("day");
   const [visibleMonth, setVisibleMonth] = useState(() => new Date());
   const [selectedDateKey, setSelectedDateKey] = useState(() => formatDateKey(new Date()));
   const [selectedResourceId, setSelectedResourceId] = useState("global");
@@ -436,7 +466,7 @@ export function CenterCalendarScreen({ center, onCenterUpdated }: CenterCalendar
   const [statusSavingId, setStatusSavingId] = useState<string | null>(null);
   const [bookingDetailId, setBookingDetailId] = useState<string | null>(null);
 
-  const resources = useMemo(() => buildResources(agendaBookings), [agendaBookings]);
+  const resources = useMemo(() => buildResources(agendaBookings, center), [agendaBookings, center]);
   const selectedResource = resources.find((resource) => resource.id === selectedResourceId) ?? resources[0];
 
   const calendarDays = useMemo(
@@ -552,7 +582,7 @@ export function CenterCalendarScreen({ center, onCenterUpdated }: CenterCalendar
   const handleSelectDay = (day: CalendarDay, nextView: AgendaViewMode = "day") => {
     setSelectedDateKey(day.dateKey);
     setVisibleMonth(new Date(day.dateKey));
-    setViewMode(nextView);
+    setActiveAgendaView(nextView);
     setPanelError(null);
   };
 
@@ -705,38 +735,44 @@ export function CenterCalendarScreen({ center, onCenterUpdated }: CenterCalendar
           ].map(([key, label, icon]) => (
             <Pressable
               key={key}
-              onPress={() => setViewMode(key as AgendaViewMode)}
-              style={[styles.viewSwitcherItem, viewMode === key ? styles.viewSwitcherItemActive : null]}
+              onPress={() => setActiveAgendaView(key as AgendaViewMode)}
+              style={[styles.viewSwitcherItem, activeAgendaView === key ? styles.viewSwitcherItemActive : null]}
             >
-              <Ionicons color={viewMode === key ? colors.brandInk : colors.textMuted} name={icon} size={16} />
-              <Text style={[styles.viewSwitcherText, viewMode === key ? styles.viewSwitcherTextActive : null]}>{label}</Text>
+              <Ionicons color={activeAgendaView === key ? colors.brandInk : colors.textMuted} name={icon} size={16} />
+              <Text style={[styles.viewSwitcherText, activeAgendaView === key ? styles.viewSwitcherTextActive : null]}>{label}</Text>
             </Pressable>
           ))}
         </View>
 
-        <AgendaResourcesPanel
-          resources={resources}
-          selectedResourceId={selectedResourceId}
-          onSelect={(resource) => setSelectedResourceId(resource.id)}
-          bookings={agendaBookings}
-          dateKey={selectedDateKey}
-        />
+        {activeAgendaView === "day" || activeAgendaView === "month" || activeAgendaView === "list" ? (
+          <AgendaResourcesPanel
+            resources={resources}
+            selectedResourceId={selectedResourceId}
+            onSelect={(resource) => setSelectedResourceId(resource.id)}
+            bookings={agendaBookings}
+            dateKey={selectedDateKey}
+          />
+        ) : null}
 
         {agendaLoading ? <AgendaSkeleton /> : null}
         {agendaError ? <Text style={styles.error}>{agendaError}</Text> : null}
 
-        {viewMode === "month" ? (
+        {activeAgendaView === "month" ? (
           <MonthView
             calendarDays={calendarDays}
+            bookings={agendaBookings}
+            resourceId={selectedResourceId}
             selectedDateKey={selectedDateKey}
             visibleMonth={visibleMonth}
             onMonthChange={setVisibleMonth}
-            onSelectDay={(day) => handleSelectDay(day)}
+            onOpenBooking={setBookingDetailId}
+            onSelectDay={(day) => handleSelectDay(day, "month")}
           />
         ) : null}
 
-        {viewMode === "day" ? (
+        {activeAgendaView === "day" ? (
           <DayTimelineView
+            center={center}
             dateLabel={formatLongDate(selectedDateKey)}
             items={timelineItems}
             occupancy={todayMetrics.occupancy}
@@ -749,9 +785,10 @@ export function CenterCalendarScreen({ center, onCenterUpdated }: CenterCalendar
           />
         ) : null}
 
-        {viewMode === "list" ? (
+        {activeAgendaView === "list" ? (
           <ListView
             bookings={listBookings}
+            center={center}
             query={searchQuery}
             savingId={statusSavingId}
             onChangeQuery={setSearchQuery}
@@ -761,28 +798,29 @@ export function CenterCalendarScreen({ center, onCenterUpdated }: CenterCalendar
           />
         ) : null}
 
-        {viewMode === "staff" ? (
-          <ResourceBoard
+        {activeAgendaView === "staff" ? (
+          <StaffAgendaView
             bookings={agendaBookings}
             dateKey={selectedDateKey}
             resources={resources.filter((resource) => resource.type === "operator")}
-            title="Vista staff"
+            onOpenBooking={setBookingDetailId}
             onSelect={(resource) => {
               setSelectedResourceId(resource.id);
-              setViewMode("day");
+              setActiveAgendaView("day");
             }}
           />
         ) : null}
 
-        {viewMode === "rooms" ? (
-          <ResourceBoard
+        {activeAgendaView === "rooms" ? (
+          <RoomsAgendaView
             bookings={agendaBookings}
+            center={center}
             dateKey={selectedDateKey}
             resources={resources.filter((resource) => resource.type === "room")}
-            title="Cabine e risorse"
+            onOpenBooking={setBookingDetailId}
             onSelect={(resource) => {
               setSelectedResourceId(resource.id);
-              setViewMode("day");
+              setActiveAgendaView("day");
             }}
           />
         ) : null}
@@ -833,7 +871,7 @@ export function CenterCalendarScreen({ center, onCenterUpdated }: CenterCalendar
         onSelectSlot={setSelectedSlotId}
       />
 
-      <CenterBookingDetailModal bookingId={bookingDetailId} centerId={center.id} onClose={() => setBookingDetailId(null)} />
+      <CenterBookingDetailModal bookingId={bookingDetailId} center={center} centerId={center.id} onClose={() => setBookingDetailId(null)} />
     </View>
   );
 }
@@ -941,18 +979,29 @@ function AgendaResourcesPanel({
 }
 
 function MonthView({
+  bookings,
   calendarDays,
   onMonthChange,
+  onOpenBooking,
   onSelectDay,
+  resourceId,
   selectedDateKey,
   visibleMonth,
 }: {
+  bookings: Booking[];
   calendarDays: CalendarDay[];
   onMonthChange: (date: Date) => void;
+  onOpenBooking: (bookingId: string) => void;
   onSelectDay: (day: CalendarDay) => void;
+  resourceId: string;
   selectedDateKey: string;
   visibleMonth: Date;
 }) {
+  const selectedDayBookings = getDailyBookings(bookings, selectedDateKey, resourceId).filter(isActiveBooking);
+  const currentMonthBookings = calendarDays
+    .filter((day) => day.isCurrentMonth)
+    .reduce((total, day) => total + day.bookingsCount, 0);
+
   return (
     <View style={styles.surface}>
       <View style={styles.monthHeader}>
@@ -979,6 +1028,27 @@ function MonthView({
           <SmartDayCell day={day} key={day.dateKey} onPress={() => onSelectDay(day)} selected={selectedDateKey === day.dateKey} />
         ))}
       </View>
+
+      <View style={styles.monthSummary}>
+        <View style={styles.monthSummaryHeader}>
+          <View>
+            <Text style={styles.sectionEyebrow}>Giorno selezionato</Text>
+            <Text style={styles.monthSummaryTitle}>{formatLongDate(selectedDateKey)}</Text>
+          </View>
+          <Text style={styles.monthSummaryCount}>{selectedDayBookings.length} app.</Text>
+        </View>
+        {currentMonthBookings === 0 ? (
+          <EmptyState title="Nessun appuntamento in questo mese" text="I giorni del calendario si illumineranno appena arrivano prenotazioni." />
+        ) : selectedDayBookings.length === 0 ? (
+          <EmptyState title="Nessun appuntamento per questo giorno" text="Seleziona un giorno con pallino o crea un nuovo appuntamento." />
+        ) : (
+          <View style={styles.monthBookingList}>
+            {selectedDayBookings.map((booking) => (
+              <CompactBookingCard booking={booking} key={booking.id} onPress={() => onOpenBooking(booking.id)} />
+            ))}
+          </View>
+        )}
+      </View>
     </View>
   );
 }
@@ -1002,7 +1072,10 @@ function SmartDayCell({ day, onPress, selected }: { day: CalendarDay; onPress: (
         <Text style={[styles.dayNumber, selected ? styles.dayNumberSelected : null]}>{day.dateNumber}</Text>
         {warning ? <Ionicons color="#BD7A24" name="warning-outline" size={13} /> : null}
       </View>
-      <Text style={styles.dayCellMeta}>{isClosed ? "Chiuso" : `${day.bookingsCount} app.`}</Text>
+      <View style={styles.dayCellMetaRow}>
+        <Text style={styles.dayCellMeta}>{isClosed ? "Chiuso" : `${day.bookingsCount} app.`}</Text>
+        {day.bookingsCount > 0 ? <View style={styles.dayBookingDot} /> : null}
+      </View>
       <View style={styles.dayProgressTrack}>
         <View style={[styles.dayProgressFill, { backgroundColor: toneColor, width: `${isClosed ? 0 : day.occupancy}%` }]} />
       </View>
@@ -1012,6 +1085,7 @@ function SmartDayCell({ day, onPress, selected }: { day: CalendarDay; onPress: (
 }
 
 function DayTimelineView({
+  center,
   dateLabel,
   items,
   occupancy,
@@ -1022,6 +1096,7 @@ function DayTimelineView({
   resourceName,
   savingId,
 }: {
+  center: Center;
   dateLabel: string;
   items: TimelineItem[];
   occupancy: number;
@@ -1032,6 +1107,8 @@ function DayTimelineView({
   resourceName: string;
   savingId: string | null;
 }) {
+  const hasAppointments = items.some((item) => item.kind === "booking");
+
   return (
     <View style={styles.surface}>
       <View style={styles.sectionHeader}>
@@ -1044,6 +1121,8 @@ function DayTimelineView({
         </View>
       </View>
 
+      {!hasAppointments ? <EmptyState title="Nessun appuntamento oggi" text="Gli slot liberi restano disponibili per nuove prenotazioni." /> : null}
+
       <View style={styles.timeline}>
         <View style={styles.timelineRule} />
         {items.map((item) => {
@@ -1051,6 +1130,7 @@ function DayTimelineView({
             return (
               <AppointmentCard
                 booking={item.booking}
+                center={center}
                 end={item.end}
                 key={item.id}
                 onChangeStatus={(state) => onChangeStatus(item.booking, state)}
@@ -1073,6 +1153,7 @@ function DayTimelineView({
 
 function AppointmentCard({
   booking,
+  center,
   end,
   onChangeStatus,
   onEdit,
@@ -1081,6 +1162,7 @@ function AppointmentCard({
   start,
 }: {
   booking: Booking;
+  center: Center;
   end: string;
   onChangeStatus: (state: AppointmentState) => void;
   onEdit: () => void;
@@ -1094,6 +1176,15 @@ function AppointmentCard({
   const primaryAction = getPrimaryAppointmentAction(status);
   const secondaryActions = getSecondaryAppointmentActions(status);
   const [moreOpen, setMoreOpen] = useState(false);
+  const canWriteWhatsapp = Boolean(booking.client_phone) && isWhatsappConfigured(center);
+  const openClientWhatsapp = () => {
+    if (!booking.client_phone) return;
+    const url = buildWhatsappUrl(
+      booking.client_phone,
+      buildCenterWhatsappMessage(center, "reminder", buildBookingWhatsappValues({ booking, center })),
+    );
+    if (url) void openWhatsappUrl(url);
+  };
 
   return (
     <View style={styles.timelineRow}>
@@ -1136,6 +1227,11 @@ function AppointmentCard({
           <Pressable disabled={saving || secondaryActions.length === 0} onPress={() => setMoreOpen((current) => !current)} style={styles.secondaryAction}>
             <Ionicons color={colors.brandInk} name="ellipsis-horizontal" size={17} />
           </Pressable>
+          {canWriteWhatsapp ? (
+            <Pressable disabled={saving} onPress={openClientWhatsapp} style={styles.secondaryAction}>
+              <Ionicons color="#25D366" name="logo-whatsapp" size={17} />
+            </Pressable>
+          ) : null}
         </View>
 
         {moreOpen ? (
@@ -1187,6 +1283,25 @@ function FreeSlotCard({ item, onPress }: { item: Extract<TimelineItem, { kind: "
   );
 }
 
+function CompactBookingCard({ booking, onPress }: { booking: Booking; onPress: () => void }) {
+  const roomName = roomCatalog.find((room) => room.id === inferRoomId(booking))?.name ?? "Cabina";
+
+  return (
+    <Pressable onPress={onPress} style={styles.compactBookingCard}>
+      <View style={styles.compactBookingTime}>
+        <Text style={styles.compactBookingHour}>{booking.time_label ?? "--:--"}</Text>
+        <Text style={styles.compactBookingDuration}>{getBookingDurationMinutes(booking)} min</Text>
+      </View>
+      <View style={styles.compactBookingBody}>
+        <Text style={styles.compactBookingClient}>{booking.client_name ?? "Cliente"}</Text>
+        <Text style={styles.compactBookingService}>{booking.service_name}</Text>
+        <Text style={styles.compactBookingMeta}>{booking.operator_name || "Staff"} - {roomName}</Text>
+      </View>
+      <Ionicons color={colors.textMuted} name="chevron-forward" size={16} />
+    </Pressable>
+  );
+}
+
 function BreakBlock({ item }: { item: Extract<TimelineItem, { kind: "break" }> }) {
   return (
     <View style={styles.timelineRow}>
@@ -1204,6 +1319,7 @@ function BreakBlock({ item }: { item: Extract<TimelineItem, { kind: "break" }> }
 
 function ListView({
   bookings,
+  center,
   onChangeQuery,
   onChangeStatus,
   onEditBooking,
@@ -1212,6 +1328,7 @@ function ListView({
   savingId,
 }: {
   bookings: Booking[];
+  center: Center;
   onChangeQuery: (value: string) => void;
   onChangeStatus: (booking: Booking, state: AppointmentState) => void;
   onEditBooking: (booking: Booking) => void;
@@ -1231,11 +1348,12 @@ function ListView({
           value={query}
         />
       </View>
-      {bookings.length === 0 ? <EmptyState title="Nessun appuntamento trovato" text="Prova con un altro filtro o crea un nuovo appuntamento." /> : null}
+      {bookings.length === 0 ? <EmptyState title="Nessun appuntamento in agenda" text="Prova con un altro filtro o crea un nuovo appuntamento." /> : null}
       <View style={styles.listRows}>
         {bookings.map((booking) => (
           <ListAppointmentRow
             booking={booking}
+            center={center}
             key={booking.id}
             onChangeStatus={(state) => onChangeStatus(booking, state)}
             onEdit={() => onEditBooking(booking)}
@@ -1250,12 +1368,14 @@ function ListView({
 
 function ListAppointmentRow({
   booking,
+  center,
   onChangeStatus,
   onEdit,
   onOpen,
   saving,
 }: {
   booking: Booking;
+  center: Center;
   onChangeStatus: (state: AppointmentState) => void;
   onEdit: () => void;
   onOpen: () => void;
@@ -1264,6 +1384,8 @@ function ListAppointmentRow({
   const status = normalizeAppointmentState(booking.status, booking.is_delayed);
   const statusTone = getAppointmentStatusMeta(status);
   const primaryAction = getPrimaryAppointmentAction(status);
+  const roomName = roomCatalog.find((room) => room.id === inferRoomId(booking))?.name ?? "Cabina";
+  const canWriteWhatsapp = Boolean(booking.client_phone) && isWhatsappConfigured(center);
 
   return (
     <Pressable onPress={onOpen} style={styles.listRow}>
@@ -1274,7 +1396,7 @@ function ListAppointmentRow({
       <View style={styles.listMain}>
         <Text style={styles.listClient}>{booking.client_name ?? "Cliente"}</Text>
         <Text style={styles.listService}>{booking.service_name}</Text>
-        <Text style={styles.listMeta}>{booking.operator_name || "Staff"} · {getBookingDurationMinutes(booking)} min</Text>
+        <Text style={styles.listMeta}>{booking.operator_name || "Staff"} - {roomName} - {getBookingDurationMinutes(booking)} min</Text>
       </View>
       <View style={styles.listActions}>
         <View style={[styles.statusDot, { backgroundColor: statusTone.text }]} />
@@ -1284,38 +1406,59 @@ function ListAppointmentRow({
         <Pressable onPress={onEdit} style={styles.rowIconButton}>
           <Ionicons color={colors.brandInk} name="create-outline" size={17} />
         </Pressable>
+        {canWriteWhatsapp ? (
+          <Pressable
+            onPress={() => {
+              if (!booking.client_phone) return;
+              const url = buildWhatsappUrl(
+                booking.client_phone,
+                buildCenterWhatsappMessage(center, "reminder", buildBookingWhatsappValues({ booking, center })),
+              );
+              if (url) void openWhatsappUrl(url);
+            }}
+            style={styles.rowIconButton}
+          >
+            <Ionicons color="#25D366" name="logo-whatsapp" size={17} />
+          </Pressable>
+        ) : null}
       </View>
     </Pressable>
   );
 }
 
-function ResourceBoard({
+function StaffAgendaView({
   bookings,
   dateKey,
+  onOpenBooking,
   onSelect,
   resources,
-  title,
 }: {
   bookings: Booking[];
   dateKey: string;
+  onOpenBooking: (bookingId: string) => void;
   onSelect: (resource: AgendaResource) => void;
   resources: AgendaResource[];
-  title: string;
 }) {
+  const totalStaffAppointments = resources.reduce(
+    (total, resource) => total + getDailyBookings(bookings, dateKey, resource.id).filter(isActiveBooking).length,
+    0,
+  );
+
   return (
     <View style={styles.surface}>
       <View style={styles.sectionHeader}>
         <View>
           <Text style={styles.sectionEyebrow}>Coordinamento</Text>
-          <Text style={styles.sectionTitle}>{title}</Text>
+          <Text style={styles.sectionTitle}>Vista staff</Text>
         </View>
       </View>
-      {resources.length === 0 ? <EmptyState title="Nessuna risorsa ancora attiva" text="Comparira qui appena avrai prenotazioni assegnate." /> : null}
+      {resources.length === 0 || totalStaffAppointments === 0 ? (
+        <EmptyState title="Nessun appuntamento assegnato allo staff" text="Quando una prenotazione avra un operatore, comparira qui." />
+      ) : null}
       <View style={styles.resourceBoard}>
         {resources.map((resource) => {
           const resourceBookings = getDailyBookings(bookings, dateKey, resource.id).filter(isActiveBooking);
-          const bookedMinutes = resourceBookings.reduce((total, booking) => total + getBookingDurationMinutes(booking), 0);
-          const occupancy = Math.min(100, Math.round((bookedMinutes / 600) * 100));
+          const nextBookings = resourceBookings.slice(0, 3);
           return (
             <Pressable key={resource.id} onPress={() => onSelect(resource)} style={styles.resourceCard}>
               <View style={styles.resourceCardTop}>
@@ -1323,12 +1466,86 @@ function ResourceBoard({
                   <Text style={styles.resourceCardName}>{resource.name}</Text>
                   <Text style={styles.resourceCardMeta}>{resource.subtitle}</Text>
                 </View>
-                <Text style={styles.resourcePercent}>{occupancy}%</Text>
+                <Text style={styles.resourcePercent}>{resourceBookings.length}</Text>
               </View>
-              <View style={styles.resourceProgress}>
-                <View style={[styles.resourceProgressFill, { backgroundColor: getToneColor(getDayTone(true, occupancy)), width: `${occupancy}%` }]} />
+              <Text style={styles.resourceCardBottom}>{resourceBookings.length === 1 ? "1 appuntamento oggi" : `${resourceBookings.length} appuntamenti oggi`}</Text>
+              {nextBookings.length === 0 ? (
+                <Text style={styles.resourceEmptyLine}>Nessun appuntamento</Text>
+              ) : (
+                <View style={styles.resourceMiniList}>
+                  {nextBookings.map((booking) => (
+                    <Pressable key={booking.id} onPress={() => onOpenBooking(booking.id)} style={styles.resourceMiniRow}>
+                      <Text style={styles.resourceMiniTime}>{booking.time_label ?? "--:--"}</Text>
+                      <Text numberOfLines={1} style={styles.resourceMiniText}>{booking.client_name ?? "Cliente"} - {booking.service_name}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+              )}
+            </Pressable>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
+function RoomsAgendaView({
+  bookings,
+  center,
+  dateKey,
+  onOpenBooking,
+  onSelect,
+  resources,
+}: {
+  bookings: Booking[];
+  center: Center;
+  dateKey: string;
+  onOpenBooking: (bookingId: string) => void;
+  onSelect: (resource: AgendaResource) => void;
+  resources: AgendaResource[];
+}) {
+  const occupiedRooms = resources.filter((resource) => getDailyBookings(bookings, dateKey, resource.id).filter(isActiveBooking).length > 0);
+
+  return (
+    <View style={styles.surface}>
+      <View style={styles.sectionHeader}>
+        <View>
+          <Text style={styles.sectionEyebrow}>Cabine e risorse</Text>
+          <Text style={styles.sectionTitle}>Vista cabine</Text>
+        </View>
+      </View>
+      {occupiedRooms.length === 0 ? <EmptyState title="Nessuna cabina occupata" text="Le cabine risultano libere nella giornata selezionata." /> : null}
+      <View style={styles.resourceBoard}>
+        {resources.map((resource) => {
+          const roomBookings = getDailyBookings(bookings, dateKey, resource.id).filter(isActiveBooking);
+          const occupied = roomBookings.length > 0;
+          const nextAvailability = getNextAvailabilityLabel(center, dateKey, bookings, resource.id);
+          return (
+            <Pressable key={resource.id} onPress={() => onSelect(resource)} style={styles.resourceCard}>
+              <View style={styles.resourceCardTop}>
+                <View>
+                  <Text style={styles.resourceCardName}>{resource.name}</Text>
+                  <Text style={styles.resourceCardMeta}>{resource.subtitle}</Text>
+                </View>
+                <View style={[styles.roomStatusPill, occupied ? styles.roomStatusPillBusy : styles.roomStatusPillFree]}>
+                  <Text style={[styles.roomStatusPillText, occupied ? styles.roomStatusPillTextBusy : styles.roomStatusPillTextFree]}>
+                    {occupied ? "Occupata" : "Libera"}
+                  </Text>
+                </View>
               </View>
-              <Text style={styles.resourceCardBottom}>{resourceBookings.length} appuntamenti oggi</Text>
+              <Text style={styles.resourceCardBottom}>Prossima disponibilita: {nextAvailability}</Text>
+              {roomBookings.length === 0 ? (
+                <Text style={styles.resourceEmptyLine}>Nessun appuntamento</Text>
+              ) : (
+                <View style={styles.resourceMiniList}>
+                  {roomBookings.slice(0, 3).map((booking) => (
+                    <Pressable key={booking.id} onPress={() => onOpenBooking(booking.id)} style={styles.resourceMiniRow}>
+                      <Text style={styles.resourceMiniTime}>{booking.time_label ?? "--:--"}</Text>
+                      <Text numberOfLines={1} style={styles.resourceMiniText}>{booking.client_name ?? "Cliente"} - {booking.service_name}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+              )}
             </Pressable>
           );
         })}
@@ -1944,7 +2161,18 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     fontSize: 10,
     fontWeight: "800",
+  },
+  dayCellMetaRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 5,
     marginTop: 6,
+  },
+  dayBookingDot: {
+    backgroundColor: colors.brandDark,
+    borderRadius: radius.round,
+    height: 6,
+    width: 6,
   },
   dayProgressTrack: {
     backgroundColor: "rgba(23,63,74,0.08)",
@@ -1962,6 +2190,33 @@ const styles = StyleSheet.create({
     fontSize: 9,
     fontWeight: "700",
     marginTop: 6,
+  },
+  monthSummary: {
+    borderTopColor: "rgba(23,63,74,0.08)",
+    borderTopWidth: 1,
+    marginTop: spacing.md,
+    paddingTop: spacing.md,
+  },
+  monthSummaryHeader: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: spacing.sm,
+  },
+  monthSummaryTitle: {
+    color: colors.brandInk,
+    fontSize: 17,
+    fontWeight: "800",
+    marginTop: 3,
+    textTransform: "capitalize",
+  },
+  monthSummaryCount: {
+    color: colors.brandInk,
+    fontSize: 13,
+    fontWeight: "800",
+  },
+  monthBookingList: {
+    gap: spacing.xs,
   },
   occupancyRing: {
     alignItems: "center",
@@ -2171,6 +2426,54 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "800",
   },
+  compactBookingCard: {
+    alignItems: "center",
+    backgroundColor: colors.surface,
+    borderColor: "rgba(23,63,74,0.06)",
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: spacing.sm,
+    padding: spacing.sm,
+  },
+  compactBookingTime: {
+    alignItems: "center",
+    backgroundColor: colors.surfaceSoft,
+    borderRadius: radius.md,
+    minWidth: 58,
+    paddingHorizontal: spacing.xs,
+    paddingVertical: spacing.xs,
+  },
+  compactBookingHour: {
+    color: colors.brandInk,
+    fontSize: 14,
+    fontWeight: "800",
+  },
+  compactBookingDuration: {
+    color: colors.textMuted,
+    fontSize: 10,
+    fontWeight: "700",
+    marginTop: 2,
+  },
+  compactBookingBody: {
+    flex: 1,
+  },
+  compactBookingClient: {
+    color: colors.brandInk,
+    fontSize: 15,
+    fontWeight: "800",
+  },
+  compactBookingService: {
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: "700",
+    marginTop: 2,
+  },
+  compactBookingMeta: {
+    color: colors.textMuted,
+    fontSize: 12,
+    marginTop: 3,
+  },
   searchBox: {
     alignItems: "center",
     backgroundColor: colors.surfaceSoft,
@@ -2297,6 +2600,59 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "700",
     marginTop: spacing.xs,
+  },
+  resourceMiniList: {
+    gap: 6,
+    marginTop: spacing.sm,
+  },
+  resourceMiniRow: {
+    alignItems: "center",
+    backgroundColor: colors.surfaceSoft,
+    borderRadius: radius.md,
+    flexDirection: "row",
+    gap: spacing.xs,
+    minHeight: 36,
+    paddingHorizontal: spacing.sm,
+  },
+  resourceMiniTime: {
+    color: colors.brandInk,
+    fontSize: 12,
+    fontWeight: "800",
+    width: 45,
+  },
+  resourceMiniText: {
+    color: colors.text,
+    flex: 1,
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  resourceEmptyLine: {
+    color: colors.textMuted,
+    fontSize: 13,
+    fontWeight: "700",
+    marginTop: spacing.sm,
+  },
+  roomStatusPill: {
+    borderRadius: radius.round,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 6,
+  },
+  roomStatusPillBusy: {
+    backgroundColor: "#FFF2E2",
+  },
+  roomStatusPillFree: {
+    backgroundColor: "#EAF5F2",
+  },
+  roomStatusPillText: {
+    fontSize: 11,
+    fontWeight: "800",
+    textTransform: "uppercase",
+  },
+  roomStatusPillTextBusy: {
+    color: "#8A5A22",
+  },
+  roomStatusPillTextFree: {
+    color: colors.success,
   },
   fab: {
     alignItems: "center",

@@ -13,6 +13,13 @@ import Ionicons from "react-native-vector-icons/Ionicons";
 
 import { getCenterClientDetail } from "../lib/api";
 import {
+  buildBookingWhatsappValues,
+  buildCenterWhatsappMessage,
+  buildWhatsappUrl,
+  isWhatsappConfigured,
+  openWhatsappUrl,
+} from "../lib/whatsapp";
+import {
   AppointmentStatus,
   getAppointmentStatusMeta,
   isAppointmentActive,
@@ -114,6 +121,20 @@ export function CenterClientDetailScreen({
     [bookings, reviews, stats],
   );
   const timelineEvents = useMemo(() => buildTimeline(bookings, reviews), [bookings, reviews]);
+  const latestBooking = bookings[0] ?? null;
+  const canWriteWhatsapp = Boolean(client?.phone) && isWhatsappConfigured(center);
+  const openClientWhatsapp = () => {
+    if (!client?.phone || !canWriteWhatsapp) return;
+    const url = buildWhatsappUrl(
+      client.phone,
+      buildCenterWhatsappMessage(
+        center,
+        "reminder",
+        buildBookingWhatsappValues({ booking: latestBooking, center, client }),
+      ),
+    );
+    if (url) void openWhatsappUrl(url);
+  };
 
   return (
     <ScrollView contentContainerStyle={styles.content} style={styles.container}>
@@ -188,7 +209,16 @@ export function CenterClientDetailScreen({
 
         <View style={styles.quickActions}>
           {actionItems.map((item) => (
-            <Pressable key={item.label} style={({ pressed }) => [styles.actionButton, pressed && styles.pressed]}>
+            <Pressable
+              disabled={item.label === "WhatsApp" && !canWriteWhatsapp}
+              key={item.label}
+              onPress={item.label === "WhatsApp" ? openClientWhatsapp : undefined}
+              style={({ pressed }) => [
+                styles.actionButton,
+                item.label === "WhatsApp" && !canWriteWhatsapp ? styles.actionDisabled : null,
+                pressed && styles.pressed,
+              ]}
+            >
               <Ionicons color={colors.brandDark} name={item.icon} size={21} />
               <Text style={styles.actionLabel}>{item.label}</Text>
             </Pressable>
@@ -855,6 +885,9 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.04,
     shadowRadius: 14,
     elevation: 1,
+  },
+  actionDisabled: {
+    display: "none",
   },
   pressed: {
     opacity: 0.78,

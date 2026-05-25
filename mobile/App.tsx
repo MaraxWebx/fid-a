@@ -717,6 +717,7 @@ export default function App() {
       {session.role === "center" ? (
         <CenterBookingDetailModal
           bookingId={selectedCenterBookingId}
+          center={session.center}
           centerId={session.center.id}
           onClose={() => setSelectedCenterBookingId(null)}
         />
