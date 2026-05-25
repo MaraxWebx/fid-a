@@ -329,33 +329,9 @@ export default function App() {
         <StatusBar style="dark" />
         {publicRoute === "landing" ? (
           <PublicLandingScreen
-            clientEmail={clientAuth.email}
-            clientPassword={clientAuth.password}
-            clientError={clientAuth.error || null}
-            clientLoading={clientAuth.loading}
-            onClientEmailChange={(value) =>
-              setClientAuth((current) => ({ ...current, email: value }))
-            }
-            onClientPasswordChange={(value) =>
-              setClientAuth((current) => ({ ...current, password: value }))
-            }
-            onClientLogin={() => {
-              void handleClientLogin();
-            }}
+            onGoToClientAuth={() => setPublicRoute("client-auth")}
             onGoToClientRegister={() => setPublicRoute("client-register")}
-            centerEmail={centerAuth.email}
-            centerPassword={centerAuth.password}
-            centerError={centerAuth.error || null}
-            centerLoading={centerAuth.loading}
-            onCenterEmailChange={(value) =>
-              setCenterAuth((current) => ({ ...current, email: value }))
-            }
-            onCenterPasswordChange={(value) =>
-              setCenterAuth((current) => ({ ...current, password: value }))
-            }
-            onCenterLogin={() => {
-              void handleCenterLogin();
-            }}
+            onGoToCenterAuth={() => setPublicRoute("center-auth")}
             onGoToCenterRegister={() => setPublicRoute("center-register")}
           />
         ) : null}
@@ -381,8 +357,8 @@ export default function App() {
             password={clientAuth.password}
             primaryLabel="Accedi come cliente"
             roleLabel="Cliente"
-            subtitle="Pagina di accesso cliente. Se non hai un account, da qui puoi andare alla registrazione."
-            title="Accedi come cliente"
+            subtitle="Accedi al tuo spazio personale."
+            title="Bentornata"
           />
         ) : null}
         {publicRoute === "client-register" ? (
@@ -415,9 +391,9 @@ export default function App() {
             onSecondaryAction={() => setPublicRoute("center-register")}
             password={centerAuth.password}
             primaryLabel="Accedi come centro"
-            roleLabel="Centro"
-            subtitle="Pagina di accesso centro. Se non sei registrato, da qui puoi aprire la registrazione del centro."
-            title="Accedi come centro"
+            roleLabel="Centro estetico"
+            subtitle="Accedi al tuo spazio personale."
+            title="Bentornata"
           />
         ) : null}
         {publicRoute === "center-register" ? (
@@ -427,7 +403,12 @@ export default function App() {
               setRegisteredCenter(response.center);
               setRegisteredCenterActivation(response.activation);
               setRegisteredCenterCheckoutUrl(response.checkout_url);
-              setPublicRoute("center-payment");
+              setSession({
+                role: "center",
+                center: response.center,
+                activation: response.activation,
+              });
+              setCenterTab("home");
             }}
           />
         ) : null}

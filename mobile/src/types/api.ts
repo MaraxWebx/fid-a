@@ -2,8 +2,16 @@ import type { AppointmentStatus } from '../lib/appointmentStatus';
 
 export type Center = {
   id: string;
+  center_uid?: string;
+  invitation_code?: string;
+  onboarding_link?: string;
+  qr_payload?: string;
   email: string;
   name: string;
+  owner_name?: string | null;
+  phone?: string | null;
+  address?: string | null;
+  subscription_plan?: string;
   branding: {
     description?: string;
     instagram_url?: string;
@@ -55,6 +63,7 @@ export type UserProfile = {
   role: string;
   phone?: string;
   center_id: string | null;
+  center_membership_ids?: string[];
   favorite_center_ids?: string[];
   created_at?: string;
 };
@@ -275,8 +284,11 @@ export type CenterClientDetail = {
 
 export type CenterRegistrationInput = {
   name: string;
+  owner_name: string;
   email: string;
   password: string;
+  phone: string;
+  subscription_plan: string;
   vat_number: string;
   address: string;
   city: string;
@@ -288,6 +300,7 @@ export type CenterRegistrationInput = {
 export type ActivationStatus = {
   state: string;
   subscription_status: string;
+  subscription_plan?: string;
   onboarding_completed: boolean;
   missing_fields: string[];
   is_listable: boolean;
@@ -362,6 +375,7 @@ export type CenterServiceConfigInput = {
 export type LoginInput = {
   email: string;
   password: string;
+  invitation_code?: string;
 };
 
 export type ClientRegistrationInput = {
@@ -369,6 +383,7 @@ export type ClientRegistrationInput = {
   email: string;
   password: string;
   phone: string;
+  invitation_code?: string;
 };
 
 export type ClientAuthResponse = {
@@ -384,4 +399,37 @@ export type CenterActivationStatusResponse = {
   center_id: string;
   center_name: string;
   activation: ActivationStatus;
+};
+
+export type CenterMembershipsResponse = {
+  center_ids: string[];
+  centers: Center[];
+  memberships: Array<{
+    center_id: string;
+    status: string;
+    loyalty?: {
+      points?: number;
+      tier?: string;
+      rewards_unlocked?: string[];
+    };
+    created_at?: string;
+  }>;
+};
+
+export type InvitationResolveResponse = {
+  center: Center;
+  invitation_code: string;
+  center_uid: string;
+  onboarding_link: string;
+};
+
+export type CenterAssociationInput = {
+  email: string;
+  invitation_code: string;
+};
+
+export type CenterAssociationResponse = {
+  user: UserProfile;
+  center: Center;
+  membership_status: string;
 };

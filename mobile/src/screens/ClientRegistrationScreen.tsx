@@ -18,6 +18,7 @@ const initialForm: ClientRegistrationInput = {
   email: "",
   password: "",
   phone: "",
+  invitation_code: "",
 };
 
 export function ClientRegistrationScreen({
@@ -64,11 +65,18 @@ export function ClientRegistrationScreen({
     <ScrollView contentContainerStyle={styles.content} style={styles.container}>
       <ScreenHeader
         eyebrow="Registrazione cliente"
-        title="Crea il tuo account cliente"
-        subtitle="Registri il profilo una sola volta e poi puoi accedere con email e password."
+        title="Entra nel tuo centro"
+        subtitle="Scansiona il QR in salone o inserisci il codice invito per collegarti subito al centro."
       />
 
       <View style={styles.card}>
+        <Field
+          autoCapitalize="characters"
+          label="Codice invito centro"
+          value={form.invitation_code ?? ""}
+          onChangeText={(value) => handleChange("invitation_code", value)}
+          placeholder="BEAU4821"
+        />
         <Field
           label="Nome e cognome"
           value={form.name}
@@ -108,7 +116,7 @@ export function ClientRegistrationScreen({
           <PrimaryButton
             disabled={!isFormValid || isSubmitting}
             label={
-              isSubmitting ? "Creazione account..." : "Registrati come cliente"
+              isSubmitting ? "Creazione account..." : "Collegati al centro"
             }
             onPress={handleSubmit}
           />

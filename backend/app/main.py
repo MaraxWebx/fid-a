@@ -65,8 +65,16 @@ def serialize_center(document):
     rating_summary = get_center_rating_summary(document["_id"])
     return {
         "id": serialize_id(document["_id"]),
+        "center_uid": document.get("center_uid"),
+        "invitation_code": document.get("invitation_code"),
+        "onboarding_link": document.get("onboarding_link"),
+        "qr_payload": document.get("qr_payload"),
         "email": document.get("email") or document.get("mail"),
         "name": document.get("name"),
+        "owner_name": document.get("owner_name"),
+        "phone": document.get("phone"),
+        "address": document.get("address"),
+        "subscription_plan": document.get("subscription_plan"),
         "branding": document.get("branding", {}),
         "opening_hours": document.get("opening_hours", {}),
         "opening_days": document.get("opening_days", []),
@@ -104,6 +112,11 @@ def serialize_user(document):
         "role": document.get("role"),
         "phone": document.get("phone"),
         "center_id": serialize_id(document.get("center_id")),
+        "center_membership_ids": [
+            serialize_id(center_id)
+            for center_id in document.get("center_membership_ids", [])
+            if isinstance(center_id, ObjectId)
+        ],
         "favorite_center_ids": [serialize_id(center_id) for center_id in document.get("favorite_center_ids", [])],
         "created_at": document.get("created_at"),
     }
@@ -288,11 +301,152 @@ def parse_object_id(value: str, label: str):
         raise HTTPException(status_code=400, detail=f"Invalid {label}.") from exc
 
 
+SUBSCRIPTION_PLANS = {
+    "starter": {
+        "name": "Starter",
+        "monthly_price": 29,
+        "features": ["QR privato centro", "Agenda e prenotazioni", "Profilo clienti"],
+    },
+    "growth": {
+        "name": "Growth",
+        "monthly_price": 49,
+        "features": ["Percorsi clienti", "Reminder automatici", "Insights beauty"],
+    },
+    "studio_plus": {
+        "name": "Studio+",
+        "monthly_price": 79,
+        "features": ["Multi-team", "Loyalty avanzata", "Campagne e segmenti"],
+    },
+}
+
+SUBSCRIPTION_STATES = {"active", "trial", "past_due", "cancelled"}
+
+
+def normalize_subscription_plan(value: str | None):
+    normalized = (value or "growth").strip().lower().replace("+", "_plus").replace("-", "_")
+    return normalized if normalized in SUBSCRIPTION_PLANS else "growth"
+
+
+def generate_center_uid(name: str):
+    letters = "".join(character for character in name.upper() if character.isalnum())
+    prefix = (letters[:3] or "BLM").ljust(3, "X")
+
+    for _ in range(12):
+        candidate = f"{prefix}-{secrets.randbelow(9000) + 1000}"
+        if not db.centers.find_one({"center_uid": candidate}):
+            return candidate
+
+    return f"{prefix}-{secrets.token_hex(3).upper()}"
+
+
+def generate_invitation_code(name: str):
+    letters = "".join(character for character in name.upper() if character.isalnum())
+    prefix = (letters[:4] or "BEAU").ljust(4, "X")
+
+    for _ in range(12):
+        candidate = f"{prefix}{secrets.randbelow(9000) + 1000}"
+        if not db.centers.find_one({"invitation_code": candidate}):
+            return candidate
+
+    return f"{prefix}{secrets.token_hex(3).upper()}"
+
+
+def build_center_onboarding_assets(request: Request, *, center_uid: str, invitation_code: str):
+    base_url = str(request.base_url).rstrip("/")
+    onboarding_link = f"{base_url}/join/{invitation_code}"
+    return {
+        "onboarding_link": onboarding_link,
+        "qr_payload": f"fidea://join?code={invitation_code}&center={center_uid}",
+    }
+
+
+def normalize_invitation_code(value: str | None):
+    if not value:
+        return None
+    return re.sub(r"[^A-Z0-9-]", "", value.strip().upper())
+
+
+def find_center_by_invitation(value: str):
+    normalized = normalize_invitation_code(value)
+    if not normalized:
+        raise HTTPException(status_code=400, detail="Invitation code is required.")
+
+    center = db.centers.find_one(
+        {
+            "$or": [
+                {"invitation_code": normalized},
+                {"center_uid": normalized},
+            ]
+        }
+    )
+    if not center:
+        raise HTTPException(status_code=404, detail="Invitation code not found.")
+    return center
+
+
+def add_client_center_membership(user_id: ObjectId, center_id: ObjectId, source: str = "invitation"):
+    now = datetime.now(UTC)
+    existing_membership = db.client_center_memberships.find_one(
+        {"user_id": user_id, "center_id": center_id}
+    )
+    if not existing_membership:
+        db.client_center_memberships.insert_one(
+            {
+                "user_id": user_id,
+                "center_id": center_id,
+                "source": source,
+                "status": "active",
+                "loyalty": {
+                    "points": 0,
+                    "tier": "member",
+                    "rewards_unlocked": [],
+                },
+                "preferences": {
+                    "reminders_enabled": True,
+                    "marketing_opt_in": False,
+                    "recommended_categories": [],
+                },
+                "analytics": {
+                    "first_qr_scan_at": now if source in {"qr", "invitation"} else None,
+                    "last_association_at": now,
+                    "referral_source": source,
+                },
+                "created_at": now,
+                "updated_at": now,
+            }
+        )
+    else:
+        db.client_center_memberships.update_one(
+            {"_id": existing_membership["_id"]},
+            {
+                "$set": {
+                    "status": "active",
+                    "analytics.last_association_at": now,
+                    "updated_at": now,
+                }
+            },
+        )
+
+    db.users.update_one(
+        {"_id": user_id},
+        {
+            "$set": {"center_id": center_id, "updated_at": now},
+            "$addToSet": {
+                "center_membership_ids": center_id,
+                "favorite_center_ids": center_id,
+            },
+        },
+    )
+
+
 class CenterRegistrationPayload(BaseModel):
     name: str = Field(min_length=2, max_length=120)
+    owner_name: str | None = Field(default=None, max_length=120)
     email: str = Field(min_length=5, max_length=160)
     password: str = Field(min_length=6, max_length=128)
-    vat_number: str = Field(min_length=5, max_length=32)
+    phone: str | None = Field(default=None, max_length=32)
+    subscription_plan: str = Field(default="growth", min_length=2, max_length=32)
+    vat_number: str | None = Field(default=None, max_length=32)
     address: str = Field(min_length=4, max_length=180)
     city: str = Field(min_length=2, max_length=120)
     postal_code: str = Field(min_length=3, max_length=16)
@@ -374,11 +528,18 @@ class ClientRegistrationPayload(BaseModel):
     email: str = Field(min_length=5, max_length=160)
     password: str = Field(min_length=6, max_length=128)
     phone: str | None = None
+    invitation_code: str | None = Field(default=None, max_length=64)
 
 
 class LoginPayload(BaseModel):
     email: str = Field(min_length=5, max_length=160)
     password: str = Field(min_length=6, max_length=128)
+    invitation_code: str | None = Field(default=None, max_length=64)
+
+
+class CenterAssociationPayload(BaseModel):
+    email: str = Field(min_length=5, max_length=160)
+    invitation_code: str = Field(min_length=2, max_length=64)
 
 
 class BookingPayload(BaseModel):
@@ -647,16 +808,19 @@ def build_activation_status(document):
     if not document.get("primary_services"):
         missing_fields.append("primary_services")
 
-    subscription_status = document.get("subscription_status", "pending")
+    subscription_status = document.get("subscription_status", "trial")
     onboarding_completed = not missing_fields
     is_listable = subscription_status == "active" and onboarding_completed
 
     if is_listable:
         state = "active"
         message = "Il centro e attivo e puo essere mostrato in app."
+    elif subscription_status == "trial":
+        state = "subscription_trial"
+        message = "Il centro e in prova: scegli e attiva un piano per completare l'accesso professionale."
     elif subscription_status != "active":
         state = "payment_pending"
-        message = "Completa il pagamento dell'abbonamento per continuare con l'attivazione."
+        message = "Riattiva l'abbonamento per continuare a gestire il centro."
     else:
         state = "inactive_incomplete"
         message = (
@@ -667,6 +831,7 @@ def build_activation_status(document):
     return {
         "state": state,
         "subscription_status": subscription_status,
+        "subscription_plan": document.get("subscription_plan", "growth"),
         "onboarding_completed": onboarding_completed,
         "missing_fields": missing_fields,
         "is_listable": is_listable,
@@ -975,6 +1140,13 @@ def create_checkout_session(center_id: str, center_name: str, request: Request):
 
 
 def update_center_payment_state(center_id: str, subscription_status: str, stripe_payload: dict):
+    subscription_status = {
+        "payment_failed": "past_due",
+        "canceled": "cancelled",
+    }.get(subscription_status, subscription_status)
+    if subscription_status not in SUBSCRIPTION_STATES:
+        raise HTTPException(status_code=400, detail="Unsupported subscription status.")
+
     object_id = parse_object_id(center_id, "center id")
     center = db.centers.find_one({"_id": object_id})
 
@@ -1051,48 +1223,97 @@ def register_center(payload: CenterRegistrationPayload, request: Request):
         raise HTTPException(status_code=409, detail="Center email already registered.")
 
     now = datetime.now(UTC)
+    center_uid = generate_center_uid(payload.name)
+    invitation_code = generate_invitation_code(payload.name)
+    onboarding_assets = build_center_onboarding_assets(
+        request,
+        center_uid=center_uid,
+        invitation_code=invitation_code,
+    )
+    subscription_plan = normalize_subscription_plan(payload.subscription_plan)
     center_document = {
         "name": payload.name,
+        "owner_name": payload.owner_name.strip() if payload.owner_name else None,
+        "center_uid": center_uid,
+        "invitation_code": invitation_code,
+        **onboarding_assets,
         "email": normalized_email,
         "password_hash": hash_password(payload.password),
-        "vat_number": payload.vat_number,
+        "phone": payload.phone.strip() if payload.phone else None,
+        "vat_number": payload.vat_number.strip() if payload.vat_number else None,
         "address": payload.address,
         "city": payload.city,
         "postal_code": payload.postal_code,
         "province": payload.province,
         "country": payload.country,
+        "subscription_plan": subscription_plan,
         "branding": {},
         "opening_hours": {},
         "opening_days": [],
         "availability_overrides": {},
         "primary_services": [],
-        "registration_status": "draft",
-        "subscription_status": "pending",
+        "registration_status": "subscription_trial",
+        "subscription_status": "trial",
         "onboarding_completed": False,
         "is_listable": False,
+        "future_capabilities": {
+            "stripe": {"enabled": bool(STRIPE_SECRET_KEY and STRIPE_PRICE_ID), "price_id": STRIPE_PRICE_ID},
+            "apple_pay": {"enabled": False},
+            "google_pay": {"enabled": False},
+            "referrals": {"enabled": False},
+            "qr_analytics": {"enabled": True},
+            "loyalty_rewards": {"enabled": False},
+            "client_segmentation": {"enabled": False},
+            "push_campaigns": {"enabled": False},
+            "smart_recommendations": {"enabled": False},
+        },
         "created_at": now,
         "updated_at": now,
     }
 
     result = db.centers.insert_one(center_document)
     center_id = str(result.inserted_id)
-    session = create_checkout_session(center_id, payload.name, request)
+    checkout_url = None
+    checkout_session_id = f"sim_{secrets.token_hex(8)}"
+    stripe_snapshot = {
+        "checkout_session_id": checkout_session_id,
+        "checkout_url": None,
+        "price_id": STRIPE_PRICE_ID,
+        "mode": "simulated",
+    }
+    if STRIPE_SECRET_KEY and STRIPE_PRICE_ID:
+        session = create_checkout_session(center_id, payload.name, request)
+        checkout_url = session.url
+        checkout_session_id = session.id
+        stripe_snapshot = {
+            "checkout_session_id": session.id,
+            "checkout_url": session.url,
+            "price_id": STRIPE_PRICE_ID,
+            "mode": "stripe",
+        }
+
     db.centers.update_one(
         {"_id": result.inserted_id},
         {
             "$set": {
-                "registration_status": "payment_pending",
-                "stripe": {
-                    "checkout_session_id": session.id,
-                    "checkout_url": session.url,
-                    "price_id": STRIPE_PRICE_ID,
-                },
+                "stripe": stripe_snapshot,
                 "updated_at": datetime.now(UTC),
             }
         },
     )
-    checkout_url = session.url
-    checkout_session_id = session.id
+    db.subscriptions.insert_one(
+        {
+            "center_id": result.inserted_id,
+            "plan": subscription_plan,
+            "status": "trial",
+            "provider": "simulated" if not checkout_url else "stripe",
+            "checkout_session_id": checkout_session_id,
+            "current_period_start": now,
+            "current_period_end": now + timedelta(days=14),
+            "created_at": now,
+            "updated_at": now,
+        }
+    )
 
     created_center = db.centers.find_one({"_id": result.inserted_id})
     activation_status = build_activation_status(created_center)
@@ -1103,6 +1324,49 @@ def register_center(payload: CenterRegistrationPayload, request: Request):
         "checkout_session_id": checkout_session_id,
         "activation": activation_status,
     }
+
+
+@app.post("/api/centers/{center_id}/subscription/activate")
+def activate_center_subscription(center_id: str):
+    object_id = parse_object_id(center_id, "center id")
+    center = db.centers.find_one({"_id": object_id})
+    if not center:
+        raise HTTPException(status_code=404, detail="Center not found.")
+
+    now = datetime.now(UTC)
+    subscription_plan = normalize_subscription_plan(center.get("subscription_plan"))
+    db.subscriptions.update_one(
+        {"center_id": object_id},
+        {
+            "$set": {
+                "plan": subscription_plan,
+                "status": "active",
+                "provider": (center.get("stripe") or {}).get("mode", "simulated"),
+                "current_period_start": now,
+                "current_period_end": now + timedelta(days=30),
+                "updated_at": now,
+            },
+            "$setOnInsert": {"created_at": now},
+        },
+        upsert=True,
+    )
+
+    provisional = {**center, "subscription_status": "active"}
+    activation_status = build_activation_status(provisional)
+    db.centers.update_one(
+        {"_id": object_id},
+        {
+            "$set": {
+                "subscription_status": "active",
+                "registration_status": activation_status["state"],
+                "is_listable": activation_status["is_listable"],
+                "subscription_activated_at": now,
+                "updated_at": now,
+            }
+        },
+    )
+    updated_center = db.centers.find_one({"_id": object_id})
+    return {"center": serialize_center(updated_center), "activation": build_activation_status(updated_center)}
 
 
 @app.post("/api/auth/centers/login")
@@ -1213,12 +1477,16 @@ def register_client(payload: ClientRegistrationPayload):
         "role": "client",
         "phone": payload.phone,
         "center_id": None,
+        "center_membership_ids": [],
         "favorite_center_ids": [],
         "created_at": now,
         "updated_at": now,
     }
 
     result = db.users.insert_one(user_document)
+    if payload.invitation_code:
+        center = find_center_by_invitation(payload.invitation_code)
+        add_client_center_membership(result.inserted_id, center["_id"], source="invitation")
     user = db.users.find_one({"_id": result.inserted_id})
     return {"user": serialize_user(user)}
 
@@ -1231,7 +1499,40 @@ def login_client(payload: LoginPayload):
     if not user or not verify_password(payload.password, user.get("password_hash")):
         raise HTTPException(status_code=401, detail="Invalid client credentials.")
 
+    if payload.invitation_code:
+        center = find_center_by_invitation(payload.invitation_code)
+        add_client_center_membership(user["_id"], center["_id"], source="invitation")
+        user = db.users.find_one({"_id": user["_id"]})
+
     return {"user": serialize_user(user)}
+
+
+@app.get("/api/onboarding/invitations/{invitation_code}")
+def resolve_invitation(invitation_code: str):
+    center = find_center_by_invitation(invitation_code)
+    return {
+        "center": serialize_center(center),
+        "invitation_code": center.get("invitation_code"),
+        "center_uid": center.get("center_uid"),
+        "onboarding_link": center.get("onboarding_link"),
+    }
+
+
+@app.post("/api/users/center-memberships")
+def create_center_membership(payload: CenterAssociationPayload):
+    normalized_email = payload.email.strip().lower()
+    user = db.users.find_one({"email": normalized_email, "role": "client"})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found.")
+
+    center = find_center_by_invitation(payload.invitation_code)
+    add_client_center_membership(user["_id"], center["_id"], source="invitation")
+    updated_user = db.users.find_one({"_id": user["_id"]})
+    return {
+        "user": serialize_user(updated_user),
+        "center": serialize_center(center),
+        "membership_status": "active",
+    }
 
 
 @app.get("/api/centers/{center_id}/activation-status")
@@ -1593,6 +1894,55 @@ def get_user_favorite_centers(email: str = Query(default=DEFAULT_PROFILE_EMAIL))
     return {
         "favorite_center_ids": [serialize_id(center_id) for center_id in favorite_ids],
         "centers": [serialize_center(center) for center in centers],
+    }
+
+
+@app.get("/api/users/center-memberships")
+def get_user_center_memberships(email: str = Query(default=DEFAULT_PROFILE_EMAIL)):
+    user = db.users.find_one({"email": email.strip().lower(), "role": "client"})
+
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found.")
+
+    membership_documents = list(
+        db.client_center_memberships.find({"user_id": user["_id"], "status": "active"}).sort(
+            "updated_at", -1
+        )
+    )
+    membership_ids = [
+        membership.get("center_id")
+        for membership in membership_documents
+        if isinstance(membership.get("center_id"), ObjectId)
+    ]
+    legacy_ids = [
+        center_id
+        for center_id in user.get("center_membership_ids", [])
+        if isinstance(center_id, ObjectId)
+    ]
+    center_ids = []
+    for center_id in [*membership_ids, *legacy_ids]:
+        if center_id not in center_ids:
+            center_ids.append(center_id)
+
+    centers = list(db.centers.find({"_id": {"$in": center_ids}}).sort("name", 1))
+    memberships_by_center = {
+        serialize_id(membership.get("center_id")): membership
+        for membership in membership_documents
+        if isinstance(membership.get("center_id"), ObjectId)
+    }
+
+    return {
+        "center_ids": [serialize_id(center_id) for center_id in center_ids],
+        "centers": [serialize_center(center) for center in centers],
+        "memberships": [
+            {
+                "center_id": serialize_id(center.get("_id")),
+                "status": memberships_by_center.get(serialize_id(center.get("_id")), {}).get("status", "active"),
+                "loyalty": memberships_by_center.get(serialize_id(center.get("_id")), {}).get("loyalty", {}),
+                "created_at": memberships_by_center.get(serialize_id(center.get("_id")), {}).get("created_at"),
+            }
+            for center in centers
+        ],
     }
 
 
@@ -2196,6 +2546,9 @@ def create_booking(payload: BookingPayload):
     user = db.users.find_one({"email": payload.user_email.strip().lower(), "role": "client"})
     if not user:
         raise HTTPException(status_code=404, detail="User not found.")
+    if center_object_id not in user.get("center_membership_ids", []):
+        add_client_center_membership(user["_id"], center_object_id, source="booking")
+        user = db.users.find_one({"_id": user["_id"]})
 
     service_object_id, service = load_service_for_center(center_object_id, payload.service_id)
     start_time = parse_slot_datetime(payload.slot_id)

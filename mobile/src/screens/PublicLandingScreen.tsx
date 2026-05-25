@@ -1,252 +1,304 @@
-import {
-  StyleSheet,
-  Text,
-  View,
-  TextInput,
-  Pressable,
-  Image,
-} from "react-native";
+import { Image, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useState } from "react";
+import Ionicons from "react-native-vector-icons/Ionicons";
 
 import { PrimaryButton } from "../components/PrimaryButton";
 import { colors } from "../theme/colors";
 import { spacing } from "../theme/spacing";
-import { textStyles } from "../theme/typography";
 
 type PublicLandingScreenProps = {
-  clientEmail: string;
-  clientPassword: string;
-  clientError: string | null;
-  clientLoading: boolean;
-  onClientEmailChange: (value: string) => void;
-  onClientPasswordChange: (value: string) => void;
-  onClientLogin: () => void;
-  onGoToClientRegister: () => void;
-  centerEmail: string;
-  centerPassword: string;
-  centerError: string | null;
-  centerLoading: boolean;
-  onCenterEmailChange: (value: string) => void;
-  onCenterPasswordChange: (value: string) => void;
-  onCenterLogin: () => void;
+  onGoToCenterAuth: () => void;
   onGoToCenterRegister: () => void;
+  onGoToClientAuth: () => void;
+  onGoToClientRegister: () => void;
 };
 
-type TabType = "cliente" | "centro";
+type EntryType = "client" | "center";
+
+const entryCards = {
+  client: {
+    title: "Cliente",
+    subtitle:
+      "Prenota trattamenti, gestisci appuntamenti e resta sempre connessa ai tuoi centri preferiti.",
+    cta: "Continua come cliente",
+    icon: "sparkles-outline",
+  },
+  center: {
+    title: "Centro estetico",
+    subtitle:
+      "Gestisci clienti, appuntamenti e fidelizzazione in un unico spazio professionale.",
+    cta: "Continua come professionista",
+    icon: "business-outline",
+  },
+} as const;
 
 export function PublicLandingScreen({
-  clientEmail,
-  clientPassword,
-  clientError,
-  clientLoading,
-  onClientEmailChange,
-  onClientPasswordChange,
-  onClientLogin,
-  onGoToClientRegister,
-  centerEmail,
-  centerPassword,
-  centerError,
-  centerLoading,
-  onCenterEmailChange,
-  onCenterPasswordChange,
-  onCenterLogin,
+  onGoToCenterAuth,
   onGoToCenterRegister,
+  onGoToClientAuth,
+  onGoToClientRegister,
 }: PublicLandingScreenProps) {
-  const [activeTab, setActiveTab] = useState<TabType>("cliente");
+  const [entryType, setEntryType] = useState<EntryType | null>(null);
 
-  const handleLogin = () => {
-    if (activeTab === "cliente") {
-      onClientLogin();
-    } else {
-      onCenterLogin();
-    }
-  };
-
-  const email = activeTab === "cliente" ? clientEmail : centerEmail;
-  const password = activeTab === "cliente" ? clientPassword : centerPassword;
-  const error = activeTab === "cliente" ? clientError : centerError;
-  const isLoading = activeTab === "cliente" ? clientLoading : centerLoading;
+  const goToAuth = entryType === "center" ? onGoToCenterAuth : onGoToClientAuth;
+  const goToRegister =
+    entryType === "center" ? onGoToCenterRegister : onGoToClientRegister;
 
   return (
-    <View style={styles.container}>
-      <View style={styles.header}>
+    <ScrollView
+      bounces={false}
+      contentContainerStyle={styles.content}
+      keyboardShouldPersistTaps="handled"
+      style={styles.container}
+    >
+      <View style={styles.glow} />
+
+      <View style={styles.hero}>
         <Image
-          source={require("../../assets/FidèaLogo.png")}
-          style={styles.logoImage}
           resizeMode="contain"
+          source={require("../../assets/fidea-logo.png")}
+          style={styles.logo}
+        />
+        <Text style={styles.title}>Il tuo centro, più vicino alle tue clienti.</Text>
+        <Text style={styles.subtitle}>
+          Clienti, appuntamenti e fidelizzazione in un'unica esperienza elegante e professionale.
+        </Text>
+      </View>
+
+      <View style={styles.choiceHeader}>
+        <Text style={styles.choiceTitle}>Come vuoi vivere Fidéa?</Text>
+        <Text style={styles.choiceSubtitle}>Scegli l'esperienza più adatta a te.</Text>
+      </View>
+
+      <View style={styles.cards}>
+        <EntryCard
+          active={entryType === "client"}
+          onPress={() => setEntryType("client")}
+          tone="soft"
+          {...entryCards.client}
+        />
+        <EntryCard
+          active={entryType === "center"}
+          onPress={() => setEntryType("center")}
+          tone="strong"
+          {...entryCards.center}
         />
       </View>
-      <View
-        style={{
-          flex: 1,
-          borderTopEndRadius: 40,
 
-          backgroundColor: colors.surface,
-        }}
-      >
-        <View style={styles.tabContainer}>
-          <Pressable
-            style={[styles.tab, activeTab === "cliente" && styles.tabActive]}
-            onPress={() => setActiveTab("cliente")}
-          >
-            <Text
-              style={[
-                styles.tabLabel,
-                activeTab === "cliente" && styles.tabLabelActive,
-              ]}
-            >
-              Cliente
-            </Text>
-          </Pressable>
-          <Pressable
-            style={[styles.tab, activeTab === "centro" && styles.tabActive]}
-            onPress={() => setActiveTab("centro")}
-          >
-            <Text
-              style={[
-                styles.tabLabel,
-                activeTab === "centro" && styles.tabLabelActive,
-              ]}
-            >
-              Centro
-            </Text>
-          </Pressable>
-        </View>
-
-        <View style={styles.formContainer}>
-          <Text style={styles.formTitle}>
-            {activeTab === "cliente"
-              ? "Accedi come Cliente"
-              : "Accedi come Centro"}
-          </Text>
-
-          <TextInput
-            style={styles.input}
-            placeholder="Email"
-            placeholderTextColor={colors.textMuted}
-            keyboardType="email-address"
-            value={email}
-            onChangeText={
-              activeTab === "cliente"
-                ? onClientEmailChange
-                : onCenterEmailChange
-            }
-          />
-
-          <TextInput
-            style={styles.input}
-            placeholder="Password"
-            placeholderTextColor={colors.textMuted}
-            secureTextEntry
-            value={password}
-            onChangeText={
-              activeTab === "cliente"
-                ? onClientPasswordChange
-                : onCenterPasswordChange
-            }
-          />
-
-          {error ? <Text style={styles.errorText}>{error}</Text> : null}
-
+      <View style={styles.actionPanel}>
+        <Text style={styles.actionTitle}>
+          {entryType ? entryCards[entryType].title : "Seleziona un'esperienza"}
+        </Text>
+        <Text style={styles.actionSubtitle}>
+          {entryType
+            ? "Accedi al tuo spazio oppure crea un nuovo profilo."
+            : "Le azioni appariranno appena scegli come proseguire."}
+        </Text>
+        <View style={styles.actionButtons}>
           <PrimaryButton
-            label={isLoading ? "Accesso in corso..." : "Accedi"}
-            onPress={handleLogin}
-            variant="primary"
+            disabled={!entryType}
+            label="Accedi"
+            onPress={goToAuth}
           />
-
-          <Pressable
-            onPress={() => {
-              if (activeTab === "cliente") {
-                onGoToClientRegister();
-              } else {
-                onGoToCenterRegister();
-              }
-            }}
-            style={styles.registerLink}
-          >
-            <Text style={styles.registerText}>
-              {activeTab === "cliente"
-                ? "Non hai un account? Registrati"
-                : "Non hai un account? Registrati"}
-            </Text>
-          </Pressable>
+          <PrimaryButton
+            disabled={!entryType}
+            label="Registrati"
+            onPress={goToRegister}
+            variant="secondary"
+          />
         </View>
       </View>
-    </View>
+    </ScrollView>
   );
 }
+
+function EntryCard({
+  active,
+  cta,
+  icon,
+  onPress,
+  subtitle,
+  title,
+  tone,
+}: {
+  active: boolean;
+  cta: string;
+  icon: string;
+  onPress: () => void;
+  subtitle: string;
+  title: string;
+  tone: "soft" | "strong";
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.entryCard,
+        tone === "strong" ? styles.entryCardStrong : styles.entryCardSoft,
+        active ? styles.entryCardActive : null,
+        pressed ? styles.cardPressed : null,
+      ]}
+    >
+      <View style={styles.cardTop}>
+        <View style={[styles.iconWrap, tone === "strong" ? styles.iconStrong : null]}>
+          <Ionicons color={colors.brandInk} name={icon} size={22} />
+        </View>
+        {active ? (
+          <Ionicons color={colors.brandDark} name="checkmark-circle" size={22} />
+        ) : null}
+      </View>
+      <Text style={styles.cardTitle}>{title}</Text>
+      <Text style={styles.cardSubtitle}>{subtitle}</Text>
+      <Text style={styles.cardCta}>{cta}</Text>
+    </Pressable>
+  );
+}
+
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
     backgroundColor: colors.canvas,
-  },
-  header: {
-    paddingTop: spacing.lg,
-    paddingBottom: spacing.md,
-    alignItems: "center",
-  },
-  headerTitle: {
-    ...textStyles.screenTitle,
-    color: colors.brand,
-  },
-  tabContainer: {
-    flexDirection: "row",
-    borderBottomWidth: 0,
-    borderBottomColor: colors.border,
-  },
-  tab: {
     flex: 1,
-    paddingVertical: spacing.md,
+  },
+  content: {
+    flexGrow: 1,
+    paddingBottom: 40,
+    paddingHorizontal: spacing.lg,
+    paddingTop: 22,
+  },
+  glow: {
+    backgroundColor: "rgba(217,154,165,0.18)",
+    borderRadius: 999,
+    height: 190,
+    position: "absolute",
+    right: -80,
+    top: -48,
+    width: 190,
+  },
+  hero: {
     alignItems: "center",
-    borderBottomWidth: 3,
-    borderBottomColor: "transparent",
+    paddingBottom: 26,
+    paddingTop: 10,
   },
-  tabActive: {
-    /* s */
+  logo: {
+    height: 94,
+    width: 94,
   },
-  tabLabel: {
-    ...textStyles.titleBase,
-    color: colors.textMuted,
-  },
-  tabLabelActive: {
-    fontWeight: "600",
-    color: colors.brand,
-  },
-  formContainer: {
-    padding: spacing.lg,
-    flex: 1,
-    justifyContent: "flex-start",
-  },
-  formTitle: {
-    ...textStyles.screenTitle,
-    marginBottom: spacing.lg,
+  title: {
+    color: colors.brandInk,
+    fontSize: 31,
+    fontWeight: "800",
+    lineHeight: 38,
+    marginTop: 18,
+    maxWidth: 380,
     textAlign: "center",
   },
-  input: {
-    backgroundColor: colors.surface,
-    borderRadius: 14,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
-    marginBottom: spacing.md,
-    fontSize: 16,
-    color: colors.brand,
+  subtitle: {
+    color: colors.textMuted,
+    fontSize: 15,
+    lineHeight: 23,
+    marginTop: 12,
+    maxWidth: 360,
+    textAlign: "center",
   },
-  registerLink: {
-    marginTop: spacing.lg,
+  choiceHeader: {
     alignItems: "center",
+    marginBottom: 16,
   },
-  registerText: {
-    ...textStyles.titleBase,
-    color: colors.brand,
-    textDecorationLine: "underline",
+  choiceTitle: {
+    color: colors.brandInk,
+    fontSize: 22,
+    fontWeight: "800",
+    textAlign: "center",
   },
-  errorText: {
-    ...textStyles.titleBase,
-    color: colors.danger,
-    marginBottom: spacing.md,
+  choiceSubtitle: {
+    color: colors.textMuted,
+    fontSize: 14,
+    marginTop: 6,
+    textAlign: "center",
   },
-  logoImage: {
-    height: 120,
-    width: 120,
+  cards: {
+    gap: 14,
+  },
+  entryCard: {
+    borderColor: "rgba(40,111,112,0.10)",
+    borderRadius: 24,
+    borderWidth: 1,
+    minHeight: 176,
+    padding: 20,
+  },
+  entryCardSoft: {
+    backgroundColor: "#FFFDFC",
+  },
+  entryCardStrong: {
+    backgroundColor: "#F2EEE6",
+  },
+  entryCardActive: {
+    borderColor: colors.brandDark,
+    shadowColor: colors.brandInk,
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.11,
+    shadowRadius: 20,
+  },
+  cardPressed: {
+    transform: [{ scale: 0.99 }],
+  },
+  cardTop: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
+  },
+  iconWrap: {
+    alignItems: "center",
+    backgroundColor: colors.surfaceLavender,
+    borderRadius: 18,
+    height: 46,
+    justifyContent: "center",
+    width: 46,
+  },
+  iconStrong: {
+    backgroundColor: colors.surfaceSky,
+  },
+  cardTitle: {
+    color: colors.brandInk,
+    fontSize: 22,
+    fontWeight: "800",
+    marginTop: 18,
+  },
+  cardSubtitle: {
+    color: colors.textMuted,
+    fontSize: 14,
+    lineHeight: 21,
+    marginTop: 8,
+  },
+  cardCta: {
+    color: colors.brandDark,
+    fontSize: 14,
+    fontWeight: "800",
+    marginTop: 16,
+  },
+  actionPanel: {
+    backgroundColor: "rgba(255,255,255,0.82)",
+    borderColor: "rgba(40,111,112,0.10)",
+    borderRadius: 24,
+    borderWidth: 1,
+    marginTop: 18,
+    padding: 18,
+  },
+  actionTitle: {
+    color: colors.brandInk,
+    fontSize: 18,
+    fontWeight: "800",
+    textAlign: "center",
+  },
+  actionSubtitle: {
+    color: colors.textMuted,
+    fontSize: 13,
+    lineHeight: 19,
+    marginTop: 6,
+    textAlign: "center",
+  },
+  actionButtons: {
+    gap: 12,
+    marginTop: 16,
   },
 });

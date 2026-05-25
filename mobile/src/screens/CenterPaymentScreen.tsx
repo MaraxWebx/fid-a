@@ -1,10 +1,10 @@
-import { Linking, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { useState } from "react";
 
 import { PrimaryButton } from "../components/PrimaryButton";
 import { ScreenHeader } from "../components/ScreenHeader";
 import { SectionCard } from "../components/SectionCard";
-import { getCenterActivationStatus } from "../lib/api";
+import { activateCenterSubscription, getCenterActivationStatus } from "../lib/api";
 import type { ActivationStatus, Center } from "../types/api";
 import { colors } from "../theme/colors";
 import { spacing } from "../theme/spacing";
@@ -28,6 +28,25 @@ export function CenterPaymentScreen({
   const [status, setStatus] = useState(activation);
   const [isChecking, setIsChecking] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const handleActivate = async () => {
+    setIsChecking(true);
+    setError(null);
+
+    try {
+      const response = await activateCenterSubscription(center.id);
+      setStatus(response.activation);
+      onPaid(response.center, response.activation);
+    } catch (activationError) {
+      setError(
+        activationError instanceof Error
+          ? activationError.message
+          : "Attivazione abbonamento non riuscita.",
+      );
+    } finally {
+      setIsChecking(false);
+    }
+  };
 
   const handleVerify = async () => {
     setIsChecking(true);
@@ -62,47 +81,48 @@ export function CenterPaymentScreen({
     <ScrollView contentContainerStyle={styles.content} style={styles.container}>
       <ScreenHeader
         eyebrow="Step 2 di 3"
-        title="Completa il pagamento"
-        subtitle="Dopo il checkout attiviamo il centro e ti portiamo all'onboarding guidato del profilo."
+        title="Attiva l'abbonamento"
+        subtitle="La struttura e pronta per Stripe, Apple Pay e Google Pay. Oggi simuliamo l'attivazione per completare il flusso."
       />
 
       <SectionCard
         eyebrow="Abbonamento"
-        title="Piano centro mensile"
+        title={`Piano ${(center.subscription_plan ?? status.subscription_plan ?? "growth").replace("_", " ")}`}
         tone="sky"
       >
-        <Text style={styles.price}>EUR 20 / mese</Text>
+        <Text style={styles.price}>{planPrice(center.subscription_plan ?? status.subscription_plan)} / mese</Text>
         <Text style={styles.body}>
-          Il centro viene attivato appena Stripe conferma il pagamento.
+          Il tuo Center ID resta permanente anche se in futuro lo stato passa a past_due o cancelled.
         </Text>
       </SectionCard>
 
-      <SectionCard eyebrow="Stato" title="Verifica attivazione">
+      <SectionCard eyebrow="Identita privata" title={center.center_uid ?? center.id}>
         <Text style={styles.body}>{status.message}</Text>
         <Text style={styles.meta}>
-          Stato pagamento: {status.subscription_status}
+          Stato abbonamento: {status.subscription_status}
         </Text>
+        <Text style={styles.meta}>Codice invito: {center.invitation_code ?? "in creazione"}</Text>
         {error ? <Text style={styles.error}>{error}</Text> : null}
       </SectionCard>
 
       <View style={styles.actions}>
         <PrimaryButton
-          disabled={!checkoutUrl}
-          label="Apri checkout Stripe"
-          onPress={() => {
-            if (checkoutUrl) {
-              void Linking.openURL(checkoutUrl);
-            }
-          }}
-        />
-        <PrimaryButton
           disabled={isChecking}
-          label={isChecking ? "Verifica in corso..." : "Ho pagato, continua"}
+          label={isChecking ? "Attivazione..." : "Attiva abbonamento"}
           onPress={() => {
-            void handleVerify();
+            void handleActivate();
           }}
-          variant="secondary"
         />
+        {checkoutUrl ? (
+          <PrimaryButton
+            disabled={isChecking}
+            label={isChecking ? "Verifica in corso..." : "Verifica Stripe"}
+            onPress={() => {
+              void handleVerify();
+            }}
+            variant="secondary"
+          />
+        ) : null}
         <PrimaryButton
           label="Torna indietro"
           onPress={onBack}
@@ -111,6 +131,12 @@ export function CenterPaymentScreen({
       </View>
     </ScrollView>
   );
+}
+
+function planPrice(plan?: string) {
+  if (plan === "starter") return "EUR 29";
+  if (plan === "studio_plus") return "EUR 79";
+  return "EUR 49";
 }
 
 const styles = StyleSheet.create({

@@ -1,11 +1,10 @@
 import { useState } from "react";
-import { ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import Ionicons from "react-native-vector-icons/Ionicons";
 
 import { PrimaryButton } from "../components/PrimaryButton";
-import { ScreenHeader } from "../components/ScreenHeader";
 import { colors } from "../theme/colors";
 import { spacing } from "../theme/spacing";
-import { textStyles, typeScale } from "../theme/typography";
 
 type AuthScreenProps = {
   ctaLabel: string;
@@ -29,7 +28,6 @@ type AuthScreenProps = {
 export function AuthScreen({
   ctaLabel,
   ctaText,
-  eyebrow,
   error,
   isSubmitting,
   onBack,
@@ -38,10 +36,7 @@ export function AuthScreen({
   onPrimaryAction,
   onSecondaryAction,
   password,
-  primaryLabel,
   roleLabel,
-  subtitle,
-  title,
   email,
 }: AuthScreenProps) {
   const [localEmail, setLocalEmail] = useState(email);
@@ -58,60 +53,56 @@ export function AuthScreen({
   };
 
   return (
-    <ScrollView contentContainerStyle={styles.content} style={styles.container}>
-      <ScreenHeader
-        onBack={onBack}
-        eyebrow={eyebrow}
-        title={title}
-        subtitle={subtitle}
-      />
+    <ScrollView
+      contentContainerStyle={styles.content}
+      keyboardShouldPersistTaps="handled"
+      style={styles.container}
+    >
+      <Pressable onPress={onBack} style={styles.backButton}>
+        <Ionicons color={colors.brandInk} name="chevron-back" size={20} />
+      </Pressable>
+
+      <View style={styles.hero}>
+        <Text style={styles.kicker}>{roleLabel}</Text>
+        <Text style={styles.title}>Bentornata</Text>
+        <Text style={styles.subtitle}>Accedi al tuo spazio personale.</Text>
+      </View>
 
       <View style={styles.card}>
-        <Text style={styles.rolePill}>{roleLabel}</Text>
-        <Field
-          label="Email"
-          value={localEmail}
-          onChangeText={syncEmail}
-          placeholder="nome@dominio.it"
-          autoCapitalize="none"
-          keyboardType="email-address"
-        />
-        <Field
-          label="Password"
-          value={localPassword}
-          onChangeText={syncPassword}
-          placeholder="Minimo 6 caratteri"
-          autoCapitalize="none"
-          secureTextEntry
-        />
-        {error ? <Text style={styles.error}>{error}</Text> : null}
-        <View style={styles.actions}>
-          <PrimaryButton
-            disabled={isSubmitting}
-            label={isSubmitting ? "Attendi..." : primaryLabel}
-            onPress={onPrimaryAction}
+        <SocialButton icon="mail-outline" label="Continua con email" />
+        <View style={styles.fields}>
+          <Field
+            autoCapitalize="none"
+            keyboardType="email-address"
+            onChangeText={syncEmail}
+            placeholder="nome@dominio.it"
+            value={localEmail}
           />
-          <Text style={styles.footerText}>{ctaText}</Text>
-          <View style={styles.footerButton}>
-            <PrimaryButton
-              label={ctaLabel}
-              onPress={onSecondaryAction}
-              variant="secondary"
-            />
-          </View>
+          <Field
+            autoCapitalize="none"
+            onChangeText={syncPassword}
+            placeholder="Password"
+            secureTextEntry
+            value={localPassword}
+          />
+        </View>
+        {error ? <Text style={styles.error}>{error}</Text> : null}
+        <PrimaryButton
+          disabled={isSubmitting}
+          label={isSubmitting ? "Accesso..." : "Accedi"}
+          onPress={onPrimaryAction}
+        />
+
+        <View style={styles.socialStack}>
+          <SocialButton disabled icon="logo-google" label="Continua con Google" />
+          <SocialButton disabled icon="logo-apple" label="Continua con Apple" />
         </View>
       </View>
 
-      {/*   <View style={styles.footerCard}>
+      <View style={styles.footer}>
         <Text style={styles.footerText}>{ctaText}</Text>
-        <View style={styles.footerButton}>
-          <PrimaryButton
-            label={ctaLabel}
-            onPress={onSecondaryAction}
-            variant="secondary"
-          />
-        </View>
-      </View> */}
+        <PrimaryButton label={ctaLabel} onPress={onSecondaryAction} variant="secondary" />
+      </View>
     </ScrollView>
   );
 }
@@ -119,7 +110,6 @@ export function AuthScreen({
 type FieldProps = {
   autoCapitalize?: "none" | "sentences" | "words" | "characters";
   keyboardType?: "default" | "email-address" | "number-pad";
-  label: string;
   onChangeText: (value: string) => void;
   placeholder: string;
   secureTextEntry?: boolean;
@@ -129,86 +119,145 @@ type FieldProps = {
 function Field({
   autoCapitalize = "sentences",
   keyboardType = "default",
-  label,
   onChangeText,
   placeholder,
   secureTextEntry = false,
   value,
 }: FieldProps) {
   return (
-    <View style={styles.fieldWrap}>
-      <Text style={styles.label}>{label}</Text>
-      <TextInput
-        autoCapitalize={autoCapitalize}
-        keyboardType={keyboardType}
-        onChangeText={onChangeText}
-        placeholder={placeholder}
-        placeholderTextColor={colors.textSoft}
-        secureTextEntry={secureTextEntry}
-        style={styles.input}
-        value={value}
-      />
+    <TextInput
+      autoCapitalize={autoCapitalize}
+      keyboardType={keyboardType}
+      onChangeText={onChangeText}
+      placeholder={placeholder}
+      placeholderTextColor={colors.textSoft}
+      secureTextEntry={secureTextEntry}
+      style={styles.input}
+      value={value}
+    />
+  );
+}
+
+function SocialButton({
+  disabled,
+  icon,
+  label,
+}: {
+  disabled?: boolean;
+  icon: string;
+  label: string;
+}) {
+  return (
+    <View style={[styles.socialButton, disabled ? styles.disabledSocial : null]}>
+      <Ionicons color={colors.brandInk} name={icon} size={19} />
+      <Text style={styles.socialText}>{label}</Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
     backgroundColor: colors.canvas,
+    flex: 1,
   },
   content: {
+    flexGrow: 1,
+    paddingBottom: 42,
     paddingHorizontal: spacing.lg,
-    paddingTop: spacing.lg,
-    paddingBottom: spacing.xl,
+    paddingTop: 18,
+  },
+  backButton: {
+    alignItems: "center",
+    backgroundColor: "rgba(255,255,255,0.72)",
+    borderColor: colors.overlayBorder,
+    borderRadius: 18,
+    borderWidth: 1,
+    height: 42,
+    justifyContent: "center",
+    width: 42,
+  },
+  hero: {
+    alignItems: "center",
+    paddingBottom: 26,
+    paddingTop: 54,
+  },
+  kicker: {
+    color: colors.brandDark,
+    fontSize: 12,
+    fontWeight: "800",
+    letterSpacing: 0,
+    textTransform: "uppercase",
+  },
+  title: {
+    color: colors.brandInk,
+    fontSize: 34,
+    fontWeight: "800",
+    marginTop: 10,
+    textAlign: "center",
+  },
+  subtitle: {
+    color: colors.textMuted,
+    fontSize: 16,
+    lineHeight: 23,
+    marginTop: 8,
+    textAlign: "center",
   },
   card: {
     backgroundColor: colors.surface,
-    borderRadius: 20,
-    padding: spacing.lg,
+    borderColor: "rgba(40,111,112,0.10)",
+    borderRadius: 26,
+    borderWidth: 1,
+    gap: 14,
+    padding: 18,
   },
-  rolePill: {
-    alignSelf: "flex-start",
-    backgroundColor: colors.surfaceSky,
-    borderRadius: 12,
-    marginBottom: spacing.lg,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-    ...textStyles.microLabel,
-    color: colors.brandInk,
-  },
-  fieldWrap: {
-    marginBottom: spacing.md,
-  },
-  label: {
-    ...textStyles.fieldLabel,
-    marginBottom: spacing.xs,
+  fields: {
+    gap: 12,
   },
   input: {
     backgroundColor: colors.surfaceSoft,
-    borderRadius: 14,
+    borderRadius: 18,
     color: colors.text,
     fontSize: 16,
+    minHeight: 56,
+    paddingHorizontal: 16,
+  },
+  socialStack: {
+    gap: 10,
+    marginTop: 2,
+  },
+  socialButton: {
+    alignItems: "center",
+    backgroundColor: colors.surface,
+    borderColor: colors.overlayBorder,
+    borderRadius: 18,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 10,
+    justifyContent: "center",
     minHeight: 54,
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: 16,
+  },
+  disabledSocial: {
+    opacity: 0.56,
+  },
+  socialText: {
+    color: colors.brandInk,
+    fontSize: 14,
+    fontWeight: "800",
   },
   error: {
     color: colors.danger,
-    fontSize: typeScale.body,
-    marginTop: spacing.sm,
+    fontSize: 14,
+    lineHeight: 20,
   },
-  actions: {
-    gap: spacing.md,
-    marginTop: spacing.lg,
-  },
-  footerCard: {
-    backgroundColor: colors.surfaceSand,
-    borderRadius: 20,
-    marginTop: spacing.lg,
-    padding: spacing.lg,
+  footer: {
+    gap: 12,
+    marginTop: 18,
   },
   footerText: {
-    ...textStyles.body,
+    color: colors.textMuted,
+    fontSize: 14,
+    lineHeight: 20,
+    textAlign: "center",
   },
-  footerButton: {},
 });

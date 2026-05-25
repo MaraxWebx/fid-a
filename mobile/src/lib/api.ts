@@ -11,12 +11,15 @@ import type {
   BusinessInsights,
   Center,
   CenterActivationStatusResponse,
+  CenterAssociationInput,
+  CenterAssociationResponse,
   CenterAvailabilityInput,
   CenterAvailabilityResponse,
   CenterAuthResponse,
   CenterClient,
   CenterDashboard,
   CenterClientDetail,
+  CenterMembershipsResponse,
   CenterOnboardingInput,
   CenterOnboardingResponse,
   CenterProfileInput,
@@ -26,6 +29,7 @@ import type {
   ClientAuthResponse,
   ClientRegistrationInput,
   FavoriteCentersResponse,
+  InvitationResolveResponse,
   LoginInput,
   Review,
   ReviewInput,
@@ -140,6 +144,24 @@ export function getFavoriteCenters(email: string) {
   return request<FavoriteCentersResponse>(`/api/users/favorite-centers?email=${query}`);
 }
 
+export function getCenterMemberships(email: string) {
+  const query = encodeURIComponent(email);
+  return request<CenterMembershipsResponse>(`/api/users/center-memberships?email=${query}`);
+}
+
+export function resolveInvitation(invitationCode: string) {
+  return request<InvitationResolveResponse>(
+    `/api/onboarding/invitations/${encodeURIComponent(invitationCode)}`,
+  );
+}
+
+export function associateClientWithCenter(payload: CenterAssociationInput) {
+  return post<CenterAssociationResponse, CenterAssociationInput>(
+    '/api/users/center-memberships',
+    payload,
+  );
+}
+
 export function toggleFavoriteCenter(email: string, centerId: string) {
   const query = encodeURIComponent(email);
   return patch<FavoriteCentersResponse, Record<string, never>>(
@@ -194,6 +216,13 @@ export function getCenterUserStats(centerId: string, email: string) {
 
 export function registerCenter(payload: CenterRegistrationInput) {
   return post<CenterRegistrationResponse, CenterRegistrationInput>('/api/centers/register', payload);
+}
+
+export function activateCenterSubscription(centerId: string) {
+  return post<CenterOnboardingResponse, Record<string, never>>(
+    `/api/centers/${centerId}/subscription/activate`,
+    {},
+  );
 }
 
 export function updateCenterOnboarding(centerId: string, payload: CenterOnboardingInput) {

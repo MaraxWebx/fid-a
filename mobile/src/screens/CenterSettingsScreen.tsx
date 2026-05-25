@@ -319,6 +319,27 @@ function SettingTile({
   return <View style={styles.settingTile}>{content}</View>;
 }
 
+function CenterQrPreview({ value }: { value: string }) {
+  const seed = Array.from(value || 'fidea').reduce((total, character) => total + character.charCodeAt(0), 0);
+  const cells = Array.from({ length: 81 }, (_, index) => {
+    const row = Math.floor(index / 9);
+    const column = index % 9;
+    const finder =
+      (row < 3 && column < 3) ||
+      (row < 3 && column > 5) ||
+      (row > 5 && column < 3);
+    return finder || (index * 17 + seed + row * column) % 5 < 2;
+  });
+
+  return (
+    <View style={styles.qrPreview}>
+      {cells.map((filled, index) => (
+        <View key={index} style={[styles.qrCell, filled ? styles.qrCellFilled : null]} />
+      ))}
+    </View>
+  );
+}
+
 function OperatorManagement({
   onAdd,
   onDelete,
@@ -678,6 +699,7 @@ export function CenterSettingsScreen({
   const [operators, setOperators] = useState<OperatorDraft[]>(initialOperators);
   const [cabins, setCabins] = useState<CabinDraft[]>(initialCabins);
   const [packages, setPackages] = useState<PackageDraft[]>(initialPackages);
+  const [qrActionMessage, setQrActionMessage] = useState<string | null>(null);
 
   useEffect(() => {
     setProfileName(center.name);
@@ -1416,6 +1438,48 @@ export function CenterSettingsScreen({
             </View>
           </View>
         ) : null}
+
+        <DashboardSection
+          eyebrow="Centro"
+          title="Spazio digitale privato"
+          subtitle="QR, codice invito e piano restano collegati al tuo centro, non allo stato dell'abbonamento."
+        >
+          <View style={styles.qrKitCard}>
+            <View style={styles.qrKitTop}>
+              <CenterQrPreview value={center.qr_payload ?? center.invitation_code ?? center.id} />
+              <View style={styles.qrKitCopy}>
+                <Text style={styles.qrKitLabel}>Center ID</Text>
+                <Text selectable style={styles.qrKitValue}>{center.center_uid ?? center.id}</Text>
+                <Text style={styles.qrKitLabel}>Codice invito</Text>
+                <Text selectable style={styles.qrKitCode}>{center.invitation_code ?? 'in creazione'}</Text>
+                <View style={styles.subscriptionMiniPanel}>
+                  <Text style={styles.qrKitLabel}>Stato abbonamento</Text>
+                  <Text style={styles.subscriptionMiniText}>{activation.subscription_status}</Text>
+                  <Text style={styles.qrKitLabel}>Piano attuale</Text>
+                  <Text style={styles.subscriptionMiniText}>{center.subscription_plan ?? activation.subscription_plan ?? 'Studio'}</Text>
+                </View>
+              </View>
+            </View>
+            <Text selectable style={styles.qrLinkText}>
+              {center.onboarding_link ?? center.qr_payload ?? 'Link onboarding in creazione'}
+            </Text>
+            {qrActionMessage ? <Text style={styles.qrActionMessage}>{qrActionMessage}</Text> : null}
+            <View style={styles.qrActions}>
+              <Pressable onPress={() => setQrActionMessage('Codice invito pronto per essere copiato.')} style={styles.qrActionButton}>
+                <Ionicons color={colors.brandInk} name="copy-outline" size={16} />
+                <Text style={styles.qrActionText}>Copia codice invito</Text>
+              </Pressable>
+              <Pressable onPress={() => setQrActionMessage('Download QR preparato per integrazione file nativa.')} style={styles.qrActionButton}>
+                <Ionicons color={colors.brandInk} name="download-outline" size={16} />
+                <Text style={styles.qrActionText}>Download QR</Text>
+              </Pressable>
+              <Pressable onPress={() => setQrActionMessage('Share QR preparato per integrazione share sheet.')} style={styles.qrActionButton}>
+                <Ionicons color={colors.brandInk} name="share-outline" size={16} />
+                <Text style={styles.qrActionText}>Share onboarding link</Text>
+              </Pressable>
+            </View>
+          </View>
+        </DashboardSection>
 
         {catalogError ? <Text style={styles.errorText}>{catalogError}</Text> : null}
 
@@ -2325,6 +2389,100 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 18,
     marginTop: spacing.xs,
+  },
+  qrKitCard: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.xl,
+    gap: spacing.md,
+    padding: spacing.md,
+  },
+  qrKitTop: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing.md,
+  },
+  qrPreview: {
+    backgroundColor: colors.surfaceSoft,
+    borderRadius: radius.lg,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 3,
+    padding: spacing.sm,
+    width: 138,
+  },
+  qrCell: {
+    backgroundColor: 'rgba(24,63,61,0.08)',
+    borderRadius: 2,
+    height: 10,
+    width: 10,
+  },
+  qrCellFilled: {
+    backgroundColor: colors.brandInk,
+  },
+  qrKitCopy: {
+    flex: 1,
+  },
+  qrKitLabel: {
+    color: colors.textMuted,
+    fontSize: 11,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+  },
+  qrKitValue: {
+    color: colors.brandInk,
+    fontSize: 22,
+    fontWeight: '800',
+    marginBottom: spacing.sm,
+  },
+  qrKitCode: {
+    color: colors.brandDark,
+    fontSize: 20,
+    fontWeight: '800',
+  },
+  subscriptionMiniPanel: {
+    backgroundColor: colors.surfaceSoft,
+    borderRadius: radius.md,
+    gap: spacing.xxs,
+    marginTop: spacing.sm,
+    padding: spacing.sm,
+  },
+  subscriptionMiniText: {
+    color: colors.brandInk,
+    fontSize: 14,
+    fontWeight: '800',
+    marginBottom: spacing.xs,
+    textTransform: 'capitalize',
+  },
+  qrLinkText: {
+    backgroundColor: colors.surfaceSoft,
+    borderRadius: radius.md,
+    color: colors.textMuted,
+    fontSize: 12,
+    padding: spacing.sm,
+  },
+  qrActionMessage: {
+    color: colors.brandDark,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  qrActions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
+  },
+  qrActionButton: {
+    alignItems: 'center',
+    backgroundColor: colors.surfaceSky,
+    borderRadius: radius.round,
+    flexDirection: 'row',
+    gap: 5,
+    minHeight: 36,
+    paddingHorizontal: spacing.sm,
+  },
+  qrActionText: {
+    color: colors.brandInk,
+    fontSize: 12,
+    fontWeight: '800',
   },
   settingTile: {
     alignItems: 'center',

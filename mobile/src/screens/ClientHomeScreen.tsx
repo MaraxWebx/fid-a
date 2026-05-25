@@ -6,13 +6,15 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from "react-native";
 import Ionicons from "react-native-vector-icons/Ionicons";
 
 import {
   cancelBooking,
-  getCenters,
+  associateClientWithCenter,
+  getCenterMemberships,
   getFavoriteCenters,
   getUserBookings,
   toggleFavoriteCenter,
@@ -54,16 +56,21 @@ export function ClientHomeScreen({
   const [cancelingBookingId, setCancelingBookingId] = useState<string | null>(null);
   const [favoriteCenterIds, setFavoriteCenterIds] = useState<string[]>([]);
   const [favoriteLoadingId, setFavoriteLoadingId] = useState<string | null>(null);
+  const [invitationCode, setInvitationCode] = useState("");
+  const [associating, setAssociating] = useState(false);
 
   useEffect(() => {
     let mounted = true;
 
-    Promise.all([getCenters(), getUserBookings(userEmail), getFavoriteCenters(userEmail)])
-      .then(([centersRes, bookingsRes, favoritesRes]) => {
+    Promise.all([getCenterMemberships(userEmail), getUserBookings(userEmail), getFavoriteCenters(userEmail)])
+      .then(([membershipsRes, bookingsRes, favoritesRes]) => {
         if (!mounted) return;
-        setCenters(centersRes);
+        setCenters(membershipsRes.centers);
         setAppointments(bookingsRes);
         setFavoriteCenterIds(favoritesRes.favorite_center_ids);
+        if (!selectedCenterId && membershipsRes.centers[0]) {
+          onChangeCenter(membershipsRes.centers[0].id);
+        }
       })
       .catch(() => {
         if (!mounted) return;
@@ -76,7 +83,7 @@ export function ClientHomeScreen({
     return () => {
       mounted = false;
     };
-  }, [userEmail]);
+  }, [onChangeCenter, selectedCenterId, userEmail]);
 
   const sortedAppointments = useMemo(
     () =>
@@ -95,10 +102,37 @@ export function ClientHomeScreen({
     return isAppointmentActive(normalizeAppointmentState(a.status, a.is_delayed).status) && !isNaN(time) && time > now;
   });
 
-  const discoverCenters = useMemo(
-    () => centers.filter((center) => !favoriteCenterIds.includes(center.id)),
-    [centers, favoriteCenterIds],
-  );
+  const selectedCenter =
+    centers.find((center) => center.id === selectedCenterId) ?? centers[0] ?? null;
+
+  const handleAssociateCenter = async () => {
+    if (!invitationCode.trim() || associating) {
+      return;
+    }
+
+    setAssociating(true);
+    setError(null);
+    try {
+      const response = await associateClientWithCenter({
+        email: userEmail,
+        invitation_code: invitationCode.trim(),
+      });
+      setCenters((current) =>
+        current.some((center) => center.id === response.center.id)
+          ? current
+          : [response.center, ...current],
+      );
+      setFavoriteCenterIds((current) =>
+        current.includes(response.center.id) ? current : [...current, response.center.id],
+      );
+      onChangeCenter(response.center.id);
+      setInvitationCode("");
+    } catch {
+      setError("Codice invito non valido.");
+    } finally {
+      setAssociating(false);
+    }
+  };
 
   const handleCancelNextAppointment = async () => {
     if (!nextAppointment) {
@@ -153,6 +187,17 @@ export function ClientHomeScreen({
       {error && <Text style={styles.error}>{error}</Text>}
 
       {/* 🔥 QUICK CTA */}
+      {selectedCenter ? (
+        <SectionCard eyebrow="Centro associato" title={selectedCenter.name} tone="sky">
+          <Text style={styles.secondary}>
+            {selectedCenter.center_uid ?? "Beauty ecosystem"} - relazione cliente attiva
+          </Text>
+          <View style={styles.actions}>
+            <PrimaryButton label="Prenota con questo centro" onPress={() => onOpenBooking(null)} />
+          </View>
+        </SectionCard>
+      ) : null}
+
       <View style={styles.quickBooking}>
         <PrimaryButton
           label="Prenota trattamento"
@@ -198,14 +243,31 @@ export function ClientHomeScreen({
         ) : null}
       </SectionCard>
 
-      <SectionCard eyebrow="Centri estetici" title="Scegli i tuoi preferiti">
-        {discoverCenters.length === 0 && !loading ? (
+      <SectionCard eyebrow="My Centers" title="Le tue relazioni beauty">
+        <View style={styles.inviteBox}>
+          <TextInput
+            autoCapitalize="characters"
+            onChangeText={setInvitationCode}
+            placeholder="Codice invito"
+            placeholderTextColor={colors.textSoft}
+            style={styles.inviteInput}
+            value={invitationCode}
+          />
+          <PrimaryButton
+            disabled={!invitationCode.trim() || associating}
+            label={associating ? "..." : "Aggiungi"}
+            onPress={() => {
+              void handleAssociateCenter();
+            }}
+          />
+        </View>
+        {centers.length === 0 && !loading ? (
           <Text style={styles.secondary}>
-            Hai gia salvato tutti i centri disponibili nei preferiti.
+            Scansiona il QR del tuo centro o inserisci il codice invito.
           </Text>
         ) : null}
         <View style={styles.centerList}>
-          {discoverCenters.map((center) => {
+          {centers.map((center) => {
             const isFavorite = favoriteCenterIds.includes(center.id);
             const selected = center.id === selectedCenterId;
 
@@ -227,10 +289,24 @@ export function ClientHomeScreen({
                 <View style={styles.centerMain}>
                   <Text style={styles.centerName}>{center.name}</Text>
                   <Text style={styles.centerMeta}>
-                    {(center.primary_services ?? []).slice(0, 2).join(" - ") ||
+                    {center.center_uid ||
+                      (center.primary_services ?? []).slice(0, 2).join(" - ") ||
                       "Centro estetico"}
                   </Text>
                 </View>
+                <Pressable
+                  onPress={(event) => {
+                    event.stopPropagation();
+                    onChangeCenter(center.id);
+                  }}
+                  style={[styles.switchButton, selected ? styles.switchButtonActive : null]}
+                >
+                  <Ionicons
+                    color={selected ? colors.surface : colors.brandInk}
+                    name="swap-horizontal-outline"
+                    size={18}
+                  />
+                </Pressable>
                 <Pressable
                   disabled={favoriteLoadingId === center.id}
                   onPress={(event) => {
@@ -318,6 +394,18 @@ const styles = StyleSheet.create({
   centerList: {
     gap: spacing.sm,
   },
+  inviteBox: {
+    gap: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  inviteInput: {
+    backgroundColor: colors.surfaceSoft,
+    borderRadius: 14,
+    color: colors.text,
+    fontSize: 15,
+    minHeight: 50,
+    paddingHorizontal: spacing.md,
+  },
   centerCard: {
     alignItems: "center",
     backgroundColor: colors.surface,
@@ -367,6 +455,17 @@ const styles = StyleSheet.create({
     height: 36,
     justifyContent: "center",
     width: 36,
+  },
+  switchButton: {
+    alignItems: "center",
+    backgroundColor: colors.surfaceMuted,
+    borderRadius: 18,
+    height: 36,
+    justifyContent: "center",
+    width: 36,
+  },
+  switchButtonActive: {
+    backgroundColor: colors.brandInk,
   },
 
   error: {

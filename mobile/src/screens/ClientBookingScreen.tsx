@@ -13,8 +13,8 @@ import {
 import {
   createBooking,
   getCenterBookingSlots,
+  getCenterMemberships,
   getCenterServices,
-  getCenters,
 } from "../lib/api";
 import { buildUpcomingDateOptions } from "../lib/date";
 import type { BookingSlot, Center, Service } from "../types/api";
@@ -63,14 +63,14 @@ export function ClientBookingScreen({
   useEffect(() => {
     let mounted = true;
 
-    getCenters().then((response) => {
-      if (mounted) setCenters(response);
+    getCenterMemberships(userEmail).then((response) => {
+      if (mounted) setCenters(response.centers);
     });
 
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [userEmail]);
 
   useEffect(() => {
     if (!activeCenterId) {
@@ -214,7 +214,7 @@ export function ClientBookingScreen({
         {!activeCenterId ? (
           <SectionCard eyebrow="Step 0" title="Scegli il centro">
             {centers.length === 0 ? (
-              <ActivityIndicator color={colors.brand} />
+              <Text style={styles.notice}>Aggiungi un centro da My Centers con QR o codice invito.</Text>
             ) : (
               centers.map((center) => (
                 <SelectableRow
