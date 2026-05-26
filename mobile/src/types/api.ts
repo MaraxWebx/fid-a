@@ -404,6 +404,9 @@ export type ActivationStatus = {
 };
 
 export type CenterRegistrationResponse = {
+  access_token: string;
+  token_type: 'bearer';
+  user?: Center;
   center: Center;
   checkout_url: string | null;
   checkout_session_id: string;
@@ -461,7 +464,7 @@ export type CenterProfileInput = {
   enableWhatsapp?: boolean;
   instagram_url: string;
   name: string;
-  logo_url: string;
+  logo_url?: string;
   showWhatsappButtonToClients?: boolean;
   tiktok_url: string;
   whatsappAppointmentReminderTemplate?: string;
@@ -519,10 +522,15 @@ export type ClientRegistrationInput = {
 };
 
 export type ClientAuthResponse = {
+  access_token: string;
+  token_type: 'bearer';
   user: UserProfile;
 };
 
 export type CenterAuthResponse = {
+  access_token: string;
+  token_type: 'bearer';
+  user?: Center;
   center: Center;
   activation: ActivationStatus;
 };

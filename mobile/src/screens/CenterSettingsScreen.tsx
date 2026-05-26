@@ -40,6 +40,7 @@ import type {
   ActivationStatus,
   Center,
   CenterOnboardingInput,
+  CenterProfileInput,
   Review,
   Service,
 } from '../types/api';
@@ -1424,19 +1425,22 @@ export function CenterSettingsScreen({
     setCatalogError(null);
 
     try {
-      const response = await updateCenterProfile(center.id, {
+      const profilePayload: CenterProfileInput = {
         description: profileDescription.trim(),
         enableWhatsapp,
         instagram_url: profileInstagramUrl.trim(),
         name: profileName,
-        logo_url: profileLogoUrl,
         showWhatsappButtonToClients,
         tiktok_url: profileTiktokUrl.trim(),
         whatsappAppointmentReminderTemplate,
         whatsappBookingMessageTemplate,
         whatsappInfoMessageTemplate,
         whatsappPhoneNumber: normalizeWhatsappNumber(whatsappPhoneNumber),
-      });
+      };
+      if (!profileLogoUrl && center.branding.logo) {
+        profilePayload.logo_url = '';
+      }
+      const response = await updateCenterProfile(center.id, profilePayload);
       onCenterUpdated(response.center, response.activation);
       setSaveFeedback(profileLogoUrl ? 'Modifiche salvate. Logo aggiornato.' : 'Modifiche salvate.');
       setIsProfileModalOpen(false);

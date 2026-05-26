@@ -4,3 +4,5 @@ pymongo==4.10.1
 python-dotenv==1.0.1
 stripe==11.1.1
 python-multipart==0.0.20
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4

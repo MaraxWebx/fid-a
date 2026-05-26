@@ -203,11 +203,11 @@ export function CenterBusinessInsightsScreen({ center }: CenterBusinessInsightsS
 
   const suggestions = useMemo(() => buildSmartSuggestions(insights), [insights]);
 
-  const openReport = (type: GeneratedReport) => {
+  const openReport = async (type: GeneratedReport) => {
     const url =
       type === 'business'
-        ? getCenterBusinessReportUrl(center.id, period)
-        : getCenterNoShowReportUrl(center.id, period);
+        ? await getCenterBusinessReportUrl(center.id, period)
+        : await getCenterNoShowReportUrl(center.id, period);
     setGeneratedReports((current) => (current.includes(type) ? current : [...current, type]));
     void Linking.openURL(url);
     if (type === 'no-show' && period === 'month' && !insights?.no_show_report.deleted) {
@@ -300,7 +300,7 @@ export function CenterBusinessInsightsScreen({ center }: CenterBusinessInsightsS
             generated={generatedReports.includes('business')}
             label="Report andamento centro"
             text="Incassi, appuntamenti, trattamenti e performance del centro."
-            onPress={() => openReport('business')}
+            onPress={() => void openReport('business')}
           />
           <ExportCard
             disabled={Boolean(insights?.no_show_report.deleted)}
@@ -308,7 +308,7 @@ export function CenterBusinessInsightsScreen({ center }: CenterBusinessInsightsS
             generated={generatedReports.includes('no-show')}
             label="Report mancati appuntamenti"
             text="Cancellazioni, no-show e mancato incasso stimato."
-            onPress={() => openReport('no-show')}
+            onPress={() => void openReport('no-show')}
           />
         </View>
       </Section>

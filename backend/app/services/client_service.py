@@ -1,0 +1,15 @@
+from .legacy_service import (
+    add_client_center_membership,
+    build_client_auth_response,
+    create_center_membership,
+    get_profile,
+    get_user_bookings,
+    get_user_center_memberships,
+    get_user_favorite_centers,
+    get_user_stats,
+    login_client,
+    register_client,
+    require_client_subject,
+    toggle_user_favorite_center,
+    update_user_profile,
+)

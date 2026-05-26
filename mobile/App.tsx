@@ -34,11 +34,15 @@ import { CenterDashboardScreen } from "./src/screens/CenterDashboardScreen";
 import { CenterSettingsScreen } from "./src/screens/CenterSettingsScreen";
 import { PublicLandingScreen } from "./src/screens/PublicLandingScreen";
 import {
+  clearAuthSession,
   createReview,
+  getStoredAuthSession,
   getNotifications,
   loginCenter,
   loginClient,
   markNotificationsRead,
+  setSessionExpiredHandler,
+  updateStoredSession,
 } from "./src/lib/api";
 import { colors } from "./src/theme/colors";
 import type {
@@ -117,7 +121,7 @@ export default function App() {
   const [reviewComment, setReviewComment] = useState("");
   const [reviewSubmitting, setReviewSubmitting] = useState(false);
 
-  const handleLogout = () => {
+  const resetSessionState = () => {
     setSession(null);
     setPublicRoute("landing");
     setClientTab("home");
@@ -133,13 +137,20 @@ export default function App() {
     setRegisteredCenterCheckoutUrl(null);
   };
 
+  const handleLogout = () => {
+    void clearAuthSession();
+    resetSessionState();
+  };
+
   const handleCenterSessionUpdated = (center: Center, activation: ActivationStatus) => {
+    void updateStoredSession({ role: "center", center, activation });
     setSession((current) =>
       current?.role === "center" ? { role: "center", center, activation } : current,
     );
   };
 
   const handleClientProfileUpdated = (user: UserProfile) => {
+    void updateStoredSession({ role: "client", user });
     setSession((current) =>
       current?.role === "client" ? { role: "client", user } : current,
     );
@@ -178,6 +189,28 @@ export default function App() {
   useEffect(() => {
     void loadNotifications();
   }, [session]);
+
+  useEffect(() => {
+    setSessionExpiredHandler(resetSessionState);
+    let mounted = true;
+
+    getStoredAuthSession()
+      .then((storedSession) => {
+        if (mounted && storedSession) {
+          setSession(storedSession);
+          if (storedSession.role === "center") setCenterTab("home");
+          if (storedSession.role === "client") setClientTab("home");
+        }
+      })
+      .catch(() => {
+        void clearAuthSession();
+      });
+
+    return () => {
+      mounted = false;
+      setSessionExpiredHandler(null);
+    };
+  }, []);
 
   const unreadNotifications = notifications.filter((item) => !item.is_read).length;
 
@@ -423,6 +456,7 @@ export default function App() {
             onPaid={(center, activation) => {
               setRegisteredCenter(center);
               setRegisteredCenterActivation(activation);
+              void updateStoredSession({ role: "center", center, activation });
               setPublicRoute("center-onboarding");
             }}
           />
@@ -437,6 +471,7 @@ export default function App() {
             onComplete={(center, activation) => {
               setRegisteredCenter(center);
               setRegisteredCenterActivation(activation);
+              void updateStoredSession({ role: "center", center, activation });
               setSession({ role: "center", center, activation });
               setCenterTab("home");
             }}
