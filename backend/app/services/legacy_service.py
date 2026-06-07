@@ -655,6 +655,8 @@ class BookingPayload(BaseModel):
     user_email: str = Field(min_length=5, max_length=160)
     service_id: str = Field(min_length=24, max_length=24)
     slot_id: str = Field(min_length=1, max_length=64)
+    staff_member_id: str | None = None
+    room_id: str | None = None
 
 
 class BookingUpdatePayload(BaseModel):
