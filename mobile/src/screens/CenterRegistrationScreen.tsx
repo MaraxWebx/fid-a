@@ -209,7 +209,7 @@ export function CenterRegistrationScreen({ onBack, onRegistered }: CenterRegistr
     try {
       const response = await registerCenter({
         ...form,
-        vat_number: form.vat_number || selectedCategories.join(", "),
+        vat_number: form.vat_number.trim(),
       });
       const activationResponse = await activateCenterSubscription(response.center.id);
       const logoUrl = logoAsset?.uri ?? "";

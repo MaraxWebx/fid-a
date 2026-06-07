@@ -40,7 +40,7 @@ import type {
   UserProfileInput,
   UserProfile,
 } from '../types/api';
-import * as SecureStore from 'expo-secure-store';
+import * as SecureStore from './storage';
 
 const baseUrl =
   process.env.EXPO_PUBLIC_API_BASE_URL ??
